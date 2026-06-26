@@ -20,38 +20,59 @@ assistant you use.
 a library you import. So install it in isolation (or don't install it at all)
 rather than into your global Python environment.
 
-### No install (recommended)
+> [!NOTE]
+> **Not on PyPI yet.** Until the first release is published, the `skilldeck`
+> package name does not resolve, so the direct commands in the
+> [From PyPI](#from-pypi-once-published) section below (`uvx skilldeck`,
+> `pip install skilldeck`, …) **do not work yet**. Use the **git** or **local
+> clone** methods for now.
 
-Run it directly with [uv](https://docs.astral.sh/uv/); nothing is left behind:
+### From git
 
-```bash
-uvx skilldeck install security-review --agent claude
-```
-
-`pipx run skilldeck ...` works the same way if you use pipx instead of uv.
-
-### Persistent command
-
-If you'd rather have `skilldeck` on your PATH:
+Run it without installing, straight from the repo (needs
+[uv](https://docs.astral.sh/uv/)):
 
 ```bash
-uv tool install skilldeck      # or: pipx install skilldeck
+uvx --from git+https://github.com/TheSlopBucket/skilldeck skilldeck install security-review --agent claude
 ```
 
-### From a clone (for authoring skills)
+Or put `skilldeck` on your PATH:
 
 ```bash
-git clone <repo> && cd skilldeck
-uv run skilldeck list
+uv tool install git+https://github.com/TheSlopBucket/skilldeck
+# or: pipx install git+https://github.com/TheSlopBucket/skilldeck
 ```
 
-> `pip install skilldeck` also works, but installs into the active environment —
-> prefer one of the isolated options above.
+### From a local clone
+
+Useful for authoring skills or trying local changes:
+
+```bash
+git clone https://github.com/TheSlopBucket/skilldeck && cd skilldeck
+uv run skilldeck list                  # run in place, no install
+uv tool install .                      # or: pipx install .  — put it on PATH
+```
+
+### From PyPI (once published)
+
+After the first release these isolated runs will work:
+
+```bash
+uvx skilldeck install security-review --agent claude   # no install, nothing left behind
+pipx run skilldeck ...                                 # same, via pipx
+uv tool install skilldeck                              # or: pipx install skilldeck — persistent
+```
+
+> `pip install skilldeck` will also work, but installs into the active
+> environment — prefer one of the isolated options above.
 
 ## Usage
 
-The examples below assume an installed `skilldeck`; prefix with `uvx ` (or
-`pipx run `) to run without installing.
+The examples below assume `skilldeck` is on your PATH (see
+[Running skilldeck](#running-skilldeck)). To run without installing while the
+package is unpublished, prefix each command with
+`uvx --from git+https://github.com/TheSlopBucket/skilldeck ` — e.g.
+`uvx --from git+https://github.com/TheSlopBucket/skilldeck skilldeck list`.
 
 ```bash
 # See what's available
