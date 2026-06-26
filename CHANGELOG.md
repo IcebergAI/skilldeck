@@ -19,7 +19,7 @@ All notable changes to this project are documented here. The format is based on
 ### Added
 
 - Continuous integration (GitHub Actions): ruff lint/format, mypy (strict on
-  `src`), a pytest matrix across Python 3.9–3.13, and a build check that the
+  `src`), a pytest matrix across Python 3.9–3.14, and a build check that the
   skills are bundled into the wheel.
 - Release workflow that publishes to PyPI via Trusted Publishing (OIDC) on
   version tags.
