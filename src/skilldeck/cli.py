@@ -2,25 +2,34 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from itertools import groupby
 from typing import List, Tuple
 
 import click
 
 from .adapters import ADAPTERS
-from .registry import Skill, SkillError, discover_skills, get_skill
+from .registry import Skill, SkillError, discover_skills
 from .targets import Scope
 
 AGENT_CHOICE = click.Choice(sorted(ADAPTERS))
 SCOPE_CHOICE = click.Choice([s.value for s in Scope])
 
 
+def _all_skills() -> List[Skill]:
+    return discover_skills(known_agents=set(ADAPTERS))
+
+
 def _resolve_skills(names: Tuple[str, ...], install_all: bool) -> List[Skill]:
+    skills = _all_skills()
     if install_all:
-        return discover_skills()
+        return skills
     if not names:
         raise click.UsageError("specify skill name(s) or use --all")
-    return [get_skill(name) for name in names]
+    by_name = {skill.name: skill for skill in skills}
+    unknown = [name for name in names if name not in by_name]
+    if unknown:
+        raise SkillError(f"unknown skill: {', '.join(unknown)}")
+    return [by_name[name] for name in names]
 
 
 @click.group()
@@ -31,15 +40,18 @@ def cli() -> None:
 
 @cli.command(name="list")
 def list_cmd() -> None:
-    """List available skills."""
-    skills = discover_skills()
+    """List available skills, grouped by category."""
+    skills = _all_skills()
     if not skills:
         click.echo("No skills found.")
         return
     width = max(len(s.name) for s in skills)
-    for skill in skills:
-        agents = ", ".join(skill.supported_agents)
-        click.echo(f"{skill.name:<{width}}  {skill.description}  [{agents}]")
+    by_category = sorted(skills, key=lambda s: (s.category, s.name))
+    for category, group in groupby(by_category, key=lambda s: s.category):
+        click.echo(f"\n{category}:")
+        for skill in group:
+            agents = ", ".join(skill.supported_agents)
+            click.echo(f"  {skill.name:<{width}}  {skill.description}  [{agents}]")
 
 
 @cli.command()

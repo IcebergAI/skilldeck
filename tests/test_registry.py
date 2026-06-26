@@ -27,8 +27,20 @@ def test_load_skill_roundtrip(tmp_path):
     skill_dir = _write_skill(tmp_path, "demo", body="the body")
     skill = load_skill(skill_dir)
     assert skill.name == "demo"
-    assert skill.supported_agents == ["claude", "codex", "kiro"]
+    assert skill.supported_agents == ("claude", "codex", "kiro")
     assert skill.body == "the body"
+
+
+def test_supported_agents_is_hashable(tmp_path):
+    # frozen dataclass + tuple field -> usable in a set / as a dict key
+    skill = load_skill(_write_skill(tmp_path, "demo"))
+    assert {skill}  # would raise TypeError if supported_agents were a list
+
+
+def test_unknown_agent_rejected_when_known_agents_given(tmp_path):
+    skill_dir = _write_skill(tmp_path, "demo", agents="[claude, bogus]")
+    with pytest.raises(SkillError, match="unknown agent"):
+        load_skill(skill_dir, known_agents={"claude", "codex", "kiro"})
 
 
 def test_name_must_match_directory(tmp_path):

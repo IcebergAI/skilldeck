@@ -1,4 +1,4 @@
-# Skillful
+# Skilldeck
 
 A collection of skills for coding assistants, focused on security and code review.
 Skills are authored once in an agent-neutral format and installed into whichever

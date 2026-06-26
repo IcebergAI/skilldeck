@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Collection, List, Optional, Tuple
 
 import yaml
 
@@ -35,13 +35,20 @@ class Skill:
     description: str
     category: str
     version: str
-    supported_agents: List[str]
+    supported_agents: Tuple[str, ...]
     body: str
     path: Path
 
 
-def load_skill(skill_dir: Path) -> Skill:
-    """Load and validate a single skill directory."""
+def load_skill(
+    skill_dir: Path, known_agents: Optional[Collection[str]] = None
+) -> Skill:
+    """Load and validate a single skill directory.
+
+    If ``known_agents`` is given, every entry in ``supported-agents`` must be a
+    member of it, so a typo'd agent name fails loudly instead of silently never
+    matching an adapter.
+    """
     meta_path = skill_dir / "meta.yaml"
     body_path = skill_dir / "skill.md"
 
@@ -65,25 +72,35 @@ def load_skill(skill_dir: Path) -> Skill:
     if not isinstance(agents, list) or not agents:
         raise SkillError(f"{skill_dir}: supported-agents must be a non-empty list")
 
+    if known_agents is not None:
+        unknown = [a for a in agents if a not in known_agents]
+        if unknown:
+            raise SkillError(
+                f"{skill_dir}: supported-agents has unknown agent(s): "
+                f"{', '.join(unknown)}"
+            )
+
     return Skill(
         name=meta["name"],
         description=meta["description"],
         category=meta["category"],
         version=str(meta["version"]),
-        supported_agents=list(agents),
+        supported_agents=tuple(agents),
         body=body_path.read_text(encoding="utf-8"),
         path=skill_dir,
     )
 
 
-def discover_skills(skills_dir: Optional[Path] = None) -> List[Skill]:
+def discover_skills(
+    skills_dir: Optional[Path] = None, known_agents: Optional[Collection[str]] = None
+) -> List[Skill]:
     """Load every skill under ``skills_dir`` (sorted by name)."""
     root = skills_dir or DEFAULT_SKILLS_DIR
     if not root.is_dir():
         raise SkillError(f"skills directory not found: {root}")
 
     skills = [
-        load_skill(child)
+        load_skill(child, known_agents)
         for child in sorted(root.iterdir())
         if child.is_dir() and not child.name.startswith(".")
     ]

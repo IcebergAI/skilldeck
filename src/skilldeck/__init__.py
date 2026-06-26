@@ -1,3 +1,8 @@
-"""Skillful: agent-agnostic skills for coding assistants."""
+"""skilldeck: agent-agnostic skills for coding assistants."""
 
-__version__ = "0.1.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("skilldeck")
+except PackageNotFoundError:  # running from a source tree without an install
+    __version__ = "0.0.0"

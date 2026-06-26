@@ -1,7 +1,7 @@
-# Skillful
+# Skilldeck
 
 ## Overview
-Skillful is a collection of skills for coding assistants to use mostly for security and code review purposes. The skills are agent agnostic and come with an install script that provides options for project local or global install.
+Skilldeck is a collection of skills for coding assistants to use mostly for security and code review purposes. The skills are agent agnostic and come with an install script that provides options for project local or global install.
 
 ## Stack
 

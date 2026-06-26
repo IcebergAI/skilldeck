@@ -47,7 +47,13 @@ class Adapter(ABC):
         self, skill: Skill, scope: Scope, project_root: Optional[Path] = None
     ) -> Optional[Path]:
         dest = self.destination(skill, scope, project_root)
-        if dest.exists():
-            dest.unlink()
-            return dest
-        return None
+        if not dest.exists():
+            return None
+        dest.unlink()
+        # Remove the per-skill directory an adapter created (e.g. Claude's
+        # ``.claude/skills/<name>/``) once empty. Guarded by name so shared
+        # directories like ``.codex/prompts`` are never touched.
+        parent = dest.parent
+        if parent.name == skill.name and not any(parent.iterdir()):
+            parent.rmdir()
+        return dest

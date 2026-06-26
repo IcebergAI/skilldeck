@@ -27,6 +27,27 @@ All notable changes to this project are documented here. The format is based on
 - `security-review` skill (0.1.0 → 0.2.0) — review checklist realigned to the
   OWASP ASVS 5.0 categories (V1–V16) with assurance levels (L2 default); findings
   now include an ASVS category.
+- `skilldeck list` groups skills by category (the `category` field was previously
+  required but never surfaced).
+- `install`/`uninstall` no longer re-parse every skill once per requested name;
+  skills are discovered a single time per invocation.
+
+### Fixed
+
+- The installed `skilldeck` console command now routes through `main()`, so a
+  malformed skill reports a clean `error: …` message instead of a traceback (the
+  entry point previously bypassed the error handler).
+- `uninstall` removes the now-empty per-skill directory it created (e.g. Claude's
+  `.claude/skills/<name>/`) instead of leaving it behind; shared directories are
+  left untouched.
+- `Skill` is now hashable (its `supported-agents` is stored as a tuple), so the
+  frozen dataclass can be used in sets and as dict keys.
+- `supported-agents` entries are validated against the known adapters at the CLI
+  boundary; a typo'd agent name now fails loudly instead of silently never
+  installing.
+- Updated stale `Skillful` references to `skilldeck` and made package metadata the
+  single source of truth for the version (dropped the duplicated `__version__`
+  literal).
 
 ## [0.1.0]
 

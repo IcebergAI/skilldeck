@@ -20,7 +20,7 @@ dev = [
 ]
 
 [project.scripts]
-skilldeck = "skilldeck.cli:cli"
+skilldeck = "skilldeck.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/skilldeck"]
