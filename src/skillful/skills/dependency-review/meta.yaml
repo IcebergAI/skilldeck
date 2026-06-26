@@ -1,0 +1,8 @@
+name: dependency-review
+description: Review dependency changes in the diff for known vulnerabilities and supply-chain risk.
+category: security
+version: 0.1.0
+supported-agents:
+  - claude
+  - codex
+  - kiro

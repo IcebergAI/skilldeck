@@ -13,6 +13,8 @@ All notable changes to this project are documented here. The format is based on
   logging following the OWASP Logging Cheat Sheet.
 - `code-smells` skill (0.1.0) — reviews pending changes for code smells
   (refactoring.guru catalog) and suggests refactorings.
+- `dependency-review` skill (0.1.0) — reviews dependency/lockfile changes for
+  known vulnerabilities and supply-chain risk (OWASP A06, ASVS V15).
 
 ### Changed
 
