@@ -13,7 +13,7 @@ Skilldeck is a collection of skills for coding assistants to use mostly for secu
 - Tooling: `uv` for venv/install/test (no system pip available); `ruff` for
   lint+format and `mypy` (strict on `src`) for types. Run before pushing:
   `uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`
-- CI (`.github/workflows/ci.yml`) runs lint, types, and a 3.9–3.13 pytest matrix
+- CI (`.github/workflows/ci.yml`) runs lint, types, and a 3.9–3.14 pytest matrix
   on every PR; tagged `v*` releases publish to PyPI via Trusted Publishing
   (`release.yml`)
 - Distribution: it's a CLI app, not a library — recommend isolated installs
