@@ -1,4 +1,4 @@
-"""``skillful`` command-line interface."""
+"""``skilldeck`` command-line interface."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def _resolve_skills(names: Tuple[str, ...], install_all: bool) -> List[Skill]:
 
 
 @click.group()
-@click.version_option(package_name="skillful")
+@click.version_option(package_name="skilldeck")
 def cli() -> None:
     """Install agent-agnostic skills into your coding assistant."""
 

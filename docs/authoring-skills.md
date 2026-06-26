@@ -1,11 +1,11 @@
 # Authoring skills
 
-A skill is a directory under `src/skillful/skills/` named after the skill. Living
+A skill is a directory under `src/skilldeck/skills/` named after the skill. Living
 inside the package means the skills are bundled into the wheel automatically, so a
-`pip install skillful` ships them:
+`pip install skilldeck` ships them:
 
 ```
-src/skillful/skills/
+src/skilldeck/skills/
 └── my-skill/
     ├── meta.yaml
     └── skill.md
@@ -15,7 +15,7 @@ src/skillful/skills/
 
 ```yaml
 name: my-skill            # MUST match the directory name
-description: One-line summary used in `skillful list` and Claude frontmatter.
+description: One-line summary used in `skilldeck list` and Claude frontmatter.
 category: security        # free-form grouping, e.g. security, review, refactor
 version: 0.1.0
 supported-agents:         # non-empty list; adapters skip skills they aren't in
@@ -24,7 +24,7 @@ supported-agents:         # non-empty list; adapters skip skills they aren't in
   - kiro
 ```
 
-All five fields are required. The loader (`skillful.registry`) validates them and
+All five fields are required. The loader (`skilldeck.registry`) validates them and
 errors clearly if anything is missing or if `name` does not match the directory.
 
 ## `skill.md`
@@ -36,8 +36,8 @@ assumptions); the adapters add whatever wrapping each agent needs at install tim
 ## Testing your skill
 
 ```bash
-skillful list                 # should show your new skill
-skillful install my-skill --agent claude --scope project
+skilldeck list                 # should show your new skill
+skilldeck install my-skill --agent claude --scope project
 ```
 
 Then inspect the rendered output under `.claude/skills/my-skill/SKILL.md`.

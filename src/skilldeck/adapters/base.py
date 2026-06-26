@@ -1,6 +1,6 @@
 """Adapter interface.
 
-An adapter translates one canonical :class:`~skillful.registry.Skill` into the
+An adapter translates one canonical :class:`~skilldeck.registry.Skill` into the
 file format and on-disk location a particular agent expects. Adding support for a
 new agent means writing one subclass -- skill content never changes.
 """

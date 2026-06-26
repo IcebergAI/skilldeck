@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "skillful"
+name = "skilldeck"
 version = "0.1.0"
 description = "Agent-agnostic security & code-review skills for coding assistants"
 readme = "README.md"
@@ -20,10 +20,10 @@ dev = [
 ]
 
 [project.scripts]
-skillful = "skillful.cli:cli"
+skilldeck = "skilldeck.cli:cli"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/skillful"]
+packages = ["src/skilldeck"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

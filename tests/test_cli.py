@@ -1,6 +1,6 @@
 from click.testing import CliRunner
 
-from skillful.cli import cli
+from skilldeck.cli import cli
 
 
 def test_list_includes_bundled_skill():
