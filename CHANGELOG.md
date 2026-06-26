@@ -7,6 +7,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Security
+
+- The Claude adapter now serializes skill frontmatter with `yaml.safe_dump`
+  instead of string interpolation, so a name/description containing newlines or
+  YAML metacharacters cannot inject extra frontmatter keys into the rendered
+  `SKILL.md`.
+- `install` refuses to write through a symlink at the destination, preventing a
+  pre-placed symlink from redirecting the write to an arbitrary file.
+
 ### Added
 
 - `logging` skill (0.1.0) — guidance for adding and reviewing application

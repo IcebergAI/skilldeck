@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
 
-from ..registry import Skill
+from ..registry import Skill, SkillError
 from ..targets import Scope, base_dir
 
 
@@ -39,6 +39,10 @@ class Adapter(ABC):
         self, skill: Skill, scope: Scope, project_root: Optional[Path] = None
     ) -> Path:
         dest = self.destination(skill, scope, project_root)
+        # Never follow a symlink at the destination: writing through it would
+        # clobber the link target instead of the intended skill file.
+        if dest.is_symlink():
+            raise SkillError(f"refusing to install through symlink: {dest}")
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(self.render(skill), encoding="utf-8")
         return dest
