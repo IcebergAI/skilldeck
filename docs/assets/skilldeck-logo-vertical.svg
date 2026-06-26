@@ -1,0 +1,24 @@
+<svg viewBox="0 0 340 232" xmlns="http://www.w3.org/2000/svg"><defs>
+    <linearGradient id="foilV" x1="0" y1="0" x2="1" y2="1"><stop offset="0.0" stop-color="#5EEAD4"/><stop offset="0.35" stop-color="#818CF8"/><stop offset="0.68" stop-color="#F0ABFC"/><stop offset="1.0" stop-color="#FCD34D"/></linearGradient>
+    <linearGradient id="cardV" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#1B2438"/>
+      <stop offset="1" stop-color="#0B1120"/>
+    </linearGradient>
+    <linearGradient id="sheenV" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  <linearGradient id="foilW" x1="0" y1="0" x2="1" y2="0"><stop offset="0.0" stop-color="#5EEAD4"/><stop offset="0.35" stop-color="#818CF8"/><stop offset="0.68" stop-color="#F0ABFC"/><stop offset="1.0" stop-color="#FCD34D"/></linearGradient></defs><g transform="translate(80 4)"><g transform="rotate(-15 90 150)"><g transform="translate(44.0 22)"><g>
+      <rect x="0" y="0" width="92" height="128" rx="11" fill="url(#cardV)" stroke="url(#foilV)" stroke-width="3"/>
+      <clipPath id="bclip"><rect x="0" y="0" width="92" height="128" rx="11"/></clipPath>
+      <g clip-path="url(#bclip)"><line x1="-7" y1="9" x2="23" y2="119" stroke="url(#foilV)" stroke-width="2" opacity="0.45"/><line x1="9" y1="9" x2="39" y2="119" stroke="url(#foilV)" stroke-width="2" opacity="0.45"/><line x1="25" y1="9" x2="55" y2="119" stroke="url(#foilV)" stroke-width="2" opacity="0.45"/><line x1="41" y1="9" x2="71" y2="119" stroke="url(#foilV)" stroke-width="2" opacity="0.45"/><line x1="57" y1="9" x2="87" y2="119" stroke="url(#foilV)" stroke-width="2" opacity="0.45"/><line x1="73" y1="9" x2="103" y2="119" stroke="url(#foilV)" stroke-width="2" opacity="0.45"/><line x1="89" y1="9" x2="119" y2="119" stroke="url(#foilV)" stroke-width="2" opacity="0.45"/></g>
+    </g></g></g><g transform="rotate(-7.5 90 150)"><g transform="translate(44.0 22)"><g>
+      <rect x="0" y="0" width="92" height="128" rx="11" fill="url(#cardV)" stroke="url(#foilV)" stroke-width="3"/>
+      <clipPath id="bclip"><rect x="0" y="0" width="92" height="128" rx="11"/></clipPath>
+      <g clip-path="url(#bclip)"><line x1="-7" y1="9" x2="23" y2="119" stroke="url(#foilV)" stroke-width="2" opacity="0.45"/><line x1="9" y1="9" x2="39" y2="119" stroke="url(#foilV)" stroke-width="2" opacity="0.45"/><line x1="25" y1="9" x2="55" y2="119" stroke="url(#foilV)" stroke-width="2" opacity="0.45"/><line x1="41" y1="9" x2="71" y2="119" stroke="url(#foilV)" stroke-width="2" opacity="0.45"/><line x1="57" y1="9" x2="87" y2="119" stroke="url(#foilV)" stroke-width="2" opacity="0.45"/><line x1="73" y1="9" x2="103" y2="119" stroke="url(#foilV)" stroke-width="2" opacity="0.45"/><line x1="89" y1="9" x2="119" y2="119" stroke="url(#foilV)" stroke-width="2" opacity="0.45"/></g>
+    </g></g></g><g transform="rotate(0 90 150)"><g transform="translate(44.0 22)"><g>
+      <rect x="0" y="0" width="92" height="128" rx="11" fill="url(#cardV)" stroke="url(#foilV)" stroke-width="3"/>
+      <rect x="9" y="9" width="58" height="11" rx="3.5" fill="#3B486180"/><circle cx="77" cy="14.5" r="5.5" fill="none" stroke="url(#foilV)" stroke-width="2"/><rect x="9" y="25" width="74" height="60" rx="6" fill="#070C18" stroke="#2A3550" stroke-width="1"/><g fill="none" stroke="url(#foilV)" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="31.05,46.95 18.400000000000002,55.0 31.05,63.05"/><polyline points="60.95,46.95 73.6,55.0 60.95,63.05"/><line x1="51.75" y1="44.650000000000006" x2="40.25" y2="65.35"/></g><rect x="9" y="93" width="52" height="7" rx="3" fill="#2A355080"/><polygon points="74.0,87.0 83.5,92.5 83.5,103.5 74.0,109.0 64.5,103.5 64.5,92.5" fill="#070C18" stroke="url(#foilV)" stroke-width="2"/><text x="74" y="102" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" font-weight="700" fill="#FCD34D" text-anchor="middle">S</text><clipPath id="fclip"><rect x="0" y="0" width="92" height="128" rx="11"/></clipPath><g clip-path="url(#fclip)"><rect x="-20" y="-10" width="60" height="148" transform="skewX(-18)" fill="url(#sheenV)"/></g>
+    </g></g></g></g><text x="170" y="210" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace" font-size="44" font-weight="700" letter-spacing="-0.5"><tspan fill="#E8EDF5">skill</tspan><tspan fill="url(#foilW)">deck</tspan><tspan fill="url(#foilW)">▌</tspan></text></svg>
