@@ -1,8 +1,15 @@
-# Skilldeck
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/TheSlopBucket/skilldeck/main/docs/assets/skilldeck-logo-horizontal.svg">
+    <img alt="Skilldeck" src="https://raw.githubusercontent.com/TheSlopBucket/skilldeck/main/docs/assets/skilldeck-logo-horizontal-onlight.svg" width="340">
+  </picture>
+</p>
 
-[![CI](https://github.com/TheSlopBucket/skilldeck/actions/workflows/ci.yml/badge.svg)](https://github.com/TheSlopBucket/skilldeck/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/python-3.9%E2%80%933.13-blue)](https://github.com/TheSlopBucket/skilldeck)
-[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+<p align="center">
+  <a href="https://github.com/TheSlopBucket/skilldeck/actions/workflows/ci.yml"><img src="https://github.com/TheSlopBucket/skilldeck/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/TheSlopBucket/skilldeck"><img src="https://img.shields.io/badge/python-3.9%E2%80%933.13-blue" alt="Python"></a>
+  <a href="https://github.com/TheSlopBucket/skilldeck/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
 
 A collection of skills for coding assistants, focused on security and code review.
 Skills are authored once in an agent-neutral format and installed into whichever
