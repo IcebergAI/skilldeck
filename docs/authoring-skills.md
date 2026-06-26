@@ -1,9 +1,11 @@
 # Authoring skills
 
-A skill is a directory under `skills/` named after the skill:
+A skill is a directory under `src/skillful/skills/` named after the skill. Living
+inside the package means the skills are bundled into the wheel automatically, so a
+`pip install skillful` ships them:
 
 ```
-skills/
+src/skillful/skills/
 └── my-skill/
     ├── meta.yaml
     └── skill.md

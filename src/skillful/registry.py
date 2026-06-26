@@ -17,9 +17,10 @@ from typing import List, Optional
 
 import yaml
 
-# Repo-root ``skills/`` directory, resolved relative to this file
-# (src/skillful/registry.py -> repo root is two parents up from the package).
-DEFAULT_SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
+# Bundled ``skills/`` directory, co-located with this module inside the package.
+# Resolving relative to ``__file__`` works identically for an editable checkout
+# and an installed wheel, since hatchling ships the skill files alongside the code.
+DEFAULT_SKILLS_DIR = Path(__file__).resolve().parent / "skills"
 
 REQUIRED_FIELDS = ("name", "description", "category", "version", "supported-agents")
 

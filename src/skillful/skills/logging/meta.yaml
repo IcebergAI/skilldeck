@@ -1,0 +1,8 @@
+name: logging
+description: Add or review application logging following OWASP security best practices.
+category: security
+version: 0.1.0
+supported-agents:
+  - claude
+  - codex
+  - kiro

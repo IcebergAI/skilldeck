@@ -10,15 +10,44 @@ assistant you use.
 - OpenAI Codex
 - Kiro
 
-## Install the CLI
+## Running skillful
+
+`skillful` is a CLI you run occasionally to copy skills into your assistant — not
+a library you import. So install it in isolation (or don't install it at all)
+rather than into your global Python environment.
+
+### No install (recommended)
+
+Run it directly with [uv](https://docs.astral.sh/uv/); nothing is left behind:
 
 ```bash
-pip install -e .
+uvx skillful install security-review --agent claude
 ```
 
-This exposes the `skillful` command.
+`pipx run skillful ...` works the same way if you use pipx instead of uv.
+
+### Persistent command
+
+If you'd rather have `skillful` on your PATH:
+
+```bash
+uv tool install skillful      # or: pipx install skillful
+```
+
+### From a clone (for authoring skills)
+
+```bash
+git clone <repo> && cd skillful
+uv run skillful list
+```
+
+> `pip install skillful` also works, but installs into the active environment —
+> prefer one of the isolated options above.
 
 ## Usage
+
+The examples below assume an installed `skillful`; prefix with `uvx ` (or
+`pipx run `) to run without installing.
 
 ```bash
 # See what's available
@@ -40,5 +69,9 @@ writes into your home directory. Where exactly each agent looks is documented in
 
 ## Authoring skills
 
-Each skill is a directory under `skills/` containing a `meta.yaml` and a
-`skill.md`. See [docs/authoring-skills.md](docs/authoring-skills.md).
+Each skill is a directory under `src/skillful/skills/` containing a `meta.yaml`
+and a `skill.md`. See [docs/authoring-skills.md](docs/authoring-skills.md).
+
+## Changelog
+
+Notable changes are recorded in [CHANGELOG.md](CHANGELOG.md).
