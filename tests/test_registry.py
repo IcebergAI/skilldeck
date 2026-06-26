@@ -61,6 +61,24 @@ def test_missing_field_raises(tmp_path):
         load_skill(skill_dir)
 
 
+def test_empty_supported_agents_rejected(tmp_path):
+    skill_dir = _write_skill(tmp_path, "demo", agents="[]")
+    with pytest.raises(SkillError, match="non-empty list"):
+        load_skill(skill_dir)
+
+
+def test_missing_skill_md_rejected(tmp_path):
+    skill_dir = _write_skill(tmp_path, "demo")
+    (skill_dir / "skill.md").unlink()
+    with pytest.raises(SkillError, match="missing skill.md"):
+        load_skill(skill_dir)
+
+
+def test_discover_missing_directory_rejected(tmp_path):
+    with pytest.raises(SkillError, match="not found"):
+        discover_skills(tmp_path / "does-not-exist")
+
+
 def test_discover_sorted(tmp_path):
     _write_skill(tmp_path, "bravo")
     _write_skill(tmp_path, "alpha")
