@@ -1,7 +1,7 @@
 # Adapters
 
 An adapter translates a canonical skill into the file format and location a
-specific agent expects. They live in `src/skillful/adapters/` and are registered
+specific agent expects. They live in `src/skilldeck/adapters/` and are registered
 in `adapters/__init__.py` (`ADAPTERS`).
 
 ## Install locations
@@ -20,7 +20,7 @@ resolves against `$HOME`. The relative path below is the same in both cases.
 
 ## Adding a new agent
 
-1. Create `src/skillful/adapters/<agent>.py` with a subclass of `Adapter`:
+1. Create `src/skilldeck/adapters/<agent>.py` with a subclass of `Adapter`:
    - set `name`
    - implement `relative_path(skill)` and `render(skill)`
 2. Register the instance in `ADAPTERS` in `adapters/__init__.py`.

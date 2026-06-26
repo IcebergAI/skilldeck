@@ -2,7 +2,7 @@ import textwrap
 
 import pytest
 
-from skillful.registry import SkillError, discover_skills, load_skill
+from skilldeck.registry import SkillError, discover_skills, load_skill
 
 
 def _write_skill(root, name, *, agents="[claude, codex, kiro]", body="hi"):

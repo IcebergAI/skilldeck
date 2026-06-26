@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from skillful.adapters import ADAPTERS
-from skillful.registry import Skill
-from skillful.targets import Scope
+from skilldeck.adapters import ADAPTERS
+from skilldeck.registry import Skill
+from skilldeck.targets import Scope
 
 
 @pytest.fixture

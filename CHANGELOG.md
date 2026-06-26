@@ -20,6 +20,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Renamed the project `skillful` → `skilldeck`** to avoid a PyPI name
+  collision with an unrelated package. The distribution, `import` package, and
+  console command are all now `skilldeck` (e.g. `uvx skilldeck`,
+  `skilldeck list`).
 - `security-review` skill (0.1.0 → 0.2.0) — review checklist realigned to the
   OWASP ASVS 5.0 categories (V1–V16) with assurance levels (L2 default); findings
   now include an ASVS category.
@@ -28,6 +32,6 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
-- Initial `skillful` CLI: `list`, `install`, `uninstall`.
+- Initial `skilldeck` CLI: `list`, `install`, `uninstall`.
 - Agent adapters for Claude, Codex, and Kiro.
 - `security-review` skill (0.1.0).
