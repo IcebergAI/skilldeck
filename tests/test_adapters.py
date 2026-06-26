@@ -62,3 +62,42 @@ def test_install_and_uninstall_roundtrip(skill, tmp_path):
     assert not dest.parent.exists()
     # second uninstall is a no-op
     assert adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path) is None
+
+
+def _bare_skill(name, agent, body):
+    return Skill(
+        name=name,
+        description="d",
+        category="c",
+        version="1",
+        supported_agents=(agent,),
+        body=body,
+        path=Path("/nowhere"),
+    )
+
+
+@pytest.mark.parametrize("agent", ["codex", "kiro"])
+def test_uninstall_keeps_shared_directory(tmp_path, agent):
+    # codex/kiro write into a directory shared by all skills (.codex/prompts,
+    # .kiro/steering). Cleanup must reclaim only Claude's per-skill <name>/ dir,
+    # never these shared dirs.
+    adapter = ADAPTERS[agent]
+    alpha = _bare_skill("alpha", agent, "A")
+    beta = _bare_skill("beta", agent, "B")
+
+    dest_alpha = adapter.install(alpha, Scope.PROJECT, project_root=tmp_path)
+    dest_beta = adapter.install(beta, Scope.PROJECT, project_root=tmp_path)
+    shared_dir = dest_alpha.parent
+    assert shared_dir == dest_beta.parent
+
+    # Removing one skill leaves the sibling and the shared dir intact.
+    adapter.uninstall(alpha, Scope.PROJECT, project_root=tmp_path)
+    assert not dest_alpha.exists()
+    assert dest_beta.exists()
+    assert shared_dir.is_dir()
+
+    # Removing the LAST skill must still leave the shared dir — this is the case
+    # a naive "rmdir when empty" cleanup would wrongly delete.
+    adapter.uninstall(beta, Scope.PROJECT, project_root=tmp_path)
+    assert not dest_beta.exists()
+    assert shared_dir.is_dir()
