@@ -11,9 +11,9 @@ render agent-specific output; nothing here knows about a particular agent.
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Collection, List, Optional, Tuple
 
 import yaml
 
@@ -35,14 +35,12 @@ class Skill:
     description: str
     category: str
     version: str
-    supported_agents: Tuple[str, ...]
+    supported_agents: tuple[str, ...]
     body: str
     path: Path
 
 
-def load_skill(
-    skill_dir: Path, known_agents: Optional[Collection[str]] = None
-) -> Skill:
+def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> Skill:
     """Load and validate a single skill directory.
 
     If ``known_agents`` is given, every entry in ``supported-agents`` must be a
@@ -92,8 +90,8 @@ def load_skill(
 
 
 def discover_skills(
-    skills_dir: Optional[Path] = None, known_agents: Optional[Collection[str]] = None
-) -> List[Skill]:
+    skills_dir: Path | None = None, known_agents: Collection[str] | None = None
+) -> list[Skill]:
     """Load every skill under ``skills_dir`` (sorted by name)."""
     root = skills_dir or DEFAULT_SKILLS_DIR
     if not root.is_dir():
@@ -107,7 +105,7 @@ def discover_skills(
     return skills
 
 
-def get_skill(name: str, skills_dir: Optional[Path] = None) -> Skill:
+def get_skill(name: str, skills_dir: Path | None = None) -> Skill:
     """Load a single skill by name."""
     for skill in discover_skills(skills_dir):
         if skill.name == name:

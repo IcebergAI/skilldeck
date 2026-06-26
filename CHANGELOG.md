@@ -18,6 +18,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Continuous integration (GitHub Actions): ruff lint/format, mypy (strict on
+  `src`), a pytest matrix across Python 3.9–3.13, and a build check that the
+  skills are bundled into the wheel.
+- Release workflow that publishes to PyPI via Trusted Publishing (OIDC) on
+  version tags.
 - `logging` skill (0.1.0) — guidance for adding and reviewing application
   logging following the OWASP Logging Cheat Sheet.
 - `code-smells` skill (0.1.0) — reviews pending changes for code smells
@@ -40,6 +45,8 @@ All notable changes to this project are documented here. The format is based on
   required but never surfaced).
 - `install`/`uninstall` no longer re-parse every skill once per requested name;
   skills are discovered a single time per invocation.
+- Filled out packaging metadata for PyPI (authors, keywords, trove classifiers,
+  project URLs) and fixed the stale `Skillful` copyright in `LICENSE`.
 
 ### Fixed
 

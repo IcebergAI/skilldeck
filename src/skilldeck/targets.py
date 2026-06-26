@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import Optional
 
 
 class Scope(str, Enum):
@@ -17,7 +16,7 @@ class Scope(str, Enum):
     GLOBAL = "global"
 
 
-def base_dir(scope: Scope, project_root: Optional[Path] = None) -> Path:
+def base_dir(scope: Scope, project_root: Path | None = None) -> Path:
     """Return the directory that adapter relative paths are resolved against."""
     if scope == Scope.GLOBAL:
         return Path.home()

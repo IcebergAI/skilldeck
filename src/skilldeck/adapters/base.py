@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
 
 from ..registry import Skill, SkillError
 from ..targets import Scope, base_dir
@@ -31,12 +30,12 @@ class Adapter(ABC):
         return self.name in skill.supported_agents
 
     def destination(
-        self, skill: Skill, scope: Scope, project_root: Optional[Path] = None
+        self, skill: Skill, scope: Scope, project_root: Path | None = None
     ) -> Path:
         return base_dir(scope, project_root) / self.relative_path(skill)
 
     def install(
-        self, skill: Skill, scope: Scope, project_root: Optional[Path] = None
+        self, skill: Skill, scope: Scope, project_root: Path | None = None
     ) -> Path:
         dest = self.destination(skill, scope, project_root)
         # Never follow a symlink at the destination: writing through it would
@@ -48,8 +47,8 @@ class Adapter(ABC):
         return dest
 
     def uninstall(
-        self, skill: Skill, scope: Scope, project_root: Optional[Path] = None
-    ) -> Optional[Path]:
+        self, skill: Skill, scope: Scope, project_root: Path | None = None
+    ) -> Path | None:
         dest = self.destination(skill, scope, project_root)
         if not dest.exists():
             return None

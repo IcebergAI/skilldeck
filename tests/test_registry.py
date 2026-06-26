@@ -46,7 +46,11 @@ def test_unknown_agent_rejected_when_known_agents_given(tmp_path):
 def test_name_must_match_directory(tmp_path):
     skill_dir = _write_skill(tmp_path, "demo")
     (skill_dir / "meta.yaml").write_text(
-        "name: other\ndescription: x\ncategory: y\nversion: 1\nsupported-agents: [claude]\n"
+        "name: other\n"
+        "description: x\n"
+        "category: y\n"
+        "version: 1\n"
+        "supported-agents: [claude]\n"
     )
     with pytest.raises(SkillError, match="does not match"):
         load_skill(skill_dir)

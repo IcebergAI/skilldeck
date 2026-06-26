@@ -9,14 +9,40 @@ description = "Agent-agnostic security & code-review skills for coding assistant
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
+authors = [{ name = "Richard Hope" }]
+keywords = ["claude", "codex", "kiro", "coding-assistant", "skills", "code-review", "security"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Security",
+]
 dependencies = [
     "click>=8.1",
     "pyyaml>=6.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/TheSlopBucket/skilldeck"
+Repository = "https://github.com/TheSlopBucket/skilldeck"
+Issues = "https://github.com/TheSlopBucket/skilldeck/issues"
+Changelog = "https://github.com/TheSlopBucket/skilldeck/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "types-PyYAML>=6.0",
 ]
 
 [project.scripts]
@@ -27,3 +53,25 @@ packages = ["src/skilldeck"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+]
+
+[tool.mypy]
+files = ["src"]
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true

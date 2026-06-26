@@ -60,7 +60,9 @@ def test_global_scope_resolves_against_home(skill, tmp_path, monkeypatch):
 
 
 def test_paths_are_agent_specific(skill):
-    assert ADAPTERS["claude"].relative_path(skill) == Path(".claude/skills/demo/SKILL.md")
+    assert ADAPTERS["claude"].relative_path(skill) == Path(
+        ".claude/skills/demo/SKILL.md"
+    )
     assert ADAPTERS["codex"].relative_path(skill) == Path(".codex/prompts/demo.md")
     assert ADAPTERS["kiro"].relative_path(skill) == Path(".kiro/steering/demo.md")
 

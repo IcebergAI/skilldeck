@@ -7,14 +7,12 @@ change here.
 
 from __future__ import annotations
 
-from typing import Dict
-
 from .base import Adapter
 from .claude import ClaudeAdapter
 from .codex import CodexAdapter
 from .kiro import KiroAdapter
 
-ADAPTERS: Dict[str, Adapter] = {
+ADAPTERS: dict[str, Adapter] = {
     adapter.name: adapter
     for adapter in (ClaudeAdapter(), CodexAdapter(), KiroAdapter())
 }
