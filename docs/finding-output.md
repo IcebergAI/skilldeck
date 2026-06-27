@@ -40,6 +40,7 @@ Report each finding as a single top-level list item:
 | `dependency-review` | the advisory ID or supply-chain concern | `CVE-2024-12345`, `Typosquatting` |
 | `test-review` | the weakness kind | `Coverage gap`, `Assertion-free test` |
 | `logging` | the logging issue kind | `Secret in log`, `Log injection` |
+| `resilience-review` | the resilience concern | `Missing timeout`, `Retry without backoff` |
 
 ## Shared rules
 
