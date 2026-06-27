@@ -49,4 +49,9 @@ Skilldeck is a collection of skills for coding assistants to use mostly for secu
 - Maintain a README.md for users installing skills
 - Record notable changes in CHANGELOG.md (Keep a Changelog format) under
   `[Unreleased]`; bump a skill's `meta.yaml` `version` when its content changes
+- Releasing and project versioning: see `docs/releasing.md`. The project version
+  (`pyproject.toml`), the newest dated CHANGELOG section, and the release tag must
+  stay in sync — `scripts/check_release_consistency.py` enforces this in CI and
+  `pytest`. A dated CHANGELOG section without a matching `v*` tag is prepared, not
+  published.
  
