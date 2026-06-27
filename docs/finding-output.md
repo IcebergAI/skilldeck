@@ -41,6 +41,7 @@ Report each finding as a single top-level list item:
 | `test-review` | the weakness kind | `Coverage gap`, `Assertion-free test` |
 | `logging` | the logging issue kind | `Secret in log`, `Log injection` |
 | `resilience-review` | the resilience concern | `Missing timeout`, `Retry without backoff` |
+| `migration-review` | the migration hazard | `Blocking lock`, `Backward-incompatible change` |
 
 ## Shared rules
 

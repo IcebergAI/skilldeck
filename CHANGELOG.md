@@ -14,6 +14,11 @@ All notable changes to this project are documented here. The format is based on
   circuit breakers, resource leaks, backpressure, graceful degradation). Drawn
   from the *Release It!* stability patterns and the Google SRE book; kept
   pattern-level and tooling-agnostic.
+- `migration-review` skill (0.1.0) — reviews database schema and data migrations
+  for safety under a live, rolling deploy (backward compatibility / expand-contract,
+  blocking locks, unbatched backfills, constraint validation, reversibility,
+  transactional DDL). Drawn from the expand/contract pattern and zero-downtime
+  migration guidance; kept engine- and tooling-agnostic.
 
 ## [0.2.0] - 2026-06-27
 
