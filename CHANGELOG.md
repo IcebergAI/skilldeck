@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-27
+
 ### Added
 
 - `resilience-review` skill (0.1.0) — reviews pending changes for fault tolerance
