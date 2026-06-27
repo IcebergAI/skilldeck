@@ -46,13 +46,19 @@ the rest of the application surface.
 
 ## Output
 
-For each finding report:
+Report each finding as a single list item:
 
-- **Severity** (critical / high / medium / low)
-- **Package** and the **version change** (`old -> new`), direct or transitive
-- **Issue** — the advisory ID (CVE/GHSA) or the specific supply-chain concern
-- **Recommendation** — concrete fix: upgrade to the patched version, pin, swap
-  package, or remove; note if no fixed version exists yet
+- **[severity] advisory ID or concern** — `package old→new`
+  **Issue:** the advisory (CVE/GHSA) and affected range, or the specific
+  supply-chain concern; note whether the package is a direct or transitive dependency.
+  **Fix:** upgrade to the patched version, pin, swap package, or remove; note if no
+  fixed version exists yet.
+
+`severity` is one of **critical / high / medium / low**. The classifier is the
+advisory ID (e.g. `CVE-2024-12345`, `GHSA-…`) or the supply-chain concern (e.g.
+`Typosquatting`); the location slot names the package and its version change
+instead of a `file:line`. Order findings by severity, highest first, and keep one
+issue per finding.
 
 If the dependency changes are clean, say so explicitly. If the diff touches no
 dependencies, state that rather than reviewing application code — that is the job

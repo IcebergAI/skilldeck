@@ -31,6 +31,9 @@ All notable changes to this project are documented here. The format is based on
   known vulnerabilities and supply-chain risk (OWASP A06, ASVS V15).
 - `test-review` skill (0.1.0) — reviews pending changes for adequate, meaningful
   test coverage and flags weak, misleading, or flaky tests.
+- `docs/finding-output.md` — canonical finding format shared by all review
+  skills, so findings can be sorted, deduplicated, and posted as PR comments
+  without per-skill parsing; referenced from `docs/authoring-skills.md`.
 
 ### Changed
 
@@ -41,6 +44,18 @@ All notable changes to this project are documented here. The format is based on
 - `security-review` skill (0.1.0 → 0.2.0) — review checklist realigned to the
   OWASP ASVS 5.0 categories (V1–V16) with assurance levels (L2 default); findings
   now include an ASVS category.
+- `security-review` skill (0.2.0 → 0.2.1) — added the ASVS 5.0 **V17 WebRTC**
+  category (scoped to changes that touch WebRTC).
+- `code-smells` skill (0.1.0 → 0.1.1) — added the **Incomplete Library Class**
+  coupler smell to complete the refactoring.guru catalog.
+- `logging` skill (0.1.0 → 0.1.1) — added OWASP Logging Cheat Sheet guidance on
+  synchronizing time across sources and protecting log integrity (tamper-evident,
+  append-only storage; restricted access).
+- All review skills (`security-review` 0.2.1 → 0.2.2, `code-smells` 0.1.1 →
+  0.1.2, `logging` 0.1.1 → 0.1.2, `dependency-review` 0.1.0 → 0.1.1, `test-review`
+  0.1.0 → 0.1.1) — conformed every `## Output` section to the shared finding
+  format (`[severity] classifier — location` + Issue + Fix) documented in
+  `docs/finding-output.md`.
 - `skilldeck list` groups skills by category (the `category` field was previously
   required but never surfaced).
 - `install`/`uninstall` no longer re-parse every skill once per requested name;
