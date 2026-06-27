@@ -52,19 +52,23 @@ Unless told otherwise, review to **L2**.
 - **V16 Security Logging & Error Handling** — security events logged, no secrets
   or sensitive data in logs, no stack traces or internal detail leaked to users.
   (See the `logging` skill for depth.)
+- **V17 WebRTC** — only if the change touches WebRTC: TURN/STUN server abuse,
+  signalling authentication, SDP and ICE handling, media-channel confidentiality.
 
 Cross-cutting: **secrets** — hardcoded credentials, tokens, or keys; secrets
 logged, committed, or returned in responses.
 
 ## Output
 
-For each finding report:
+Report each finding as a single list item:
 
-- **Severity** (critical / high / medium / low)
-- **ASVS category** (e.g. V8 Authorization)
-- **Location** (`file:line`)
-- **Description** of the vulnerability and how it could be exploited
-- **Recommendation** with a concrete fix
+- **[severity] ASVS category** — `file:line`
+  **Issue:** the vulnerability and how it could be exploited.
+  **Fix:** the concrete change that resolves it.
+
+`severity` is one of **critical / high / medium / low**. The classifier is the
+ASVS category (e.g. `V8 Authorization`). Order findings by severity, highest
+first, and keep one issue per finding.
 
 If no security-relevant issues are found, say so explicitly rather than padding
 the report. Do not flag stylistic issues — that is the job of code review.

@@ -1,7 +1,7 @@
 name: code-smells
 description: Review pending changes for code smells that signal a need for refactoring.
 category: review
-version: 0.1.0
+version: 0.1.2
 supported-agents:
   - claude
   - codex

@@ -33,6 +33,10 @@ The agent-neutral body of the skill — the actual instructions/prompt. Write it
 without agent-specific framing (no Claude frontmatter, no Codex/Kiro path
 assumptions); the adapters add whatever wrapping each agent needs at install time.
 
+If the skill is a **review** skill that emits findings, make its `## Output`
+section follow the shared [finding output format](finding-output.md) so findings
+from different skills stay consistent.
+
 ## Testing your skill
 
 ```bash

@@ -32,6 +32,9 @@ that touches logging.
 - **What**: event type, severity, action attempted, target resource, and result
   status (success / fail / defer) with a reason.
 - Add an interaction/correlation ID so related events can be linked.
+- Synchronize time across servers and devices (e.g. NTP) so timestamps are
+  comparable when correlating events; record the confidence level if a source
+  cannot be trusted.
 
 ## Never log these
 
@@ -58,6 +61,9 @@ pseudonymize rather than logging them raw (e.g. log a hashed session ID).
   never expose stack traces to end users.
 - **Don't let logging be a DoS vector**: avoid unbounded log growth and rate-limit
   attacker-controllable high-volume events.
+- **Protect log integrity**: transmit logs over a secure channel, restrict who can
+  read or alter them, and prefer append-only/tamper-evident storage so a record's
+  modification or deletion is detectable.
 
 ## When reviewing existing logging, flag
 
@@ -67,5 +73,12 @@ pseudonymize rather than logging them raw (e.g. log a hashed session ID).
   who/what/result context needed to investigate.
 - Sensitive data returned to the client or surfaced in error responses.
 
-Report each issue with its **location** (`file:line`), **what is wrong**, and a
-**concrete fix**.
+Report each finding as a single list item:
+
+- **[severity] issue kind** — `file:line`
+  **Issue:** what is wrong.
+  **Fix:** the concrete change that resolves it.
+
+`severity` is one of **critical / high / medium / low**. The classifier is the
+logging issue kind (e.g. `Secret in log`, `Log injection`, `Missing event`).
+Order findings by severity, highest first, and keep one issue per finding.

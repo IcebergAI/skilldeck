@@ -47,13 +47,17 @@ maintainability and `security-review` for vulnerabilities.
 
 ## Output
 
-For each finding report:
+Report each finding as a single list item:
 
-- **Severity** (critical / high / medium / low) — weight untested behavior and
-  fixes-without-regression-tests highest.
-- **Location** (`file:line`) — the test, or the untested production code.
-- **Issue** — what is untested, weak, or unreliable.
-- **Recommendation** — the specific test or assertion to add or fix.
+- **[severity] weakness kind** — `file:line`
+  **Issue:** what is untested, weak, or unreliable.
+  **Fix:** the specific test or assertion to add or fix.
+
+`severity` is one of **critical / high / medium / low**; weight untested behavior
+and fixes-without-regression-tests highest. The classifier is the weakness kind
+(e.g. `Coverage gap`, `Assertion-free test`, `Flaky`); the location is the test
+or the untested production code. Order findings by severity, highest first, and
+keep one issue per finding.
 
 If the tests adequately cover the change, say so explicitly rather than inventing
 findings. If the diff is production code that genuinely needs no tests (e.g. docs,

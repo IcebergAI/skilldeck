@@ -58,16 +58,22 @@ merely inherited from surrounding code.
 - **Inappropriate Intimacy** — classes reaching into each other's internals.
 - **Message Chains** — long `a.b().c().d()` navigation chains.
 - **Middle Man** — a class that only delegates to another and adds nothing.
+- **Incomplete Library Class** — a library that lacks a needed method, worked
+  around with awkward client-side code instead of an introduced/wrapper method.
 
 ## Output
 
-For each finding report:
+Report each finding as a single list item:
 
-- **Smell** (e.g. Long Method) and its **category**.
-- **Location** (`file:line`).
-- **Why it smells** — the concrete maintainability cost in this code.
-- **Suggested refactoring** — the move that would address it (e.g. Extract Method,
-  Introduce Parameter Object, Replace Conditional with Polymorphism).
+- **[severity] Smell (Category)** — `file:line`
+  **Issue:** the concrete maintainability cost in this code.
+  **Fix:** the refactoring that addresses it (e.g. Extract Method, Introduce
+  Parameter Object, Replace Conditional with Polymorphism).
 
-Prioritize the findings; not every smell is worth fixing now. If the change is
-clean, say so rather than manufacturing findings.
+`severity` is one of **critical / high / medium / low** and reflects how much the
+smell hurts maintainability and how worth fixing it is now. The classifier is the
+smell and its group (e.g. `Long Method (Bloaters)`). Order findings by severity,
+highest first, and keep one smell per finding.
+
+Not every smell is worth fixing now — prioritize. If the change is clean, say so
+rather than manufacturing findings.
