@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- `resilience-review` skill (0.1.0) — reviews pending changes for fault tolerance
+  when dependencies are slow, failing, or overloaded (timeouts, retries/backoff,
+  circuit breakers, resource leaks, backpressure, graceful degradation). Drawn
+  from the *Release It!* stability patterns and the Google SRE book; kept
+  pattern-level and tooling-agnostic.
+
 ## [0.2.0] - 2026-06-27
 
 ### Security
