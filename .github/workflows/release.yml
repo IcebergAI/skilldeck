@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Verify tag matches package version and CHANGELOG
+        run: python3 scripts/check_release_consistency.py --tag "${GITHUB_REF_NAME}"
       - uses: astral-sh/setup-uv@v6
       - run: uv build
       - uses: actions/upload-artifact@v4

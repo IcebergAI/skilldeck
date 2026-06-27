@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- `docs/releasing.md` documenting the versioning and release procedure, plus
+  `scripts/check_release_consistency.py` — a stdlib guard that asserts the
+  `pyproject` version, the newest dated CHANGELOG section, and (on a tag push) the
+  release tag all agree. Wired into CI (`lint` job and `pytest`) and the release
+  workflow (before publish), so version/CHANGELOG/tag drift fails fast.
+
 ## [0.3.0] - 2026-06-27
 
 ### Added
