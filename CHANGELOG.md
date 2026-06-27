@@ -15,6 +15,12 @@ All notable changes to this project are documented here. The format is based on
   `SKILL.md`.
 - `install` refuses to write through a symlink at the destination, preventing a
   pre-placed symlink from redirecting the write to an arbitrary file.
+- Dropped Python 3.9 support (`requires-python` now `>=3.10`) to resolve
+  Dependabot alert GHSA-6w46-j5rx-g56g / CVE-2025-71176 (pytest insecure tmpdir
+  handling): the fix lands only in pytest 9.0.3+, which requires Python 3.10+,
+  so the 3.9 test matrix was the sole remaining resolution pinning a vulnerable
+  pytest. Python 3.9 reached end-of-life in October 2025. The dev `pytest` floor
+  is now `>=9.0.3`; the CI matrix and trove classifiers are 3.10–3.14.
 
 ### Added
 

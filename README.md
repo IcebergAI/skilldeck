@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/TheSlopBucket/skilldeck/actions/workflows/ci.yml"><img src="https://github.com/TheSlopBucket/skilldeck/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/TheSlopBucket/skilldeck"><img src="https://img.shields.io/badge/python-3.9%E2%80%933.14-blue" alt="Python"></a>
+  <a href="https://github.com/TheSlopBucket/skilldeck"><img src="https://img.shields.io/badge/python-3.10%E2%80%933.14-blue" alt="Python"></a>
   <a href="https://github.com/TheSlopBucket/skilldeck/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
