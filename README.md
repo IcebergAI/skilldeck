@@ -1,14 +1,14 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/TheSlopBucket/skilldeck/main/docs/assets/skilldeck-logo-horizontal.svg">
-    <img alt="Skilldeck" src="https://raw.githubusercontent.com/TheSlopBucket/skilldeck/main/docs/assets/skilldeck-logo-horizontal-onlight.svg" width="340">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/IcebergAI/skilldeck/main/docs/assets/skilldeck-logo-horizontal.svg">
+    <img alt="Skilldeck" src="https://raw.githubusercontent.com/IcebergAI/skilldeck/main/docs/assets/skilldeck-logo-horizontal-onlight.svg" width="340">
   </picture>
 </p>
 
 <p align="center">
-  <a href="https://github.com/TheSlopBucket/skilldeck/actions/workflows/ci.yml"><img src="https://github.com/TheSlopBucket/skilldeck/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/TheSlopBucket/skilldeck"><img src="https://img.shields.io/badge/python-3.10%E2%80%933.14-blue" alt="Python"></a>
-  <a href="https://github.com/TheSlopBucket/skilldeck/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="https://github.com/IcebergAI/skilldeck/actions/workflows/ci.yml"><img src="https://github.com/IcebergAI/skilldeck/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/IcebergAI/skilldeck"><img src="https://img.shields.io/badge/python-3.10%E2%80%933.14-blue" alt="Python"></a>
+  <a href="https://github.com/IcebergAI/skilldeck/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
 A collection of skills for coding assistants, focused on security and code review.
@@ -40,14 +40,14 @@ Run it without installing, straight from the repo (needs
 [uv](https://docs.astral.sh/uv/)):
 
 ```bash
-uvx --from git+https://github.com/TheSlopBucket/skilldeck skilldeck install security-review --agent claude
+uvx --from git+https://github.com/IcebergAI/skilldeck skilldeck install security-review --agent claude
 ```
 
 Or put `skilldeck` on your PATH:
 
 ```bash
-uv tool install git+https://github.com/TheSlopBucket/skilldeck
-# or: pipx install git+https://github.com/TheSlopBucket/skilldeck
+uv tool install git+https://github.com/IcebergAI/skilldeck
+# or: pipx install git+https://github.com/IcebergAI/skilldeck
 ```
 
 ### From a local clone
@@ -55,7 +55,7 @@ uv tool install git+https://github.com/TheSlopBucket/skilldeck
 Useful for authoring skills or trying local changes:
 
 ```bash
-git clone https://github.com/TheSlopBucket/skilldeck && cd skilldeck
+git clone https://github.com/IcebergAI/skilldeck && cd skilldeck
 uv run skilldeck list                  # run in place, no install
 uv tool install .                      # or: pipx install .  — put it on PATH
 ```
@@ -78,8 +78,8 @@ uv tool install skilldeck                              # or: pipx install skilld
 The examples below assume `skilldeck` is on your PATH (see
 [Running skilldeck](#running-skilldeck)). To run without installing while the
 package is unpublished, prefix each command with
-`uvx --from git+https://github.com/TheSlopBucket/skilldeck ` — e.g.
-`uvx --from git+https://github.com/TheSlopBucket/skilldeck skilldeck list`.
+`uvx --from git+https://github.com/IcebergAI/skilldeck ` — e.g.
+`uvx --from git+https://github.com/IcebergAI/skilldeck skilldeck list`.
 
 ```bash
 # See what's available

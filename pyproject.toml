@@ -32,10 +32,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/TheSlopBucket/skilldeck"
-Repository = "https://github.com/TheSlopBucket/skilldeck"
-Issues = "https://github.com/TheSlopBucket/skilldeck/issues"
-Changelog = "https://github.com/TheSlopBucket/skilldeck/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/IcebergAI/skilldeck"
+Repository = "https://github.com/IcebergAI/skilldeck"
+Issues = "https://github.com/IcebergAI/skilldeck/issues"
+Changelog = "https://github.com/IcebergAI/skilldeck/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [

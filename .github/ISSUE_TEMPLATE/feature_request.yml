@@ -1,0 +1,29 @@
+name: Feature or skill request
+description: Suggest a new skill, a new agent, or an improvement
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What are you proposing?
+      options:
+        - A new skill
+        - Support for a new agent / harness
+        - An improvement to an existing skill
+        - A CLI or tooling change
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does it solve?
+      description: Describe the use case before the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: How might it work? Rough is fine — open an issue before a big PR.
+    validations:
+      required: false
