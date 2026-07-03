@@ -18,6 +18,11 @@ class Adapter(ABC):
     #: agent identifier, matched against a skill's ``supported-agents``
     name: str = ""
 
+    #: True if ``relative_path`` places each skill in its own directory (e.g.
+    #: Claude's ``.claude/skills/<name>/``); uninstall reclaims that directory
+    #: once empty. Leave False for adapters that write into a shared directory.
+    creates_skill_dir: bool = False
+
     @abstractmethod
     def relative_path(self, skill: Skill) -> Path:
         """Install location for ``skill``, relative to the scope base dir."""
@@ -42,8 +47,11 @@ class Adapter(ABC):
         # clobber the link target instead of the intended skill file.
         if dest.is_symlink():
             raise SkillError(f"refusing to install through symlink: {dest}")
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(self.render(skill), encoding="utf-8")
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(self.render(skill), encoding="utf-8")
+        except OSError as exc:
+            raise SkillError(f"cannot install {skill.name} to {dest}: {exc}") from exc
         return dest
 
     def uninstall(
@@ -53,10 +61,13 @@ class Adapter(ABC):
         if not dest.exists():
             return None
         dest.unlink()
-        # Remove the per-skill directory an adapter created (e.g. Claude's
-        # ``.claude/skills/<name>/``) once empty. Guarded by name so shared
-        # directories like ``.codex/prompts`` are never touched.
-        parent = dest.parent
-        if parent.name == skill.name and not any(parent.iterdir()):
-            parent.rmdir()
+        # Remove the per-skill directory this adapter created (e.g. Claude's
+        # ``.claude/skills/<name>/``) once empty. Adapters that write into a
+        # shared directory (``.codex/prompts``, ``.kiro/steering``) never set
+        # ``creates_skill_dir``, so those directories are never touched — even
+        # for a skill that happens to be named after one of them.
+        if self.creates_skill_dir:
+            parent = dest.parent
+            if not any(parent.iterdir()):
+                parent.rmdir()
         return dest

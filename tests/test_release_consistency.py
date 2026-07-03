@@ -33,6 +33,18 @@ def test_normalize_tag(ref, expected):
     assert check.normalize_tag(ref) == expected
 
 
+def test_latest_changelog_version_picks_highest_not_first(monkeypatch, tmp_path):
+    # Robust to a section added in the wrong place, and compares numerically
+    # (string order would rank 0.3.0 above 0.10.0).
+    (tmp_path / "CHANGELOG.md").write_text(
+        "## [0.3.0] - 2026-01-02\n\n"
+        "## [0.10.0] - 2026-01-03\n\n"
+        "## [0.2.0] - 2026-01-01\n"
+    )
+    monkeypatch.setattr(check, "ROOT", tmp_path)
+    assert check.latest_changelog_version() == "0.10.0"
+
+
 def test_main_passes_with_no_tag(monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["check_release_consistency.py"])
     assert check.main() == 0

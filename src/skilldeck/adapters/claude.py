@@ -17,6 +17,7 @@ from .base import Adapter
 
 class ClaudeAdapter(Adapter):
     name = "claude"
+    creates_skill_dir = True
 
     def relative_path(self, skill: Skill) -> Path:
         return Path(".claude/skills") / skill.name / "SKILL.md"
