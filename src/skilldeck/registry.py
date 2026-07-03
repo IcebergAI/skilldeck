@@ -56,6 +56,8 @@ def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> 
         raise SkillError(f"{skill_dir}: missing skill.md")
 
     meta = yaml.safe_load(meta_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(meta, dict):
+        raise SkillError(f"{skill_dir}: meta.yaml must be a YAML mapping")
     missing = [f for f in REQUIRED_FIELDS if f not in meta]
     if missing:
         raise SkillError(f"{skill_dir}: meta.yaml missing fields: {', '.join(missing)}")
@@ -103,11 +105,3 @@ def discover_skills(
         if child.is_dir() and not child.name.startswith(".")
     ]
     return skills
-
-
-def get_skill(name: str, skills_dir: Path | None = None) -> Skill:
-    """Load a single skill by name."""
-    for skill in discover_skills(skills_dir):
-        if skill.name == name:
-            return skill
-    raise SkillError(f"unknown skill: {name}")

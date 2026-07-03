@@ -23,6 +23,10 @@ resolves against `$HOME`. The relative path below is the same in both cases.
 1. Create `src/skilldeck/adapters/<agent>.py` with a subclass of `Adapter`:
    - set `name`
    - implement `relative_path(skill)` and `render(skill)`
+   - set `creates_skill_dir = True` if `relative_path` puts each skill in its
+     own directory (like Claude's `.claude/skills/<name>/`), so uninstall
+     reclaims that directory once empty; leave it unset for adapters that write
+     into a directory shared by all skills
 2. Register the instance in `ADAPTERS` in `adapters/__init__.py`.
 3. Add the agent name to the `supported-agents` list of any skill it should apply
    to.

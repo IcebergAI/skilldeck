@@ -56,6 +56,20 @@ def test_name_must_match_directory(tmp_path):
         load_skill(skill_dir)
 
 
+def test_non_mapping_meta_rejected(tmp_path):
+    # A meta.yaml that parses to a scalar must fail with SkillError, not a
+    # TypeError from indexing into a string (``"name" in meta`` is a substring
+    # check when meta is a str, so field validation alone doesn't catch this).
+    skill_dir = tmp_path / "demo"
+    skill_dir.mkdir()
+    (skill_dir / "meta.yaml").write_text(
+        "name description category version supported-agents"
+    )
+    (skill_dir / "skill.md").write_text("body")
+    with pytest.raises(SkillError, match="must be a YAML mapping"):
+        load_skill(skill_dir)
+
+
 def test_missing_field_raises(tmp_path):
     skill_dir = tmp_path / "demo"
     skill_dir.mkdir()

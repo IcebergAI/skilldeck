@@ -33,14 +33,19 @@ def project_version() -> str:
 
 
 def latest_changelog_version() -> str:
-    """Return the newest dated ``## [x.y.z] - DATE`` version in the CHANGELOG."""
+    """Return the highest dated ``## [x.y.z] - DATE`` version in the CHANGELOG.
+
+    Keep a Changelog puts the newest section first, but comparing version
+    numbers (not file order) keeps the check honest if a section is ever
+    added in the wrong place.
+    """
     text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    match = re.search(
+    versions = re.findall(
         r"^##\s*\[(\d+\.\d+\.\d+)\]\s*-\s*\d{4}-\d{2}-\d{2}", text, re.MULTILINE
     )
-    if not match:
+    if not versions:
         raise SystemExit("error: no dated version section in CHANGELOG.md")
-    return match.group(1)
+    return max(versions, key=lambda v: tuple(int(part) for part in v.split(".")))
 
 
 def normalize_tag(ref: str) -> str:

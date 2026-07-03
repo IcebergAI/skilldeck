@@ -7,6 +7,26 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- A `meta.yaml` that parses to something other than a YAML mapping now fails
+  with a clean `error:` message instead of a `TypeError` traceback (which also
+  broke every command, since discovery loads all skills).
+- Install failures caused by an unwritable destination (e.g. `.claude` existing
+  as a regular file) now raise a clean error instead of an unhandled traceback.
+- Uninstalling a skill named after a shared install directory (a Codex skill
+  named `prompts`, a Kiro skill named `steering`) no longer removes that shared
+  directory when it becomes empty: per-skill directory cleanup is now declared
+  by the adapter (`creates_skill_dir`) instead of inferred from the name.
+- `scripts/check_release_consistency.py` now selects the highest dated
+  CHANGELOG version (compared numerically) rather than assuming the newest
+  section appears first in the file.
+
+### Removed
+
+- Dead `skilldeck.registry.get_skill` helper (unused, and it skipped
+  `supported-agents` validation).
+
 ### Added
 
 - `docs/releasing.md` documenting the versioning and release procedure, plus

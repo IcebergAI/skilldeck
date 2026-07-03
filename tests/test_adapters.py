@@ -87,6 +87,14 @@ def test_install_and_uninstall_roundtrip(skill, tmp_path):
     assert adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path) is None
 
 
+def test_install_reports_unwritable_destination_cleanly(skill, tmp_path):
+    # If a parent of the destination exists as a regular file, install must
+    # raise SkillError (clean CLI message), not leak an OSError traceback.
+    (tmp_path / ".claude").write_text("a file, not a directory")
+    with pytest.raises(SkillError, match="cannot install"):
+        ADAPTERS["claude"].install(skill, Scope.PROJECT, project_root=tmp_path)
+
+
 def test_install_refuses_to_write_through_symlink(skill, tmp_path):
     adapter = ADAPTERS["claude"]
     dest = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path)
@@ -136,4 +144,16 @@ def test_uninstall_keeps_shared_directory(tmp_path, agent):
     # a naive "rmdir when empty" cleanup would wrongly delete.
     adapter.uninstall(beta, Scope.PROJECT, project_root=tmp_path)
     assert not dest_beta.exists()
+    assert shared_dir.is_dir()
+
+
+@pytest.mark.parametrize("agent,name", [("codex", "prompts"), ("kiro", "steering")])
+def test_uninstall_keeps_shared_dir_named_like_the_skill(tmp_path, agent, name):
+    # A skill named after the shared directory itself (codex skill "prompts",
+    # kiro skill "steering") must not trick cleanup into removing that dir.
+    adapter = ADAPTERS[agent]
+    skill = _bare_skill(name, agent, "B")
+    adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+    adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path)
+    shared_dir = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path).parent
     assert shared_dir.is_dir()
