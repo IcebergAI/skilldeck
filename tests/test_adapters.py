@@ -28,9 +28,17 @@ def test_claude_renders_frontmatter(skill):
     assert out.rstrip().endswith("DEMO BODY")
 
 
-def test_codex_and_kiro_render_body_as_is(skill):
+def test_codex_renders_body_as_is(skill):
     assert ADAPTERS["codex"].render(skill) == "DEMO BODY"
-    assert ADAPTERS["kiro"].render(skill) == "DEMO BODY"
+
+
+def test_kiro_renders_manual_inclusion_frontmatter(skill):
+    # Kiro steering defaults to always-on inclusion; on-demand review skills
+    # must opt out via ``inclusion: manual`` or they steer every interaction.
+    out = ADAPTERS["kiro"].render(skill)
+    frontmatter = yaml.safe_load(out.split("---\n")[1])
+    assert frontmatter == {"inclusion": "manual"}
+    assert out.endswith("\n\nDEMO BODY")
 
 
 def test_claude_frontmatter_does_not_allow_injection():

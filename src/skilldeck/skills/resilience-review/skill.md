@@ -19,11 +19,18 @@ specific tool.
 
 ## Scope
 
-1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`).
-2. Review only changed files and the code paths they touch.
+1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`),
+   plus any uncommitted or untracked changes. If you are already on the base
+   branch, review the uncommitted changes instead.
+2. Review only changed files and the code paths they touch — but read the whole
+   function or file around each hunk, not just the diff: a timeout, retry, or
+   cleanup may sit just outside it.
 3. Focus on **boundaries** — where the code crosses into something it doesn't
    control: network/RPC calls, databases, queues, caches, the filesystem,
    subprocesses, and shared or persistent state.
+4. Before flagging a missing pattern, check what the stack already provides — an
+   HTTP client with default timeouts, framework-level retries, or a service mesh
+   may already cover the boundary.
 
 ## What to look for (by category)
 
@@ -93,12 +100,27 @@ Report each finding as a single list item:
   **Fix:** the concrete pattern to apply (e.g. add a timeout, backoff with jitter,
   an idempotency key, a bounded queue, release on the error path).
 
-`severity` is one of **critical / high / medium / low** and reflects the blast
-radius — weight failures that hang or cascade across the system highest. The
-classifier is the resilience concern (e.g. `Missing timeout`, `Retry without
-backoff`, `Resource leak`, `Unbounded queue`, `No graceful degradation`). Order
-findings by severity, highest first, and keep one issue per finding.
+`severity` reflects blast radius: **critical** — a routine dependency failure
+hangs or cascades across the system; **high** — data loss, duplicated side
+effects, or resource exhaustion under failure; **medium** — degraded behavior
+confined to the failing path; **low** — hardening. The classifier is the
+resilience concern (e.g. `Missing timeout`, `Retry without backoff`,
+`Resource leak`, `Unbounded queue`, `No graceful degradation`). Order findings
+by severity, highest first, and keep one issue per finding. For example:
 
-If the change introduces no new failure modes — or genuinely doesn't cross a
-failure boundary (pure logic, local computation, docs/config) — say so explicitly
-rather than manufacturing findings.
+- **[high] Missing timeout** — `services/enrich.py:33`
+  **Issue:** `requests.get(url)` has no timeout, so a stalled enrichment service
+  hangs the request thread indefinitely and can exhaust the worker pool.
+  **Fix:** pass an explicit timeout (e.g. `timeout=(3, 10)`) and degrade
+  gracefully — enrichment is optional for this request.
+
+Verify before reporting: re-check each candidate against the surrounding code
+and the stack's defaults, and drop any you cannot back with a concrete failure
+scenario. Prefer the few findings that matter; if more than ~10 survive, report
+the ones worth a human's time and summarize the rest in a line.
+
+Open the report with one line stating what was reviewed and the outcome, e.g.
+`Reviewed main..HEAD (5 files): 2 findings, worst high.` If the change
+introduces no new failure modes — or genuinely doesn't cross a failure boundary
+(pure logic, local computation, docs/config) — say so explicitly rather than
+manufacturing findings.

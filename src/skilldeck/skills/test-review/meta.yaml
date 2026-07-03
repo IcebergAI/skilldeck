@@ -1,7 +1,7 @@
 name: test-review
 description: Review pending changes for adequate, meaningful test coverage.
 category: review
-version: 0.1.1
+version: 0.2.0
 supported-agents:
   - claude
   - codex

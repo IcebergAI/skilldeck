@@ -9,6 +9,17 @@ who did what, to which resource, and whether it succeeded. Use this skill when
 adding logging to new code, hardening existing logging, or reviewing a change
 that touches logging.
 
+## Scope
+
+- **Writing or hardening logging**: apply the checklists below to the code you
+  produce; no findings report is needed.
+- **Reviewing a change**: determine the diff — `git diff <base>...HEAD` (default
+  base: `main`/`master`), plus any uncommitted or untracked changes; if you are
+  already on the base branch, review the uncommitted changes instead. Review the
+  changed files and the code paths they touch, reading the whole function around
+  each hunk (masking or sanitization may sit just outside the diff), and report
+  findings as described at the end.
+
 ## Log these events
 
 - **Authentication**: successes and failures, logout, session creation/expiry.
@@ -79,6 +90,26 @@ Report each finding as a single list item:
   **Issue:** what is wrong.
   **Fix:** the concrete change that resolves it.
 
-`severity` is one of **critical / high / medium / low**. The classifier is the
-logging issue kind (e.g. `Secret in log`, `Log injection`, `Missing event`).
-Order findings by severity, highest first, and keep one issue per finding.
+`severity` reflects exposure: **critical** — a secret or credential written to
+logs; **high** — sensitive PII logged, or log injection from user-controlled
+input; **medium** — a security event unlogged or missing the who/what/result
+context needed to investigate; **low** — hygiene (format, level choice). The
+classifier is the logging issue kind (e.g. `Secret in log`, `Log injection`,
+`Missing event`). Order findings by severity, highest first, and keep one issue
+per finding. For example:
+
+- **[critical] Secret in log** — `auth/session.py:71`
+  **Issue:** the raw bearer token is interpolated into the failure message
+  (`logger.warning(f"auth failed for {token}")`), so anyone with log access can
+  replay it.
+  **Fix:** log a hashed or truncated token identifier and the user ID instead of
+  the raw credential.
+
+Verify before reporting: re-check each candidate against the surrounding code —
+masking or sanitization may happen upstream — and drop any you cannot
+substantiate. Prefer the few findings that matter; if more than ~10 survive,
+report the ones worth a human's time and summarize the rest in a line.
+
+Open the report with one line stating what was reviewed and the outcome, e.g.
+`Reviewed main..HEAD (3 files): 1 finding, critical.` If the logging is sound,
+say so explicitly rather than manufacturing findings.

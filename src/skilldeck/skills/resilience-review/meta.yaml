@@ -1,7 +1,7 @@
 name: resilience-review
 description: Review pending changes for resilience and fault tolerance when dependencies fail, slow, or overload.
 category: review
-version: 0.1.0
+version: 0.2.0
 supported-agents:
   - claude
   - codex

@@ -13,7 +13,7 @@ resolves against `$HOME`. The relative path below is the same in both cases.
 |--------|----------------------------------------|--------------------------------|
 | claude | `.claude/skills/<name>/SKILL.md`       | body + YAML frontmatter        |
 | codex  | `.codex/prompts/<name>.md`             | body as-is                     |
-| kiro   | `.kiro/steering/<name>.md`             | body as-is                     |
+| kiro   | `.kiro/steering/<name>.md`             | `inclusion: manual` frontmatter + body |
 
 > The Codex and Kiro paths follow each tool's documented conventions; verify
 > against your installed version and adjust the adapter if they differ.

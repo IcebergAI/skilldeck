@@ -7,6 +7,25 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- All seven skills refined to better guide review agents: diff determination now
+  covers uncommitted/untracked changes and the on-base-branch case; agents are
+  told to read the whole function around each hunk (not just the diff) and to
+  verify each candidate finding before reporting it; severity levels get
+  domain-specific anchors; each Output section gains a worked example finding, a
+  one-line report header (`Reviewed <base>..HEAD (N files): …`), and
+  finding-count discipline. Per-skill additions: language-idiom caveat
+  (`code-smells` 0.2.0), never-cite-unverified-advisory-IDs guard
+  (`dependency-review` 0.2.0), a Scope section with write/review modes
+  (`logging` 0.2.0), respect-existing-safety-tooling step (`migration-review`
+  0.2.0), check-stack-defaults step (`resilience-review` 0.2.0), source→sink
+  tracing for injection findings (`security-review` 0.3.0), and
+  regression-test-must-fail-without-the-fix verification (`test-review` 0.2.0).
+- Kiro adapter now renders skills with `inclusion: manual` frontmatter: Kiro
+  steering documents are included in every interaction by default, which is
+  wrong for on-demand review prompts.
+
 ### Fixed
 
 - A `meta.yaml` that parses to something other than a YAML mapping now fails
