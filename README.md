@@ -85,8 +85,15 @@ package is unpublished, prefix each command with
 # See what's available
 skilldeck list
 
+# Preview a skill before installing
+skilldeck show security-review
+
 # Install a skill for Claude into the current project
 skilldeck install security-review --agent claude
+
+# Install for several agents at once (repeat --agent, or use 'all')
+skilldeck install security-review --agent claude --agent codex
+skilldeck install --all --agent all
 
 # Install every compatible skill globally for Codex
 skilldeck install --all --agent codex --scope global
