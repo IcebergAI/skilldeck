@@ -15,6 +15,7 @@ from .base import Adapter
 
 class CodexAdapter(Adapter):
     name = "codex"
+    installed_glob = ".codex/prompts/*.md"
 
     def relative_path(self, skill: Skill) -> Path:
         return Path(".codex/prompts") / f"{skill.name}.md"

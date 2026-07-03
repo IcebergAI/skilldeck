@@ -93,7 +93,18 @@ skilldeck install --all --agent codex --scope global
 
 # Remove a skill
 skilldeck uninstall security-review --agent claude
+
+# See what's installed and whether it's current
+skilldeck status --agent claude
+
+# Refresh installed skills after upgrading skilldeck
+skilldeck update --agent claude
 ```
+
+Installed files carry a `skilldeck` stamp recording the skill version, so
+`status` can tell current, stale, and locally modified installs apart. Files you
+have edited (or that skilldeck didn't write) are never overwritten unless you
+pass `--force`.
 
 `--scope project` (default) writes into the current directory; `--scope global`
 writes into your home directory. Where exactly each agent looks is documented in
