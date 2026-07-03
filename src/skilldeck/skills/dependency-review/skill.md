@@ -9,7 +9,9 @@ the rest of the application surface.
 
 ## Scope
 
-1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`).
+1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`),
+   plus any uncommitted or untracked changes. If you are already on the base
+   branch, review the uncommitted changes instead.
 2. Focus on dependency manifests and lockfiles, e.g.:
    - JS/TS — `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`
    - Python — `pyproject.toml`, `requirements*.txt`, `uv.lock`, `poetry.lock`
@@ -54,12 +56,29 @@ Report each finding as a single list item:
   **Fix:** upgrade to the patched version, pin, swap package, or remove; note if no
   fixed version exists yet.
 
-`severity` is one of **critical / high / medium / low**. The classifier is the
-advisory ID (e.g. `CVE-2024-12345`, `GHSA-…`) or the supply-chain concern (e.g.
-`Typosquatting`); the location slot names the package and its version change
-instead of a `file:line`. Order findings by severity, highest first, and keep one
-issue per finding.
+`severity` reflects exposure: **critical** — an advisory that is known-exploited
+or critical in the resolved version range, or a clear malicious-package signal;
+**high** — a high-severity advisory, or a serious provenance concern (fork or
+git source, newly introduced install scripts); **medium** — outdated or
+unmaintained packages, loosened pins, lockfile drift; **low** — hygiene and
+licensing nits. The classifier is the advisory ID (e.g. `CVE-2024-12345`,
+`GHSA-…`) or the supply-chain concern (e.g. `Typosquatting`); the location slot
+names the package and its version change instead of a `file:line`. Order
+findings by severity, highest first, and keep one issue per finding. For example:
 
-If the dependency changes are clean, say so explicitly. If the diff touches no
-dependencies, state that rather than reviewing application code — that is the job
-of `security-review`.
+- **[high] Provenance** — `left-pad 1.3.0→git+https://github.com/someuser/left-pad`
+  **Issue:** the dependency now resolves to a personal fork instead of the
+  registry release, so its contents can change without a version bump and bypass
+  registry review. Direct dependency.
+  **Fix:** pin back to the registry release, or vendor the fork at a reviewed
+  commit hash.
+
+**Never cite an advisory ID you have not verified** from tool output or a
+fetched advisory page — do not reproduce CVE/GHSA numbers from memory. If you
+cannot verify, describe the concern and state that advisory lookup was not
+possible.
+
+Open the report with one line stating what was reviewed and the outcome, e.g.
+`Reviewed main..HEAD (2 manifests): 1 finding, high.` If the dependency changes
+are clean, say so explicitly. If the diff touches no dependencies, state that
+rather than reviewing application code — pair with `security-review` for that.

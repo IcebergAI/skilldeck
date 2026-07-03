@@ -1,7 +1,10 @@
 """Kiro adapter.
 
 Kiro picks up steering documents from ``.kiro/steering/<name>.md`` (project) or
-``~/.kiro/steering/<name>.md`` (global).
+``~/.kiro/steering/<name>.md`` (global). Steering files are included in every
+interaction by default, which is wrong for on-demand review prompts, so the
+rendered document carries ``inclusion: manual`` frontmatter — the user pulls it
+in explicitly (e.g. ``#<name>`` in chat) instead of it steering every turn.
 """
 
 from __future__ import annotations
@@ -19,4 +22,6 @@ class KiroAdapter(Adapter):
         return Path(".kiro/steering") / f"{skill.name}.md"
 
     def render(self, skill: Skill) -> str:
-        return skill.body
+        # Static frontmatter — no skill fields are interpolated, so there is
+        # no injection surface here.
+        return f"---\ninclusion: manual\n---\n\n{skill.body}"

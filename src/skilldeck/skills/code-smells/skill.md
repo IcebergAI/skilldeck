@@ -10,10 +10,19 @@ A smell is a hint, not a guaranteed defect. Judge each in context, prefer the
 smells the diff actually introduces or worsens, and don't flag a smell the change
 merely inherited from surrounding code.
 
+Judge against the language's idiom, not the catalog's original OO context: a
+Python dataclass or Go struct is not a *Data Class* smell, pattern matching in
+Rust or an ML-family language is not a *Switch Statements* smell, and doc
+comments are not a *Comments* smell.
+
 ## Scope
 
-1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`).
-2. Review only changed files and the code paths they touch.
+1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`),
+   plus any uncommitted or untracked changes. If you are already on the base
+   branch, review the uncommitted changes instead.
+2. Review only changed files and the code paths they touch — but read the whole
+   function or class around each hunk, not just the diff, so you judge the
+   construct in its real context.
 
 ## What to look for (by category)
 
@@ -70,10 +79,25 @@ Report each finding as a single list item:
   **Fix:** the refactoring that addresses it (e.g. Extract Method, Introduce
   Parameter Object, Replace Conditional with Polymorphism).
 
-`severity` is one of **critical / high / medium / low** and reflects how much the
-smell hurts maintainability and how worth fixing it is now. The classifier is the
-smell and its group (e.g. `Long Method (Bloaters)`). Order findings by severity,
-highest first, and keep one smell per finding.
+`severity` reflects maintainability cost now: **critical** — actively misleading
+or already forcing error-prone duplicate edits; **high** — will make the next
+change to this code noticeably harder; **medium** — worth fixing when this code
+is next touched; **low** — cosmetic. The classifier is the smell and its group
+(e.g. `Long Method (Bloaters)`). Order findings by severity, highest first, and
+keep one smell per finding. For example:
 
-Not every smell is worth fixing now — prioritize. If the change is clean, say so
-rather than manufacturing findings.
+- **[medium] Long Method (Bloaters)** — `billing/invoice.py:42`
+  **Issue:** `generate_invoice` is ~120 lines mixing tax lookup, discount rules,
+  and PDF rendering, so each concern changes for a different reason and none can
+  be tested alone.
+  **Fix:** Extract Method — pull out `calculate_tax`, `apply_discounts`, and
+  `render_pdf`, leaving `generate_invoice` to orchestrate.
+
+Verify before reporting: re-check each candidate against the surrounding code
+and drop any you cannot tie to a concrete maintainability cost. Not every smell
+is worth fixing now — prefer the few that matter; if more than ~10 survive,
+report the ones worth a human's time and summarize the rest in a line.
+
+Open the report with one line stating what was reviewed and the outcome, e.g.
+`Reviewed main..HEAD (4 files): 3 findings, worst high.` If the change is clean,
+say so rather than manufacturing findings.

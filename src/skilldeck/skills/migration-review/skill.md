@@ -22,13 +22,18 @@ behavior differs (Postgres / MySQL / SQLite lock and rewrite differently).
 
 ## Scope
 
-1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`).
+1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`),
+   plus any uncommitted or untracked changes. If you are already on the base
+   branch, review the uncommitted changes instead.
 2. Review the migration files / schema definitions in the diff (migration
    directories, `*.sql`, ORM migrations, `schema.rb`/`structure.sql`, Alembic,
    Prisma, Knex, etc.) **and** the application code that reads or writes the
    columns and tables they change.
 3. Determine whether old code must keep working while the migration runs — if the
    deploy is rolling or multi-instance, it must.
+4. Note migration-safety tooling the project already runs (e.g.
+   `strong_migrations`, `squawk`, safety-assured annotations) — don't re-flag
+   what it already enforces; focus on what it can't see.
 
 ## What to look for (by category)
 
@@ -98,12 +103,30 @@ Report each finding as a single list item:
   index concurrently, batch the backfill, add the constraint `NOT VALID` then
   validate, set a lock timeout).
 
-`severity` is one of **critical / high / medium / low**; weight changes that lock
-a hot table or break the currently deployed app highest. The classifier is the
+`severity` reflects deploy-window risk: **critical** — breaks the currently
+deployed code, or locks a hot table for the duration of a long operation;
+**high** — likely to block or fail under production load, or to leave the schema
+half-applied; **medium** — risky only under specific conditions (table growth,
+deploy timing); **low** — reversibility and hygiene. The classifier is the
 migration hazard (e.g. `Backward-incompatible change`, `Blocking lock`,
-`Unbatched backfill`, `Irreversible`). Order findings by severity, highest first,
-and keep one issue per finding.
+`Unbatched backfill`, `Irreversible`). Order findings by severity, highest
+first, and keep one issue per finding. For example:
 
-If the diff contains no schema or data migration, say so rather than reviewing
-application code. If the migrations are safe for the project's deploy model, say
-so explicitly rather than manufacturing findings.
+- **[critical] Blocking lock** — `db/migrate/20260703_add_index_to_events.rb:5`
+  **Issue:** `add_index :events, :account_id` builds non-concurrently; on a
+  large, write-hot `events` table this blocks all writes for the duration of the
+  build.
+  **Fix:** build concurrently (`algorithm: :concurrently`, outside a
+  transaction) and set a `lock_timeout`.
+
+Verify before reporting: confirm each hazard against the engine's actual
+behavior for the stated version and the table's realistic size, and drop any you
+cannot tie to a concrete deploy-window failure. Prefer the few findings that
+matter; if more than ~10 survive, report the ones worth a human's time and
+summarize the rest in a line.
+
+Open the report with one line stating what was reviewed and the outcome, e.g.
+`Reviewed main..HEAD (2 migrations): 1 finding, critical.` If the diff contains
+no schema or data migration, say so rather than reviewing application code. If
+the migrations are safe for the project's deploy model, say so explicitly rather
+than manufacturing findings.

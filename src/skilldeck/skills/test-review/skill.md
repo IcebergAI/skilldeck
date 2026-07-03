@@ -8,11 +8,17 @@ maintainability and `security-review` for vulnerabilities.
 
 ## Scope
 
-1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`).
+1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`),
+   plus any uncommitted or untracked changes. If you are already on the base
+   branch, review the uncommitted changes instead.
 2. Map changed production code to the tests that exercise it. Note new or
-   changed behavior that has **no** corresponding test.
+   changed behavior that has **no** corresponding test. Search the whole test
+   suite, not just the diff — coverage may live in tests the change didn't touch.
 3. Match the project's existing test conventions (framework, layout, naming);
    judge against them rather than imposing a different style.
+4. For a bug fix, confirm the regression test would actually fail without the
+   fix — read the pre-change code (or run the test against it if cheap) rather
+   than assuming.
 
 ## What to look for
 
@@ -53,12 +59,28 @@ Report each finding as a single list item:
   **Issue:** what is untested, weak, or unreliable.
   **Fix:** the specific test or assertion to add or fix.
 
-`severity` is one of **critical / high / medium / low**; weight untested behavior
-and fixes-without-regression-tests highest. The classifier is the weakness kind
-(e.g. `Coverage gap`, `Assertion-free test`, `Flaky`); the location is the test
-or the untested production code. Order findings by severity, highest first, and
-keep one issue per finding.
+`severity` reflects regression risk: **critical** — new or changed behavior with
+no test at all, or a bug fix with no regression test; **high** — tests exist but
+would not catch a realistic regression; **medium** — weak assertions or flaky
+patterns; **low** — hygiene. The classifier is the weakness kind (e.g.
+`Coverage gap`, `Assertion-free test`, `Flaky`); the location is the test or the
+untested production code. Order findings by severity, highest first, and keep
+one issue per finding. For example:
 
-If the tests adequately cover the change, say so explicitly rather than inventing
-findings. If the diff is production code that genuinely needs no tests (e.g. docs,
-comments, pure config), state that instead of forcing suggestions.
+- **[critical] Coverage gap** — `src/parser.py:57`
+  **Issue:** the new `strict=True` branch that raises `ParseError` has no test;
+  a regression that silently accepts malformed input would not be caught.
+  **Fix:** add a test that passes malformed input with `strict=True` and asserts
+  `ParseError` is raised.
+
+Verify before reporting: re-check each candidate — search the suite for existing
+coverage before calling something untested — and drop any you cannot back with a
+realistic missed regression. Prefer the few findings that matter; if more than
+~10 survive, report the ones worth a human's time and summarize the rest in a
+line.
+
+Open the report with one line stating what was reviewed and the outcome, e.g.
+`Reviewed main..HEAD (4 files): 2 findings, worst critical.` If the tests
+adequately cover the change, say so explicitly rather than inventing findings.
+If the diff genuinely needs no tests (e.g. docs, comments, pure config), state
+that instead of forcing suggestions.
