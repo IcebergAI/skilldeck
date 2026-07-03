@@ -15,6 +15,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `install`/`uninstall` accept `--agent` multiple times, or `--agent all`, to
+  target several agents in one command; `skilldeck show <name>` prints a
+  skill's body (or, with `--agent`, the rendered per-agent output) before
+  installing (#29).
 - Installed skills are now stamped with a `skilldeck` comment recording the
   skill name, version, and a content hash. New commands build on it:
   `skilldeck status --agent <a>` shows installed vs bundled versions

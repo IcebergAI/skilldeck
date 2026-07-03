@@ -83,7 +83,60 @@ def test_uninstall_reports_when_not_installed(tmp_path, monkeypatch):
         cli, ["uninstall", "security-review", "--agent", "claude"]
     )
     assert result.exit_code == 0
-    assert "not installed: security-review" in result.output
+    assert "not installed for claude: security-review" in result.output
+
+
+def test_install_to_multiple_agents(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(
+        cli,
+        ["install", "security-review", "--agent", "claude", "--agent", "codex"],
+    )
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / ".claude/skills/security-review/SKILL.md").is_file()
+    assert (tmp_path / ".codex/prompts/security-review.md").is_file()
+
+
+def test_install_agent_all_targets_every_adapter(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(cli, ["install", "security-review", "--agent", "all"])
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / ".claude/skills/security-review/SKILL.md").is_file()
+    assert (tmp_path / ".codex/prompts/security-review.md").is_file()
+    assert (tmp_path / ".kiro/steering/security-review.md").is_file()
+
+
+def test_uninstall_from_multiple_agents(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    runner.invoke(cli, ["install", "security-review", "--agent", "all"])
+    result = runner.invoke(
+        cli, ["uninstall", "security-review", "--agent", "claude", "--agent", "kiro"]
+    )
+    assert result.exit_code == 0, result.output
+    assert not (tmp_path / ".claude/skills/security-review/SKILL.md").exists()
+    assert not (tmp_path / ".kiro/steering/security-review.md").exists()
+    assert (tmp_path / ".codex/prompts/security-review.md").is_file()
+
+
+def test_show_prints_body():
+    result = CliRunner().invoke(cli, ["show", "security-review"])
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("# Security Review")
+    assert "---" not in result.output.split("\n", 1)[0]  # no frontmatter
+
+
+def test_show_agent_renders_for_that_agent():
+    result = CliRunner().invoke(cli, ["show", "security-review", "--agent", "claude"])
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("---\n")  # claude frontmatter
+    assert "name: security-review" in result.output
+
+
+def test_show_unknown_skill_fails():
+    result = CliRunner().invoke(cli, ["show", "does-not-exist"])
+    assert result.exit_code != 0
+    assert isinstance(result.exception, Exception)
 
 
 def test_install_over_modified_file_fails_without_force(tmp_path, monkeypatch):
