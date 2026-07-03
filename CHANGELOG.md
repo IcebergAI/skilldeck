@@ -7,7 +7,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Structural lint tests (`tests/test_skill_structure.py`) asserting every
+  bundled skill body carries the standardized elements: a Scope section with
+  the uncommitted-changes fallback, severity anchors, a worked example, the
+  verify-before-reporting instruction, and the one-line report header (#33).
+
 ### Changed
+
+- `dependency-review` (0.2.1): advisory-ID guard rephrased to lead with the
+  shared "Verify before reporting" instruction so the structural lint can
+  assert it uniformly.
 
 - All seven skills refined to better guide review agents: diff determination now
   covers uncommitted/untracked changes and the on-base-branch case; agents are

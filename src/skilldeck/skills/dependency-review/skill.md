@@ -73,10 +73,11 @@ findings by severity, highest first, and keep one issue per finding. For example
   **Fix:** pin back to the registry release, or vendor the fork at a reviewed
   commit hash.
 
-**Never cite an advisory ID you have not verified** from tool output or a
-fetched advisory page — do not reproduce CVE/GHSA numbers from memory. If you
-cannot verify, describe the concern and state that advisory lookup was not
-possible.
+Verify before reporting: **never cite an advisory ID you have not verified**
+from tool output or a fetched advisory page — do not reproduce CVE/GHSA numbers
+from memory; if you cannot verify, describe the concern and state that advisory
+lookup was not possible. Re-check each remaining candidate against the manifest
+and lockfile and drop any you cannot substantiate.
 
 Open the report with one line stating what was reviewed and the outcome, e.g.
 `Reviewed main..HEAD (2 manifests): 1 finding, high.` If the dependency changes
