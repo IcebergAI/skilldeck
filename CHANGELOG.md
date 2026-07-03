@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Security
+
+- CI/release workflows pin all GitHub Actions to full commit SHAs (tag noted in
+  a comment), and a Dependabot config keeps the pins and dev dependencies
+  current (#34).
+
 ### Added
 
 - Structural lint tests (`tests/test_skill_structure.py`) asserting every
