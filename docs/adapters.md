@@ -27,6 +27,9 @@ resolves against `$HOME`. The relative path below is the same in both cases.
      own directory (like Claude's `.claude/skills/<name>/`), so uninstall
      reclaims that directory once empty; leave it unset for adapters that write
      into a directory shared by all skills
+   - set `installed_glob` to a glob (relative to the scope base dir) matching
+     every file the adapter installs (e.g. `.claude/skills/*/SKILL.md`), so
+     `skilldeck status` can find orphaned installs
 2. Register the instance in `ADAPTERS` in `adapters/__init__.py`.
 3. Add the agent name to the `supported-agents` list of any skill it should apply
    to.

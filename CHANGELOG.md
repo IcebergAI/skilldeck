@@ -15,6 +15,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Installed skills are now stamped with a `skilldeck` comment recording the
+  skill name, version, and a content hash. New commands build on it:
+  `skilldeck status --agent <a>` shows installed vs bundled versions
+  (up to date / stale / modified locally / unmanaged, plus orphans of skills no
+  longer bundled) and `skilldeck update --agent <a>` refreshes stale installs
+  (#27).
+- `install` no longer silently overwrites: a destination file with local
+  modifications — or one skilldeck didn't write — is refused unless `--force`
+  is given; `update` likewise skips modified installs without `--force` (#28).
+  Note: installs made by skilldeck ≤ 0.3.0 carry no stamp, so the first
+  reinstall over them needs `--force` once.
 - Structural lint tests (`tests/test_skill_structure.py`) asserting every
   bundled skill body carries the standardized elements: a Scope section with
   the uncommitted-changes fallback, severity anchors, a worked example, the

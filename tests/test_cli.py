@@ -86,6 +86,89 @@ def test_uninstall_reports_when_not_installed(tmp_path, monkeypatch):
     assert "not installed: security-review" in result.output
 
 
+def test_install_over_modified_file_fails_without_force(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    runner.invoke(cli, ["install", "security-review", "--agent", "claude"])
+    dest = tmp_path / ".claude/skills/security-review/SKILL.md"
+    dest.write_text(dest.read_text() + "my tweak\n")
+
+    result = runner.invoke(cli, ["install", "security-review", "--agent", "claude"])
+    assert result.exit_code == 1
+    assert "local modifications" in result.output
+    assert "my tweak" in dest.read_text()
+
+    result = runner.invoke(
+        cli, ["install", "security-review", "--agent", "claude", "--force"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "my tweak" not in dest.read_text()
+
+
+def test_status_reports_each_state(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    runner.invoke(
+        cli, ["install", "security-review", "test-review", "--agent", "claude"]
+    )
+    dest = tmp_path / ".claude/skills/test-review/SKILL.md"
+    dest.write_text(dest.read_text() + "my tweak\n")
+
+    result = runner.invoke(cli, ["status", "--agent", "claude"])
+    assert result.exit_code == 0, result.output
+    lines = {
+        line.split()[0]: line for line in result.output.splitlines() if line.strip()
+    }
+    assert "up to date" in lines["security-review"]
+    assert "modified locally" in lines["test-review"]
+    assert "not installed" in lines["logging"]
+
+
+def test_status_reports_orphans(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    orphan = tmp_path / ".claude/skills/retired-skill/SKILL.md"
+    orphan.parent.mkdir(parents=True)
+    orphan.write_text("left behind\n")
+    result = CliRunner().invoke(cli, ["status", "--agent", "claude"])
+    assert result.exit_code == 0
+    assert "orphan:" in result.output
+    assert "retired-skill" in result.output
+
+
+def test_update_refreshes_stale_and_skips_modified(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    runner.invoke(
+        cli, ["install", "security-review", "test-review", "--agent", "claude"]
+    )
+    stale = tmp_path / ".claude/skills/security-review/SKILL.md"
+    # simulate an install from an older skilldeck: rewrite with an old stamp
+    from skilldeck.stamp import stamp
+
+    stale.write_text(stamp("old body\n", "security-review", "0.0.1"))
+    modified = tmp_path / ".claude/skills/test-review/SKILL.md"
+    modified.write_text(modified.read_text() + "my tweak\n")
+
+    result = runner.invoke(cli, ["update", "--agent", "claude"])
+    assert result.exit_code == 0, result.output
+    assert "updated security-review (0.0.1 ->" in result.output
+    assert "skip test-review: locally modified" in result.output
+    assert "old body" not in stale.read_text()
+    assert "my tweak" in modified.read_text()
+
+    # --force also refreshes the modified install
+    result = runner.invoke(cli, ["update", "--agent", "claude", "--force"])
+    assert result.exit_code == 0, result.output
+    assert "my tweak" not in modified.read_text()
+
+
+def test_update_with_nothing_installed_is_a_noop(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(cli, ["update", "--agent", "claude"])
+    assert result.exit_code == 0
+    assert "nothing to update" in result.output
+
+
 def test_main_reports_skill_error_cleanly(monkeypatch):
     # main() wraps cli() and turns a SkillError into a clean message, not a
     # traceback. An unknown skill name raises SkillError out of the command.
