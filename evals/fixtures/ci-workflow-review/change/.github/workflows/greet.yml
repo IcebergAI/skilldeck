@@ -1,0 +1,17 @@
+name: Greet
+
+on:
+  pull_request_target:
+    types: [opened]
+
+jobs:
+  greet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Thank the contributor
+        run: |
+          echo "Thanks for ${{ github.event.pull_request.title }}!"
+          ./scripts/welcome.sh

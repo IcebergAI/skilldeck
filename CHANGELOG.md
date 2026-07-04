@@ -15,6 +15,19 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `ci-workflow-review` skill (0.1.0) — reviews CI/CD pipeline changes for
+  injection and poisoned pipeline execution (untrusted `github.event`
+  interpolation, `pull_request_target` + head checkout), credential and token
+  scope, unpinned third-party steps, artifact/cache integrity, and runner
+  exposure. Classified against the OWASP Top 10 CI/CD Security Risks
+  (CICD-SEC-1–10) with patterns from GitHub's Actions hardening guide. Ships
+  with an eval fixture (fork-triggerable title injection).
+- `iac-review` skill (0.1.0) — reviews infrastructure-as-code changes
+  (Terraform, CloudFormation, Kubernetes/Helm, Dockerfiles) for network
+  exposure, wildcard IAM, secrets in code/state, missing encryption, container
+  hardening per the Kubernetes Pod Security Standards and the OWASP Docker
+  cheat sheet, and stateful-resource change safety; anchored to CIS benchmark
+  baselines. Ships with an eval fixture (security group open to the world).
 - Golden-diff eval harness (`evals/`) (#32): seven fixtures — one per skill —
   each a tiny repo whose diff contains a planted defect (IDOR, non-concurrent
   index, assertion-free test, missing timeout, token in a log, git-fork
