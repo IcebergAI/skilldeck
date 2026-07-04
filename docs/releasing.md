@@ -29,16 +29,17 @@ state of the repo (nothing is tagged or on PyPI yet).
 ## Cutting a release
 
 1. Choose the new version per SemVer.
-2. In `CHANGELOG.md`, move the `[Unreleased]` entries into a new
-   `## [x.y.z] - YYYY-MM-DD` section and leave `[Unreleased]` empty.
-3. Bump `version` in `pyproject.toml`, then `uv lock`.
-4. Run the full check suite:
+2. Run `python scripts/prepare_release.py x.y.z`. It bumps `pyproject.toml`,
+   dates the `[Unreleased]` CHANGELOG section (leaving a fresh empty one
+   above), runs `uv lock`, regenerates the Claude Code plugin tree (whose
+   manifest pins the project version), and re-runs the consistency guard.
+3. Run the full check suite:
    `uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`
-5. Open a `Release x.y.z` PR and merge it once CI is green.
+4. Open a `Release x.y.z` PR and merge it once CI is green.
 
 At this point the version is **prepared**. To actually **publish**:
 
-6. Push a tag matching the version: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+5. Push a tag matching the version: `git tag vX.Y.Z && git push origin vX.Y.Z`.
    This triggers `.github/workflows/release.yml`, which re-checks the tag against
    the version and publishes to PyPI via Trusted Publishing.
 

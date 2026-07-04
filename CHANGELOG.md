@@ -15,6 +15,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `scripts/prepare_release.py <version>` automates release prep: bumps
+  `pyproject.toml`, dates the `[Unreleased]` CHANGELOG section, re-locks,
+  regenerates the plugin tree, and re-runs the consistency guard
+  (`docs/releasing.md` updated to make it the documented path) (#35).
 - The repo is now a Claude Code plugin marketplace (#31):
   `/plugin marketplace add IcebergAI/skilldeck` then
   `/plugin install skilldeck@skilldeck` installs all skills with no Python
