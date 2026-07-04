@@ -15,6 +15,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Golden-diff eval harness (`evals/`) (#32): seven fixtures — one per skill —
+  each a tiny repo whose diff contains a planted defect (IDOR, non-concurrent
+  index, assertion-free test, missing timeout, token in a log, git-fork
+  dependency, long method). `python evals/run_evals.py` builds each repo,
+  installs the skill, invokes an agent (default: Claude CLI), and scores the
+  report: plants must be found and total findings must stay under a cap. Runs
+  manually (paid API); CI validates fixture structure only.
 - `scripts/prepare_release.py <version>` automates release prep: bumps
   `pyproject.toml`, dates the `[Unreleased]` CHANGELOG section, re-locks,
   regenerates the plugin tree, and re-runs the consistency guard

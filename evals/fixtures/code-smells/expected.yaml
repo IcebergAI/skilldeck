@@ -1,0 +1,5 @@
+skill: code-smells
+plants:
+  - file: billing/invoice.py
+    keywords: [Long Method, Extract]
+max-findings: 6

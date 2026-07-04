@@ -58,6 +58,8 @@ testpaths = ["tests"]
 target-version = "py310"
 line-length = 88
 src = ["src", "tests"]
+# eval fixtures deliberately contain the defects the skills must find
+extend-exclude = ["evals/fixtures"]
 
 [tool.ruff.lint]
 select = [
