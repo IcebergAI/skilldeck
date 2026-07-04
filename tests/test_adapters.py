@@ -3,8 +3,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from skilldeck.adapters import ADAPTERS
+from skilldeck.adapters import ADAPTERS, InstallState
 from skilldeck.registry import Skill, SkillError
+from skilldeck.stamp import parse as parse_stamp
 from skilldeck.targets import Scope
 
 
@@ -15,7 +16,7 @@ def skill():
         description="a demo skill",
         category="testing",
         version="0.1.0",
-        supported_agents=("claude", "codex"),
+        supported_agents=("claude", "codex", "copilot", "cursor"),
         body="DEMO BODY",
         path=Path("/nowhere"),
     )
@@ -30,6 +31,30 @@ def test_claude_renders_frontmatter(skill):
 
 def test_codex_renders_body_as_is(skill):
     assert ADAPTERS["codex"].render(skill) == "DEMO BODY"
+
+
+def test_cursor_renders_agent_requested_rule(skill):
+    out = ADAPTERS["cursor"].render(skill)
+    frontmatter = yaml.safe_load(out.split("---\n")[1])
+    assert frontmatter == {"description": "a demo skill", "alwaysApply": False}
+    assert out.endswith("\n\nDEMO BODY")
+
+
+def test_copilot_renders_prompt_frontmatter(skill):
+    out = ADAPTERS["copilot"].render(skill)
+    frontmatter = yaml.safe_load(out.split("---\n")[1])
+    assert frontmatter == {"description": "a demo skill"}
+    assert out.endswith("\n\nDEMO BODY")
+
+
+@pytest.mark.parametrize("agent", ["cursor", "copilot"])
+def test_project_only_adapters_reject_global_scope(agent, skill, tmp_path):
+    adapter = ADAPTERS[agent]
+    with pytest.raises(SkillError, match="does not support --scope global"):
+        adapter.install(skill, Scope.GLOBAL)
+    # project scope works
+    dest = adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+    assert dest.is_file()
 
 
 def test_kiro_renders_manual_inclusion_frontmatter(skill):
@@ -73,6 +98,10 @@ def test_paths_are_agent_specific(skill):
     )
     assert ADAPTERS["codex"].relative_path(skill) == Path(".codex/prompts/demo.md")
     assert ADAPTERS["kiro"].relative_path(skill) == Path(".kiro/steering/demo.md")
+    assert ADAPTERS["cursor"].relative_path(skill) == Path(".cursor/rules/demo.mdc")
+    assert ADAPTERS["copilot"].relative_path(skill) == Path(
+        ".github/prompts/demo.prompt.md"
+    )
 
 
 def test_supports_respects_supported_agents(skill):
@@ -93,6 +122,75 @@ def test_install_and_uninstall_roundtrip(skill, tmp_path):
     assert not dest.parent.exists()
     # second uninstall is a no-op
     assert adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path) is None
+
+
+def test_install_writes_a_valid_stamp(skill, tmp_path):
+    adapter = ADAPTERS["claude"]
+    dest = adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+    found = parse_stamp(dest.read_text())
+    assert found is not None
+    assert (found.name, found.version, found.modified) == ("demo", "0.1.0", False)
+    assert adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path)[0] is (
+        InstallState.CURRENT
+    )
+
+
+def test_install_refuses_to_clobber_local_modifications(skill, tmp_path):
+    adapter = ADAPTERS["claude"]
+    dest = adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+    dest.write_text(dest.read_text().replace("DEMO BODY", "my local tweak"))
+
+    state, _ = adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path)
+    assert state is InstallState.MODIFIED
+    with pytest.raises(SkillError, match="local modifications"):
+        adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+    assert "my local tweak" in dest.read_text()  # not clobbered
+
+    adapter.install(skill, Scope.PROJECT, project_root=tmp_path, force=True)
+    assert "my local tweak" not in dest.read_text()
+
+
+def test_install_refuses_to_clobber_unmanaged_file(skill, tmp_path):
+    adapter = ADAPTERS["claude"]
+    dest = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path)
+    dest.parent.mkdir(parents=True)
+    dest.write_text("hand-written skill\n")
+
+    state, _ = adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path)
+    assert state is InstallState.UNMANAGED
+    with pytest.raises(SkillError, match="not written by skilldeck"):
+        adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+
+    adapter.install(skill, Scope.PROJECT, project_root=tmp_path, force=True)
+    assert "DEMO BODY" in dest.read_text()
+
+
+def test_inspect_detects_stale_install(skill, tmp_path):
+    adapter = ADAPTERS["claude"]
+    adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+    newer = Skill(
+        name=skill.name,
+        description=skill.description,
+        category=skill.category,
+        version="0.2.0",
+        supported_agents=skill.supported_agents,
+        body="NEW BODY",
+        path=skill.path,
+    )
+    state, found = adapter.inspect(newer, Scope.PROJECT, project_root=tmp_path)
+    assert state is InstallState.STALE
+    assert found is not None and found.version == "0.1.0"
+    # a stale (but unmodified) install may be overwritten without force
+    adapter.install(newer, Scope.PROJECT, project_root=tmp_path)
+    assert adapter.inspect(newer, Scope.PROJECT, project_root=tmp_path)[0] is (
+        InstallState.CURRENT
+    )
+
+
+def test_installed_files_finds_installs(skill, tmp_path):
+    adapter = ADAPTERS["claude"]
+    dest = adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+    assert adapter.installed_files(Scope.PROJECT, project_root=tmp_path) == [dest]
 
 
 def test_install_reports_unwritable_destination_cleanly(skill, tmp_path):

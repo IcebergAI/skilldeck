@@ -1,0 +1,5 @@
+skill: security-review
+plants:
+  - file: app/orders.py
+    keywords: [IDOR, authorization, V8]
+max-findings: 5

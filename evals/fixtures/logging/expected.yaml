@@ -1,0 +1,5 @@
+skill: logging
+plants:
+  - file: auth/session.py
+    keywords: [secret, credential, sensitive]
+max-findings: 4

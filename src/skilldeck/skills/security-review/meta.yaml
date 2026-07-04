@@ -1,8 +1,10 @@
 name: security-review
 description: Review pending changes on the current branch for security vulnerabilities, aligned to OWASP ASVS 5.0.
 category: security
-version: 0.3.0
+version: 0.3.1
 supported-agents:
   - claude
   - codex
+  - copilot
+  - cursor
   - kiro
