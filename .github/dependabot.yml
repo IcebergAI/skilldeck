@@ -5,7 +5,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
-  - package-ecosystem: pip
+  # uv (not pip): the project's Python deps live in pyproject.toml/uv.lock,
+  # and the pip ecosystem would also scan the requirements.txt files inside
+  # evals/fixtures/, which are test data with deliberately planted issues.
+  - package-ecosystem: uv
     directory: /
     schedule:
       interval: weekly
