@@ -12,7 +12,9 @@ Skilldeck is a collection of skills for coding assistants to use mostly for secu
 - Packaged with hatchling; exposes the `skilldeck` console script
 - Tooling: `uv` for venv/install/test (no system pip available); `ruff` for
   lint+format and `mypy` (strict on `src`) for types. Run before pushing:
-  `uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`
+  `uv run --extra dev ruff check . && uv run --extra dev ruff format --check . && uv run --extra dev mypy && uv run --extra dev pytest`
+  (always pass `--extra dev` — bare `uv run` re-syncs the venv without extras
+  and uninstalls the dev tools)
 - CI (`.github/workflows/ci.yml`) runs lint, types, and a 3.10–3.14 pytest matrix
   on every PR; tagged `v*` releases publish to PyPI via Trusted Publishing
   (`release.yml`)
@@ -21,8 +23,10 @@ Skilldeck is a collection of skills for coding assistants to use mostly for secu
   Don't document bare `pip install` as the primary path.
 
 ## Supported agents/harnesses
-- Claude
+- Claude (also installable as a Claude Code plugin marketplace)
 - OpenAI Codex
+- GitHub Copilot (project scope only)
+- Cursor (project scope only)
 - Kiro
 
 ## Layout
@@ -36,7 +40,7 @@ Skilldeck is a collection of skills for coding assistants to use mostly for secu
   - `adapters/` — per-agent translation (claude, codex, copilot, cursor, kiro);
     add an agent by subclassing `Adapter` and registering it in
     `adapters/__init__.py`
-- `tests/` — pytest suite (`uv run pytest`)
+- `tests/` — pytest suite (`uv run --extra dev pytest`)
 - `evals/` — golden-diff skill evals (`python evals/run_evals.py`): fixtures
   with planted defects, scored against a real agent; manual (paid API), CI only
   validates fixture structure. New/changed skills should be run through them.
@@ -51,7 +55,15 @@ Skilldeck is a collection of skills for coding assistants to use mostly for secu
   output.
 - A skill's `meta.yaml` `name` must match its directory name; all metadata fields
   are required and validated by the registry.
+- New skills follow the structural template (enforced by
+  `tests/test_skill_structure.py`), ground their checklists in **fetched**
+  authoritative sources (OWASP/CIS/vendor docs) cited in the skill body, and
+  land with a golden-diff eval fixture under `evals/fixtures/`.
 
+## Shipping
+- PRs squash-merge to main: `gh pr merge <n> --squash --delete-branch` after CI
+  passes (~1 min). Branch protection requires the branch be up to date with
+  main — on a rejected merge, `gh pr update-branch <n>`, re-watch checks, merge.
 
 ## Maintenance
 - Keep this file up to date with relevant info for agents contributing to the project
