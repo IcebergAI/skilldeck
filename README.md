@@ -19,6 +19,8 @@ assistant you use.
 
 - Claude (Claude Code)
 - OpenAI Codex
+- GitHub Copilot (VS Code prompt files; project scope only)
+- Cursor (project rules; project scope only)
 - Kiro
 
 ## Running skilldeck

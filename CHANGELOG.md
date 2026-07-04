@@ -15,6 +15,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Cursor and GitHub Copilot adapters (#30). Cursor installs agent-requested
+  rules to `.cursor/rules/<name>.mdc` (`description` + `alwaysApply: false`);
+  Copilot installs prompt files to `.github/prompts/<name>.prompt.md`, run
+  with `/<name>` in chat. Both are project-scope only — neither tool has a
+  stable filesystem location for user-level config — enforced by a new
+  per-adapter `scopes` attribute. All skills add the two agents to
+  `supported-agents` (patch version bumps).
 - `install`/`uninstall` accept `--agent` multiple times, or `--agent all`, to
   target several agents in one command; `skilldeck show <name>` prints a
   skill's body (or, with `--agent`, the rendered per-agent output) before

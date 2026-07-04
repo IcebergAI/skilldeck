@@ -11,9 +11,24 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
 
+import yaml
+
 from ..registry import Skill, SkillError
 from ..stamp import Stamp, parse, stamp
 from ..targets import Scope, base_dir
+
+
+def yaml_frontmatter(fields: dict[str, object]) -> str:
+    """Serialize ``fields`` into a YAML frontmatter block.
+
+    Serialized rather than interpolated, so a value containing newlines or YAML
+    metacharacters is quoted and cannot inject extra frontmatter keys or corrupt
+    the document.
+    """
+    text = yaml.safe_dump(
+        fields, sort_keys=False, default_flow_style=False, allow_unicode=True
+    )
+    return f"---\n{text}---\n"
 
 
 class InstallState(Enum):
@@ -43,6 +58,10 @@ class Adapter(ABC):
     #: installs; lets ``status`` find orphans of skills no longer bundled
     installed_glob: str = ""
 
+    #: scopes this adapter can install into; agents without a stable
+    #: filesystem location for user-level config are project-only
+    scopes: tuple[Scope, ...] = (Scope.PROJECT, Scope.GLOBAL)
+
     @abstractmethod
     def relative_path(self, skill: Skill) -> Path:
         """Install location for ``skill``, relative to the scope base dir."""
@@ -57,6 +76,11 @@ class Adapter(ABC):
     def destination(
         self, skill: Skill, scope: Scope, project_root: Path | None = None
     ) -> Path:
+        if scope not in self.scopes:
+            raise SkillError(
+                f"{self.name} does not support --scope {scope.value}: it has no "
+                "stable file location for that scope"
+            )
         return base_dir(scope, project_root) / self.relative_path(skill)
 
     def _stamped(self, skill: Skill) -> str:

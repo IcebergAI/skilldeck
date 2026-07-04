@@ -16,7 +16,7 @@ def skill():
         description="a demo skill",
         category="testing",
         version="0.1.0",
-        supported_agents=("claude", "codex"),
+        supported_agents=("claude", "codex", "copilot", "cursor"),
         body="DEMO BODY",
         path=Path("/nowhere"),
     )
@@ -31,6 +31,30 @@ def test_claude_renders_frontmatter(skill):
 
 def test_codex_renders_body_as_is(skill):
     assert ADAPTERS["codex"].render(skill) == "DEMO BODY"
+
+
+def test_cursor_renders_agent_requested_rule(skill):
+    out = ADAPTERS["cursor"].render(skill)
+    frontmatter = yaml.safe_load(out.split("---\n")[1])
+    assert frontmatter == {"description": "a demo skill", "alwaysApply": False}
+    assert out.endswith("\n\nDEMO BODY")
+
+
+def test_copilot_renders_prompt_frontmatter(skill):
+    out = ADAPTERS["copilot"].render(skill)
+    frontmatter = yaml.safe_load(out.split("---\n")[1])
+    assert frontmatter == {"description": "a demo skill"}
+    assert out.endswith("\n\nDEMO BODY")
+
+
+@pytest.mark.parametrize("agent", ["cursor", "copilot"])
+def test_project_only_adapters_reject_global_scope(agent, skill, tmp_path):
+    adapter = ADAPTERS[agent]
+    with pytest.raises(SkillError, match="does not support --scope global"):
+        adapter.install(skill, Scope.GLOBAL)
+    # project scope works
+    dest = adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+    assert dest.is_file()
 
 
 def test_kiro_renders_manual_inclusion_frontmatter(skill):
@@ -74,6 +98,10 @@ def test_paths_are_agent_specific(skill):
     )
     assert ADAPTERS["codex"].relative_path(skill) == Path(".codex/prompts/demo.md")
     assert ADAPTERS["kiro"].relative_path(skill) == Path(".kiro/steering/demo.md")
+    assert ADAPTERS["cursor"].relative_path(skill) == Path(".cursor/rules/demo.mdc")
+    assert ADAPTERS["copilot"].relative_path(skill) == Path(
+        ".github/prompts/demo.prompt.md"
+    )
 
 
 def test_supports_respects_supported_agents(skill):
