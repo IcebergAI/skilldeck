@@ -1,0 +1,5 @@
+skill: iac-review
+plants:
+  - file: infra/network.tf
+    keywords: [0.0.0.0, internet, world]
+max-findings: 4

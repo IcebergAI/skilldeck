@@ -1,0 +1,5 @@
+skill: ci-workflow-review
+plants:
+  - file: .github/workflows/greet.yml
+    keywords: [injection, pull_request_target, untrusted]
+max-findings: 5
