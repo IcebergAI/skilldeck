@@ -15,6 +15,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- The repo is now a Claude Code plugin marketplace (#31):
+  `/plugin marketplace add IcebergAI/skilldeck` then
+  `/plugin install skilldeck@skilldeck` installs all skills with no Python
+  tooling. The committed plugin tree (`.claude-plugin/marketplace.json` +
+  `claude-plugin/`) is generated from the canonical skills by
+  `scripts/build_plugin.py`; a pytest freshness guard fails if it drifts.
 - Cursor and GitHub Copilot adapters (#30). Cursor installs agent-requested
   rules to `.cursor/rules/<name>.mdc` (`description` + `alwaysApply: false`);
   Copilot installs prompt files to `.github/prompts/<name>.prompt.md`, run
