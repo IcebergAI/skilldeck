@@ -37,6 +37,9 @@ Skilldeck is a collection of skills for coding assistants to use mostly for secu
     add an agent by subclassing `Adapter` and registering it in
     `adapters/__init__.py`
 - `tests/` — pytest suite (`uv run pytest`)
+- `evals/` — golden-diff skill evals (`python evals/run_evals.py`): fixtures
+  with planted defects, scored against a real agent; manual (paid API), CI only
+  validates fixture structure. New/changed skills should be run through them.
 - `docs/` — `authoring-skills.md`, `adapters.md`, `releasing.md`
 - `.claude-plugin/marketplace.json` + `claude-plugin/` — the Claude Code plugin
   marketplace tree, **generated** by `scripts/build_plugin.py` from the

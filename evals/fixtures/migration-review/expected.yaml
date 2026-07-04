@@ -1,0 +1,5 @@
+skill: migration-review
+plants:
+  - file: db/migrate/20260704120000_add_index_to_events.rb
+    keywords: [concurrent, lock]
+max-findings: 4
