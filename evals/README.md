@@ -44,6 +44,10 @@ CI validates fixture structure (`tests/test_eval_fixtures.py`): the fixture
 loads, targets a bundled skill, the plant is part of the diff, and the repo
 builds — no API calls.
 
+A skill may have more than one fixture: name the directory for the skill, or
+add a `-<variant>` suffix (e.g. `ci-workflow-review-gitlab`) and set the
+`skill:` field in `expected.yaml` to the skill it exercises.
+
 ## Adding a fixture
 
 Keep it minimal: the smallest `base/` that gives the change context, one

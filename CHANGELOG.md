@@ -13,15 +13,18 @@ All notable changes to this project are documented here. The format is based on
   a comment), and a Dependabot config keeps the pins and dev dependencies
   current (#34).
 
-### Added
-
-- `ci-workflow-review` skill (0.1.0) — reviews CI/CD pipeline changes for
-  injection and poisoned pipeline execution (untrusted `github.event`
-  interpolation, `pull_request_target` + head checkout), credential and token
-  scope, unpinned third-party steps, artifact/cache integrity, and runner
-  exposure. Classified against the OWASP Top 10 CI/CD Security Risks
-  (CICD-SEC-1–10) with patterns from GitHub's Actions hardening guide. Ships
-  with an eval fixture (fork-triggerable title injection).
+- `ci-workflow-review` skill (0.2.0) — reviews CI/CD pipeline changes for
+  injection and poisoned pipeline execution (untrusted `github.event` /
+  GitLab predefined-variable interpolation, `pull_request_target` + head
+  checkout, fork MR pipelines), credential and token scope
+  (`GITHUB_TOKEN` permissions, `CI_JOB_TOKEN` allowlist, masked/protected
+  variables), unpinned third-party steps and `include:`s, artifact/cache
+  integrity, and runner exposure (self-hosted runners, GitLab privileged
+  Docker/DinD and shell executors). Classified against the OWASP Top 10 CI/CD
+  Security Risks (CICD-SEC-1–10) with patterns from GitHub's Actions hardening
+  guide and GitLab's pipeline/job-token/runner security guidance. Ships with
+  GitHub and GitLab eval fixtures (fork-triggerable title injection; a
+  privileged DinD runner plus MR-title injection in a fork-reachable job).
 - `iac-review` skill (0.1.0) — reviews infrastructure-as-code changes
   (Terraform, CloudFormation, Kubernetes/Helm, Dockerfiles) for network
   exposure, wildcard IAM, secrets in code/state, missing encryption, container
