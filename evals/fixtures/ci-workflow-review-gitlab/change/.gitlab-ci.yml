@@ -1,0 +1,26 @@
+stages:
+  - test
+  - build
+
+unit-tests:
+  stage: test
+  image: python:3.12-slim
+  script:
+    - pip install -r requirements.txt
+    - pytest
+
+build-image:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+  tags:
+    - privileged
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - echo "Building for MR: $CI_MERGE_REQUEST_TITLE"
+    - docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" .
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"

@@ -33,10 +33,12 @@ def _bundled_skill_names():
 
 
 def test_every_fixture_dir_is_named_for_its_skill():
+    # A skill may have several fixtures: the directory is either the skill name
+    # or the skill name plus a "-<variant>" suffix (e.g. a GitLab variant).
     assert FIXTURE_DIRS, "no eval fixtures found"
     for path in FIXTURE_DIRS:
         fixture = run_evals.load_fixture(path)
-        assert fixture.skill == path.name
+        assert path.name == fixture.skill or path.name.startswith(fixture.skill + "-")
 
 
 @pytest.mark.parametrize("path", FIXTURE_DIRS, ids=lambda p: p.name)
