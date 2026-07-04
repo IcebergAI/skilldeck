@@ -6,11 +6,13 @@ from itertools import groupby
 
 import click
 
-from .adapters import ADAPTERS
+from .adapters import ADAPTERS, InstallState
 from .registry import Skill, SkillError, discover_skills
+from .stamp import parse as parse_stamp
 from .targets import Scope
 
 AGENT_CHOICE = click.Choice(sorted(ADAPTERS))
+AGENTS_CHOICE = click.Choice([*sorted(ADAPTERS), "all"])
 SCOPE_CHOICE = click.Choice([s.value for s in Scope])
 
 
@@ -29,6 +31,12 @@ def _resolve_skills(names: tuple[str, ...], install_all: bool) -> list[Skill]:
     if unknown:
         raise SkillError(f"unknown skill: {', '.join(unknown)}")
     return [by_name[name] for name in names]
+
+
+def _resolve_agents(agents: tuple[str, ...]) -> list[str]:
+    if "all" in agents:
+        return sorted(ADAPTERS)
+    return list(dict.fromkeys(agents))  # dedupe, keep order
 
 
 @click.group()
@@ -56,41 +64,171 @@ def list_cmd() -> None:
 @cli.command()
 @click.argument("names", nargs=-1)
 @click.option("--all", "install_all", is_flag=True, help="Install every skill.")
-@click.option("--agent", required=True, type=AGENT_CHOICE, help="Target agent.")
+@click.option(
+    "--agent",
+    "agents",
+    required=True,
+    multiple=True,
+    type=AGENTS_CHOICE,
+    help="Target agent; repeat for several, or use 'all'.",
+)
 @click.option(
     "--scope", type=SCOPE_CHOICE, default=Scope.PROJECT.value, show_default=True
 )
-def install(names: tuple[str, ...], install_all: bool, agent: str, scope: str) -> None:
-    """Install one or more skills for AGENT."""
-    adapter = ADAPTERS[agent]
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Overwrite locally modified or unmanaged destination files.",
+)
+def install(
+    names: tuple[str, ...],
+    install_all: bool,
+    agents: tuple[str, ...],
+    scope: str,
+    force: bool,
+) -> None:
+    """Install one or more skills for the chosen agent(s)."""
     scope_enum = Scope(scope)
-    for skill in _resolve_skills(names, install_all):
-        if not adapter.supports(skill):
-            click.echo(f"skip {skill.name}: not supported by {agent}", err=True)
-            continue
-        dest = adapter.install(skill, scope_enum)
-        click.echo(f"installed {skill.name} -> {dest}")
+    skills = _resolve_skills(names, install_all)
+    failed = False
+    for agent in _resolve_agents(agents):
+        adapter = ADAPTERS[agent]
+        for skill in skills:
+            if not adapter.supports(skill):
+                click.echo(f"skip {skill.name}: not supported by {agent}", err=True)
+                continue
+            try:
+                dest = adapter.install(skill, scope_enum, force=force)
+            except SkillError as exc:
+                click.echo(f"error: {exc}", err=True)
+                failed = True
+                continue
+            click.echo(f"installed {skill.name} -> {dest}")
+    if failed:
+        raise SystemExit(1)
 
 
 @cli.command()
 @click.argument("names", nargs=-1)
 @click.option("--all", "uninstall_all", is_flag=True, help="Uninstall every skill.")
-@click.option("--agent", required=True, type=AGENT_CHOICE, help="Target agent.")
+@click.option(
+    "--agent",
+    "agents",
+    required=True,
+    multiple=True,
+    type=AGENTS_CHOICE,
+    help="Target agent; repeat for several, or use 'all'.",
+)
 @click.option(
     "--scope", type=SCOPE_CHOICE, default=Scope.PROJECT.value, show_default=True
 )
 def uninstall(
-    names: tuple[str, ...], uninstall_all: bool, agent: str, scope: str
+    names: tuple[str, ...], uninstall_all: bool, agents: tuple[str, ...], scope: str
 ) -> None:
-    """Remove one or more installed skills for AGENT."""
+    """Remove one or more installed skills for the chosen agent(s)."""
+    scope_enum = Scope(scope)
+    skills = _resolve_skills(names, uninstall_all)
+    for agent in _resolve_agents(agents):
+        adapter = ADAPTERS[agent]
+        for skill in skills:
+            removed = adapter.uninstall(skill, scope_enum)
+            if removed:
+                click.echo(f"removed {skill.name} <- {removed}")
+            else:
+                click.echo(f"not installed for {agent}: {skill.name}", err=True)
+
+
+@cli.command()
+@click.argument("name")
+@click.option(
+    "--agent",
+    type=AGENT_CHOICE,
+    default=None,
+    help="Preview the rendered output for this agent instead of the raw body.",
+)
+def show(name: str, agent: str | None) -> None:
+    """Print a skill's body, or its rendered per-agent output."""
+    by_name = {skill.name: skill for skill in _all_skills()}
+    if name not in by_name:
+        raise SkillError(f"unknown skill: {name}")
+    skill = by_name[name]
+    if agent is None:
+        text = skill.body
+    else:
+        adapter = ADAPTERS[agent]
+        if not adapter.supports(skill):
+            raise SkillError(f"{name} does not support {agent}")
+        text = adapter.render(skill)
+    click.echo(text if text.endswith("\n") else text + "\n", nl=False)
+
+
+@cli.command()
+@click.option("--agent", required=True, type=AGENT_CHOICE, help="Target agent.")
+@click.option(
+    "--scope", type=SCOPE_CHOICE, default=Scope.PROJECT.value, show_default=True
+)
+def status(agent: str, scope: str) -> None:
+    """Show installed vs bundled skill versions for AGENT."""
     adapter = ADAPTERS[agent]
     scope_enum = Scope(scope)
-    for skill in _resolve_skills(names, uninstall_all):
-        removed = adapter.uninstall(skill, scope_enum)
-        if removed:
-            click.echo(f"removed {skill.name} <- {removed}")
+    skills = _all_skills()
+    width = max(len(s.name) for s in skills)
+    for skill in skills:
+        if not adapter.supports(skill):
+            continue
+        state, found = adapter.inspect(skill, scope_enum)
+        if state is InstallState.NOT_INSTALLED:
+            detail = "not installed"
+        elif state is InstallState.UNMANAGED:
+            detail = "no skilldeck stamp (adopt with: install --force)"
         else:
-            click.echo(f"not installed: {skill.name}", err=True)
+            assert found is not None
+            if state is InstallState.MODIFIED:
+                detail = f"{found.version} modified locally"
+            elif state is InstallState.STALE:
+                detail = f"{found.version} stale (bundled: {skill.version})"
+            else:
+                detail = f"{found.version} up to date"
+        click.echo(f"{skill.name:<{width}}  {detail}")
+    # Files this adapter wrote for skills that are no longer bundled.
+    known = {adapter.destination(skill, scope_enum) for skill in skills}
+    for path in adapter.installed_files(scope_enum):
+        if path in known:
+            continue
+        found = parse_stamp(path.read_text(encoding="utf-8"))
+        label = f"{found.name} {found.version}" if found else "no stamp"
+        click.echo(f"orphan: {path} ({label})")
+
+
+@cli.command()
+@click.option("--agent", required=True, type=AGENT_CHOICE, help="Target agent.")
+@click.option(
+    "--scope", type=SCOPE_CHOICE, default=Scope.PROJECT.value, show_default=True
+)
+@click.option("--force", is_flag=True, help="Also overwrite locally modified installs.")
+def update(agent: str, scope: str, force: bool) -> None:
+    """Refresh installed skills that are stale for AGENT."""
+    adapter = ADAPTERS[agent]
+    scope_enum = Scope(scope)
+    updated = 0
+    for skill in _all_skills():
+        if not adapter.supports(skill):
+            continue
+        state, found = adapter.inspect(skill, scope_enum)
+        if state is InstallState.STALE or (state is InstallState.MODIFIED and force):
+            adapter.install(skill, scope_enum, force=True)
+            old = found.version if found else "?"
+            click.echo(f"updated {skill.name} ({old} -> {skill.version})")
+            updated += 1
+        elif state is InstallState.MODIFIED:
+            click.echo(f"skip {skill.name}: locally modified (use --force)", err=True)
+        elif state is InstallState.UNMANAGED:
+            click.echo(
+                f"skip {skill.name}: no skilldeck stamp (adopt with: install --force)",
+                err=True,
+            )
+    if not updated:
+        click.echo("nothing to update")
 
 
 def main() -> None:

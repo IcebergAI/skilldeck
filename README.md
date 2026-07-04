@@ -19,7 +19,23 @@ assistant you use.
 
 - Claude (Claude Code)
 - OpenAI Codex
+- GitHub Copilot (VS Code prompt files; project scope only)
+- Cursor (project rules; project scope only)
 - Kiro
+
+## Claude Code: install as a plugin (no Python needed)
+
+Claude Code users can skip the CLI entirely — this repo is a plugin
+marketplace. In Claude Code:
+
+```
+/plugin marketplace add IcebergAI/skilldeck
+/plugin install skilldeck@skilldeck
+```
+
+The skills then appear namespaced (e.g. `/skilldeck:security-review`) and
+update via `/plugin update`. Use the CLI below if you want per-skill
+selection, other agents, or plain files in your project.
 
 ## Running skilldeck
 
@@ -85,15 +101,33 @@ package is unpublished, prefix each command with
 # See what's available
 skilldeck list
 
+# Preview a skill before installing
+skilldeck show security-review
+
 # Install a skill for Claude into the current project
 skilldeck install security-review --agent claude
+
+# Install for several agents at once (repeat --agent, or use 'all')
+skilldeck install security-review --agent claude --agent codex
+skilldeck install --all --agent all
 
 # Install every compatible skill globally for Codex
 skilldeck install --all --agent codex --scope global
 
 # Remove a skill
 skilldeck uninstall security-review --agent claude
+
+# See what's installed and whether it's current
+skilldeck status --agent claude
+
+# Refresh installed skills after upgrading skilldeck
+skilldeck update --agent claude
 ```
+
+Installed files carry a `skilldeck` stamp recording the skill version, so
+`status` can tell current, stale, and locally modified installs apart. Files you
+have edited (or that skilldeck didn't write) are never overwritten unless you
+pass `--force`.
 
 `--scope project` (default) writes into the current directory; `--scope global`
 writes into your home directory. Where exactly each agent looks is documented in

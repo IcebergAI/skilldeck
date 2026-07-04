@@ -1,0 +1,5 @@
+skill: resilience-review
+plants:
+  - file: services/client.py
+    keywords: [timeout]
+max-findings: 5

@@ -1,0 +1,14 @@
+{
+  "name": "skilldeck",
+  "owner": {
+    "name": "Richard Hope",
+    "url": "https://github.com/IcebergAI/skilldeck"
+  },
+  "plugins": [
+    {
+      "name": "skilldeck",
+      "source": "./claude-plugin",
+      "description": "Security and code-review skills for Claude Code: code-smells, dependency-review, logging, migration-review, resilience-review, security-review, test-review"
+    }
+  ]
+}

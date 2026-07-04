@@ -1,0 +1,5 @@
+skill: dependency-review
+plants:
+  - file: requirements.txt
+    keywords: [provenance, fork, git]
+max-findings: 4

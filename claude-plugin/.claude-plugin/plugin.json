@@ -1,0 +1,17 @@
+{
+  "name": "skilldeck",
+  "version": "0.3.0",
+  "description": "Security and code-review skills for Claude Code: code-smells, dependency-review, logging, migration-review, resilience-review, security-review, test-review",
+  "author": {
+    "name": "Richard Hope",
+    "url": "https://github.com/IcebergAI/skilldeck"
+  },
+  "homepage": "https://github.com/IcebergAI/skilldeck",
+  "repository": "https://github.com/IcebergAI/skilldeck",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "code-review",
+    "skills"
+  ]
+}
