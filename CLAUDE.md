@@ -29,13 +29,19 @@ Skilldeck is a collection of skills for coding assistants to use mostly for secu
 - `src/skilldeck/skills/<name>/` — canonical, agent-neutral skills (`meta.yaml` +
   `skill.md`); inside the package so they're bundled into the wheel
 - `src/skilldeck/` — the installer package
-  - `cli.py` — `skilldeck list/install/uninstall`
+  - `cli.py` — `skilldeck list/show/install/uninstall/status/update`
   - `registry.py` — discovers and validates skills
+  - `stamp.py` — install stamps (version + content hash on installed files)
   - `targets.py` — install scope (project vs global base dir)
-  - `adapters/` — per-agent translation (claude, codex, kiro); add an agent by
-    subclassing `Adapter` and registering it in `adapters/__init__.py`
+  - `adapters/` — per-agent translation (claude, codex, copilot, cursor, kiro);
+    add an agent by subclassing `Adapter` and registering it in
+    `adapters/__init__.py`
 - `tests/` — pytest suite (`uv run pytest`)
-- `docs/` — `authoring-skills.md`, `adapters.md`
+- `docs/` — `authoring-skills.md`, `adapters.md`, `releasing.md`
+- `.claude-plugin/marketplace.json` + `claude-plugin/` — the Claude Code plugin
+  marketplace tree, **generated** by `scripts/build_plugin.py` from the
+  canonical skills; regenerate after changing skills or the project version (a
+  pytest freshness guard enforces this), never edit by hand
 
 ## Conventions
 - Skills are authored once in `src/skilldeck/skills/`; never hand-edit per-agent

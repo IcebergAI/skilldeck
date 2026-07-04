@@ -23,6 +23,20 @@ assistant you use.
 - Cursor (project rules; project scope only)
 - Kiro
 
+## Claude Code: install as a plugin (no Python needed)
+
+Claude Code users can skip the CLI entirely — this repo is a plugin
+marketplace. In Claude Code:
+
+```
+/plugin marketplace add IcebergAI/skilldeck
+/plugin install skilldeck@skilldeck
+```
+
+The skills then appear namespaced (e.g. `/skilldeck:security-review`) and
+update via `/plugin update`. Use the CLI below if you want per-skill
+selection, other agents, or plain files in your project.
+
 ## Running skilldeck
 
 `skilldeck` is a CLI you run occasionally to copy skills into your assistant — not
