@@ -15,6 +15,45 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Golden-diff eval harness (`evals/`) (#32): seven fixtures — one per skill —
+  each a tiny repo whose diff contains a planted defect (IDOR, non-concurrent
+  index, assertion-free test, missing timeout, token in a log, git-fork
+  dependency, long method). `python evals/run_evals.py` builds each repo,
+  installs the skill, invokes an agent (default: Claude CLI), and scores the
+  report: plants must be found and total findings must stay under a cap. Runs
+  manually (paid API); CI validates fixture structure only.
+- `scripts/prepare_release.py <version>` automates release prep: bumps
+  `pyproject.toml`, dates the `[Unreleased]` CHANGELOG section, re-locks,
+  regenerates the plugin tree, and re-runs the consistency guard
+  (`docs/releasing.md` updated to make it the documented path) (#35).
+- The repo is now a Claude Code plugin marketplace (#31):
+  `/plugin marketplace add IcebergAI/skilldeck` then
+  `/plugin install skilldeck@skilldeck` installs all skills with no Python
+  tooling. The committed plugin tree (`.claude-plugin/marketplace.json` +
+  `claude-plugin/`) is generated from the canonical skills by
+  `scripts/build_plugin.py`; a pytest freshness guard fails if it drifts.
+- Cursor and GitHub Copilot adapters (#30). Cursor installs agent-requested
+  rules to `.cursor/rules/<name>.mdc` (`description` + `alwaysApply: false`);
+  Copilot installs prompt files to `.github/prompts/<name>.prompt.md`, run
+  with `/<name>` in chat. Both are project-scope only — neither tool has a
+  stable filesystem location for user-level config — enforced by a new
+  per-adapter `scopes` attribute. All skills add the two agents to
+  `supported-agents` (patch version bumps).
+- `install`/`uninstall` accept `--agent` multiple times, or `--agent all`, to
+  target several agents in one command; `skilldeck show <name>` prints a
+  skill's body (or, with `--agent`, the rendered per-agent output) before
+  installing (#29).
+- Installed skills are now stamped with a `skilldeck` comment recording the
+  skill name, version, and a content hash. New commands build on it:
+  `skilldeck status --agent <a>` shows installed vs bundled versions
+  (up to date / stale / modified locally / unmanaged, plus orphans of skills no
+  longer bundled) and `skilldeck update --agent <a>` refreshes stale installs
+  (#27).
+- `install` no longer silently overwrites: a destination file with local
+  modifications — or one skilldeck didn't write — is refused unless `--force`
+  is given; `update` likewise skips modified installs without `--force` (#28).
+  Note: installs made by skilldeck ≤ 0.3.0 carry no stamp, so the first
+  reinstall over them needs `--force` once.
 - Structural lint tests (`tests/test_skill_structure.py`) asserting every
   bundled skill body carries the standardized elements: a Scope section with
   the uncommitted-changes fallback, severity anchors, a worked example, the

@@ -17,6 +17,7 @@ from .base import Adapter
 
 class KiroAdapter(Adapter):
     name = "kiro"
+    installed_glob = ".kiro/steering/*.md"
 
     def relative_path(self, skill: Skill) -> Path:
         return Path(".kiro/steering") / f"{skill.name}.md"
