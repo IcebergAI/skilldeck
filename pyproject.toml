@@ -40,7 +40,7 @@ Changelog = "https://github.com/IcebergAI/skilldeck/blob/main/CHANGELOG.md"
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0.3",
-    "ruff>=0.6",
+    "ruff>=0.15.21",
     "mypy>=1.11",
     "types-PyYAML>=6.0",
 ]
