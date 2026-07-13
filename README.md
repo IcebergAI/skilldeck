@@ -72,7 +72,7 @@ Useful for authoring skills or trying local changes:
 
 ```bash
 git clone https://github.com/IcebergAI/skilldeck && cd skilldeck
-uv run skilldeck list                  # run in place, no install
+uv run --extra dev skilldeck list      # run in place, no install
 uv tool install .                      # or: pipx install .  — put it on PATH
 ```
 
