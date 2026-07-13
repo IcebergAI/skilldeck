@@ -136,7 +136,8 @@ writes into your home directory. Where exactly each agent looks is documented in
 ## Authoring skills
 
 Each skill is a directory under `src/skilldeck/skills/` containing a `meta.yaml`
-and a `skill.md`. See [docs/authoring-skills.md](docs/authoring-skills.md).
+and a `skill.md`. See [docs/authoring-skills.md](docs/authoring-skills.md), and
+follow the [contributor guide](CONTRIBUTING.md) for setup and validation.
 
 ## Changelog
 
