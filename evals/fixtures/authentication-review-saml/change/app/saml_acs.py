@@ -12,13 +12,15 @@ bp = Blueprint("saml", __name__)
 
 NS = {"saml": "urn:oasis:names:tc:SAML:2.0:assertion"}
 
+_PARSER = etree.XMLParser(resolve_entities=False, no_network=True)
+
 
 @bp.post("/saml/acs")
 def acs():
     document = base64.b64decode(request.form["SAMLResponse"])
     # Check the response signature, then pull out the fields we need.
     XMLVerifier().verify(document, x509_cert=idp_config.IDP_CERT)
-    tree = etree.fromstring(document)
+    tree = etree.fromstring(document, parser=_PARSER)
     assertion = tree.find(".//saml:Assertion", NS)
     if assertion is None:
         abort(403)
