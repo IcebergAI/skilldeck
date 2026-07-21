@@ -1,0 +1,5 @@
+skill: authentication-review
+plants:
+  - file: app/saml_acs.py
+    keywords: [assertion, signature, XSW, wrapping]
+max-findings: 5

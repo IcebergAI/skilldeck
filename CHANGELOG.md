@@ -13,6 +13,21 @@ All notable changes to this project are documented here. The format is based on
   a comment), and a Dependabot config keeps the pins and dev dependencies
   current (#34).
 
+- `authentication-review` skill (0.1.0) — reviews authentication changes in
+  depth: password storage and policy, recovery/reset flows, MFA bypass and OTP
+  handling, session fixation and cookie hardening, JWT/API-token verification
+  (alg confusion, key selection), OAuth 2.0 (PKCE, `state`, `redirect_uri`
+  exact match, deprecated grants), OIDC (`nonce`, `iss`+`sub` identity, JWKS
+  trust), SAML (assertion vs response signatures, XSW, replay/conditions), and
+  LDAP sign-in (empty-password bind, unchecked bind result). Classified
+  against OWASP ASVS 5.0 (V6/V7/V9/V10, with V11/V3 for KDF and cookie
+  findings) with patterns from RFC 9700, NIST SP 800-63B, and the OWASP
+  Authentication, Password Storage, Session Management, MFA, Forgot Password,
+  and SAML Security cheat sheets. Pairs with `security-review` (bumped to
+  0.3.2 for the reciprocal cross-reference), which keeps breadth coverage.
+  Ships with OAuth (hand-rolled code flow missing `state`/PKCE) and SAML
+  (response-envelope-only signature check + raw-document `NameID` read) eval
+  fixtures.
 - `ci-workflow-review` skill (0.2.0) — reviews CI/CD pipeline changes for
   injection and poisoned pipeline execution (untrusted `github.event` /
   GitLab predefined-variable interpolation, `pull_request_target` + head

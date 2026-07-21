@@ -1,6 +1,7 @@
 # Finding output format
 
-Every review skill (`security-review`, `code-smells`, `dependency-review`,
+Every review skill (`security-review`, `authentication-review`,
+`ci-workflow-review`, `iac-review`, `code-smells`, `dependency-review`,
 `test-review`, and the review half of `logging`) reports its findings in one
 shared shape. A consistent shape means findings from different skills can be
 read, sorted, deduplicated, and posted as inline PR comments without per-skill
@@ -36,6 +37,9 @@ Report each finding as a single top-level list item:
 | Skill | `classifier` is… | Example |
 | --- | --- | --- |
 | `security-review` | the ASVS 5.0 category | `V8 Authorization` |
+| `authentication-review` | the ASVS 5.0 category (V6/V7/V9/V10; V11 for password-storage KDFs, V3 for cookie attributes) | `V10 OAuth & OIDC` |
+| `ci-workflow-review` | the CICD-SEC category | `CICD-SEC-4 Poisoned Pipeline Execution` |
+| `iac-review` | the misconfiguration kind | `Open security group`, `Wildcard IAM` |
 | `code-smells` | the smell and its group | `Long Method (Bloaters)` |
 | `dependency-review` | the advisory ID or supply-chain concern | `CVE-2024-12345`, `Typosquatting` |
 | `test-review` | the weakness kind | `Coverage gap`, `Assertion-free test` |

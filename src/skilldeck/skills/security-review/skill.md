@@ -37,7 +37,8 @@ Unless told otherwise, review to **L2**.
 - **V5 File Handling** — upload validation, type/size limits, safe storage paths,
   SSRF via file/URL fetches, deserialization of untrusted data.
 - **V6 Authentication** — credential handling, password storage, MFA, secure
-  recovery and lockout; no auth bypass.
+  recovery and lockout; no auth bypass. (See the `authentication-review` skill
+  for depth on V6, V7, V9, and V10, plus SAML and LDAP sign-in.)
 - **V7 Session Management** — secure session creation, rotation on privilege
   change, timeout, secure/HttpOnly cookies, invalidation on logout.
 - **V8 Authorization** — missing or weakened access checks, privilege escalation,

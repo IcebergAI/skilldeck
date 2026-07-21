@@ -1,0 +1,5 @@
+skill: authentication-review
+plants:
+  - file: app/sso.py
+    keywords: [state, PKCE, CSRF]
+max-findings: 6
