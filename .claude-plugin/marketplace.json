@@ -8,7 +8,7 @@
     {
       "name": "skilldeck",
       "source": "./claude-plugin",
-      "description": "Security and code-review skills for Claude Code: ci-workflow-review, code-smells, dependency-review, iac-review, logging, migration-review, resilience-review, security-review, test-review"
+      "description": "Security and code-review skills for Claude Code: authentication-review, ci-workflow-review, code-smells, dependency-review, iac-review, logging, migration-review, resilience-review, security-review, test-review"
     }
   ]
 }
