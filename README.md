@@ -72,7 +72,7 @@ Useful for authoring skills or trying local changes:
 
 ```bash
 git clone https://github.com/IcebergAI/skilldeck && cd skilldeck
-uv run skilldeck list                  # run in place, no install
+uv run --extra dev skilldeck list      # run in place, no install
 uv tool install .                      # or: pipx install .  — put it on PATH
 ```
 
@@ -136,7 +136,8 @@ writes into your home directory. Where exactly each agent looks is documented in
 ## Authoring skills
 
 Each skill is a directory under `src/skilldeck/skills/` containing a `meta.yaml`
-and a `skill.md`. See [docs/authoring-skills.md](docs/authoring-skills.md).
+and a `skill.md`. See [docs/authoring-skills.md](docs/authoring-skills.md), and
+follow the [contributor guide](CONTRIBUTING.md) for setup and validation.
 
 ## Changelog
 
