@@ -135,6 +135,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Release trust chain (#76): exact tag/commit metadata in wheel and source
+  distribution, a shared canonical content manifest for Python and the Claude
+  plugin, `skilldeck provenance`, archive-safe cross-distribution verification,
+  a runtime-only SPDX 2.3 SBOM, exact SHA-256 checksums, GitHub build/SBOM
+  attestations, PyPI PEP 740 verification, and post-publication channel and
+  tamper checks. Consumer and operator verification procedures are documented.
 - `docs/releasing.md` documenting the versioning and release procedure, plus
   `scripts/check_release_consistency.py` — a stdlib guard that asserts the
   `pyproject` version, the newest dated CHANGELOG section, and (on a tag push) the

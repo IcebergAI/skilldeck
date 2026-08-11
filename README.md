@@ -122,6 +122,10 @@ skilldeck status --agent claude
 
 # Refresh installed skills after upgrading skilldeck
 skilldeck update --agent claude
+
+# Inspect the package source identity and bundled skill digests
+skilldeck provenance
+skilldeck provenance --json
 ```
 
 Installed files carry a `skilldeck` stamp recording the skill version, so
@@ -132,6 +136,18 @@ pass `--force`.
 `--scope project` (default) writes into the current directory; `--scope global`
 writes into your home directory. Where exactly each agent looks is documented in
 [docs/adapters.md](docs/adapters.md).
+
+## Release trust
+
+Tagged releases publish one wheel, one source distribution, an SPDX 2.3 runtime
+SBOM, and `SHA256SUMS`. GitHub build/SBOM attestations and PyPI's Trusted
+Publishing attestation bind those bytes to the exact tag commit. The release
+workflow downloads both channels again and rejects checksum, provenance, SBOM,
+content-manifest, or tamper-test failures before it succeeds.
+
+See [Verifying a Skilldeck release](docs/verifying-releases.md) for the complete
+consumer procedure. These commands become actionable with the first published
+release; the package remains unpublished today.
 
 ## Authoring skills
 

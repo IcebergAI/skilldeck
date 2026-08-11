@@ -52,3 +52,22 @@ def test_plugin_skills_match_bundled_skills():
         p.parent.name for p in (_ROOT / "claude-plugin" / "skills").glob("*/SKILL.md")
     }
     assert committed == bundled
+
+
+def test_plugin_provenance_matches_python_distribution():
+    from skilldeck.provenance import canonical_json, content_manifest
+    from skilldeck.registry import discover_skills
+
+    plugin_provenance = json.loads(
+        (_ROOT / "claude-plugin" / ".skilldeck" / "content-manifest.json").read_text()
+    )
+    package_text = (_ROOT / "src" / "skilldeck" / "_content_manifest.json").read_text()
+    assert package_text == canonical_json(plugin_provenance)
+    assert plugin_provenance == content_manifest(build_plugin.project_version())
+
+    by_name = {skill.name: skill for skill in discover_skills()}
+    for record in plugin_provenance["skills"]:
+        rendered = (
+            _ROOT / "claude-plugin" / "skills" / record["name"] / "SKILL.md"
+        ).read_text()
+        assert rendered.endswith(by_name[record["name"]].body)

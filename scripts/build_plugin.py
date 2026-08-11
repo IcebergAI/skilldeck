@@ -28,6 +28,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))  # run from a checkout without installing
 
 from skilldeck.adapters import ADAPTERS  # noqa: E402
+from skilldeck.provenance import (  # noqa: E402
+    canonical_json,
+    claude_plugin_metadata,
+    content_manifest,
+)
 from skilldeck.registry import discover_skills  # noqa: E402
 
 PLUGIN_NAME = "skilldeck"
@@ -52,19 +57,8 @@ def generate() -> dict[Path, str]:
         path = Path("claude-plugin/skills") / skill.name / "SKILL.md"
         files[path] = claude.render(skill)
 
-    description = "Security and code-review skills for Claude Code: " + ", ".join(
-        skill.name for skill in skills
-    )
-    plugin = {
-        "name": PLUGIN_NAME,
-        "version": project_version(),
-        "description": description,
-        "author": {"name": "Richard Hope", "url": REPO_URL},
-        "homepage": REPO_URL,
-        "repository": REPO_URL,
-        "license": "MIT",
-        "keywords": ["security", "code-review", "skills"],
-    }
+    plugin = claude_plugin_metadata(project_version(), skills)
+    description = str(plugin["description"])
     files[Path("claude-plugin/.claude-plugin/plugin.json")] = (
         json.dumps(plugin, indent=2) + "\n"
     )
@@ -83,6 +77,9 @@ def generate() -> dict[Path, str]:
     files[Path(".claude-plugin/marketplace.json")] = (
         json.dumps(marketplace, indent=2) + "\n"
     )
+    manifest_text = canonical_json(content_manifest(project_version(), skills))
+    files[Path("src/skilldeck/_content_manifest.json")] = manifest_text
+    files[Path("claude-plugin/.skilldeck/content-manifest.json")] = manifest_text
     return files
 
 
@@ -95,12 +92,16 @@ def stale(files: dict[Path, str]) -> list[str]:
             problems.append(f"missing: {rel}")
         elif on_disk.read_text(encoding="utf-8") != content:
             problems.append(f"outdated: {rel}")
-    skills_dir = ROOT / "claude-plugin" / "skills"
-    if skills_dir.is_dir():
-        expected = {ROOT / rel for rel in files}
-        for skill_md in skills_dir.glob("*/SKILL.md"):
-            if skill_md not in expected:
-                problems.append(f"orphaned: {skill_md.relative_to(ROOT)}")
+    plugin_dir = ROOT / "claude-plugin"
+    if plugin_dir.is_dir():
+        expected = {ROOT / rel for rel in files if rel.is_relative_to("claude-plugin")}
+        actual = {
+            path
+            for path in plugin_dir.rglob("*")
+            if path.is_file() or path.is_symlink()
+        }
+        for path in sorted(actual - expected):
+            problems.append(f"unexpected: {path.relative_to(ROOT)}")
     return problems
 
 

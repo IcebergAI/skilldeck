@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           enable-cache: true
@@ -34,6 +36,8 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           enable-cache: true
@@ -44,16 +48,59 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-      - name: Build wheel and sdist
-        run: uv build
-      - name: Verify skills are bundled in the wheel
+        with:
+          python-version: "3.14"
+      - name: Stamp simulated immutable source identity
+        id: release
         run: |
-          python - <<'PY'
-          import glob, zipfile, sys
-          names = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
-          skills = [n for n in names if n.startswith("skilldeck/skills/")]
-          assert any(n.endswith("meta.yaml") for n in skills), "no skill meta.yaml in wheel"
-          assert any(n.endswith("skill.md") for n in skills), "no skill.md in wheel"
-          print(f"ok: {len(skills)} skill files bundled")
-          PY
+          VERSION=$(python3 -c 'import re; print(re.search(r"^version\s*=\s*\"([^\"]+)\"", open("pyproject.toml").read(), re.M).group(1))')
+          python3 scripts/stamp_build_metadata.py \
+            --source-ref "refs/tags/v${VERSION}" \
+            --source-commit "$GITHUB_SHA"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Build wheel and sdist
+        run: |
+          uv build --out-dir dist
+          python3 -c 'from pathlib import Path; Path("dist/.gitignore").unlink(missing_ok=True)'
+      - name: Verify Python distributions and plugin share one identity
+        env:
+          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          uv run --extra dev python scripts/verify_distribution_identity.py \
+            --wheel dist/*.whl \
+            --sdist dist/*.tar.gz \
+            --plugin-dir claude-plugin \
+            --expected-version "$EXPECTED_VERSION" \
+            --expected-ref "refs/tags/v${EXPECTED_VERSION}" \
+            --expected-commit "$GITHUB_SHA"
+      - name: Install only the release wheel and runtime dependencies
+        run: |
+          uv venv .release-venv --python 3.14
+          uv pip install --python .release-venv/bin/python dist/*.whl
+          .release-venv/bin/skilldeck provenance --json > /tmp/skilldeck-provenance.json
+      - name: Generate SPDX runtime SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: .release-venv
+          format: spdx-json
+          output-file: dist/skilldeck-${{ steps.release.outputs.version }}.spdx.json
+          artifact-name: skilldeck-${{ steps.release.outputs.version }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          dependency-snapshot: false
+          syft-version: v1.51.0
+      - name: Validate SBOM and exact checksum set
+        run: |
+          python3 scripts/verify_sbom.py dist/*.spdx.json
+          python3 scripts/write_checksums.py dist
+          python3 scripts/write_checksums.py --verify dist/SHA256SUMS
+      - name: Upload candidate trust bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-candidate-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
