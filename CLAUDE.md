@@ -49,6 +49,13 @@ Skilldeck is a collection of skills for coding assistants to use mostly for secu
   marketplace tree, **generated** by `scripts/build_plugin.py` from the
   canonical skills; regenerate after changing skills or the project version (a
   pytest freshness guard enforces this), never edit by hand
+- `src/skilldeck/_content_manifest.json` +
+  `claude-plugin/.skilldeck/content-manifest.json` — identical generated
+  canonical and rendered-skill identities; regenerated with the plugin tree,
+  never edited by hand
+- `src/skilldeck/_build_metadata.json` — development placeholder; only
+  `scripts/stamp_build_metadata.py` may add an exact release tag/full commit in
+  the authorized tag workflow
 
 ## Conventions
 - Skills are authored once in `src/skilldeck/skills/`; never hand-edit per-agent
@@ -75,4 +82,7 @@ Skilldeck is a collection of skills for coding assistants to use mostly for secu
   stay in sync — `scripts/check_release_consistency.py` enforces this in CI and
   `pytest`. A dated CHANGELOG section without a matching `v*` tag is prepared, not
   published.
- 
+- Release CI must build once, verify wheel/sdist/plugin identity, produce a
+  runtime-only SPDX SBOM and exact checksums, attest those bytes, then publish
+  the same bundle. Keep build, attest, PyPI, and GitHub-release permissions in
+  separate jobs and preserve the post-publication readback/tamper gate.

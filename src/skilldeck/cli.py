@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from itertools import groupby
 
 import click
 
 from .adapters import ADAPTERS, InstallState
+from .provenance import distribution_provenance
 from .registry import Skill, SkillError, discover_skills
 from .stamp import parse as parse_stamp
 from .targets import Scope
@@ -160,6 +162,34 @@ def show(name: str, agent: str | None) -> None:
             raise SkillError(f"{name} does not support {agent}")
         text = adapter.render(skill)
     click.echo(text if text.endswith("\n") else text + "\n", nl=False)
+
+
+@cli.command()
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Emit deterministic machine-readable provenance metadata.",
+)
+def provenance(as_json: bool) -> None:
+    """Show the package source and bundled skill identities."""
+    data = distribution_provenance()
+    if as_json:
+        click.echo(json.dumps(data, indent=2, sort_keys=True))
+        return
+
+    package = data["distribution"]
+    click.echo(f"{package['name']} {package['version']}")
+    click.echo(f"repository: {package['source_repository']}")
+    click.echo(f"source ref: {package['source_ref'] or 'unavailable'}")
+    click.echo(f"source commit: {package['source_commit'] or 'unavailable'}")
+    click.echo("bundled skills:")
+    width = max(len(skill["name"]) for skill in data["skills"])
+    for skill in data["skills"]:
+        click.echo(
+            f"  {skill['name']:<{width}}  {skill['version']}  "
+            f"{skill['canonical_sha256']}"
+        )
 
 
 @cli.command()

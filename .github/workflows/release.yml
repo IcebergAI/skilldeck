@@ -1,9 +1,8 @@
 name: Release
 
-# Publishes to PyPI when a version tag is pushed (e.g. v0.1.0).
-# Uses PyPI Trusted Publishing (OIDC) — no API token needed. Before the first
-# release, configure a trusted publisher on PyPI for this repo + workflow and
-# create a GitHub environment named "pypi".
+# A tag is the explicit release authorization. The workflow builds once, then
+# carries the same verified bytes through attestation, PyPI, GitHub, and
+# independent channel readback.
 on:
   push:
     tags: ["v*"]
@@ -14,26 +13,216 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.release.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Verify tag matches package version and CHANGELOG
-        run: python3 scripts/check_release_consistency.py --tag "${GITHUB_REF_NAME}"
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-      - run: uv build
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: dist
+          persist-credentials: false
+      - name: Verify tag, package version, and CHANGELOG
+        run: python3 scripts/check_release_consistency.py --tag "$GITHUB_REF_NAME"
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.14"
+          enable-cache: false
+      - name: Stamp exact release source identity
+        id: release
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 scripts/stamp_build_metadata.py \
+            --source-ref "$GITHUB_REF" \
+            --source-commit "$GITHUB_SHA"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Build wheel and source distribution
+        run: |
+          uv build --out-dir dist
+          python3 -c 'from pathlib import Path; Path("dist/.gitignore").unlink(missing_ok=True)'
+      - name: Verify distributions and tagged plugin identity
+        env:
+          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          uv run --extra dev python scripts/verify_distribution_identity.py \
+            --wheel dist/*.whl \
+            --sdist dist/*.tar.gz \
+            --plugin-dir claude-plugin \
+            --expected-version "$EXPECTED_VERSION" \
+            --expected-ref "$GITHUB_REF" \
+            --expected-commit "$GITHUB_SHA"
+      - name: Install only release runtime dependencies
+        run: |
+          uv venv .release-venv --python 3.14
+          uv pip install --python .release-venv/bin/python dist/*.whl
+          .release-venv/bin/skilldeck provenance --json > /tmp/skilldeck-provenance.json
+      - name: Generate SPDX runtime SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: .release-venv
+          format: spdx-json
+          output-file: dist/skilldeck-${{ steps.release.outputs.version }}.spdx.json
+          artifact-name: skilldeck-${{ steps.release.outputs.version }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          dependency-snapshot: false
+          syft-version: v1.51.0
+      - name: Validate SBOM and exact checksum set
+        run: |
+          python3 scripts/verify_sbom.py dist/*.spdx.json
+          python3 scripts/write_checksums.py dist
+          python3 scripts/write_checksums.py --verify dist/SHA256SUMS
+      - name: Upload immutable release bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-bundle
           path: dist/
+          if-no-files-found: error
 
-  publish:
+  attest:
     needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-bundle
+          path: dist
+      - name: Re-verify downloaded bundle
+        run: python3 scripts/write_checksums.py --verify dist/SHA256SUMS
+      - name: Attest artifact build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: dist/SHA256SUMS
+      - name: Attest checksum-file build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/SHA256SUMS
+      - name: Attest wheel and source-distribution SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.whl
+            dist/*.tar.gz
+          sbom-path: dist/skilldeck-${{ needs.build.outputs.version }}.spdx.json
+
+  publish-pypi:
+    needs: [build, attest]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      id-token: write  # required for trusted publishing
+      contents: read
+      id-token: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: dist
-          path: dist/
+          name: release-bundle
+          path: release-bundle
+      - name: Re-verify and isolate Python distributions
+        run: |
+          python3 scripts/write_checksums.py --verify release-bundle/SHA256SUMS
+          mkdir publish
+          cp release-bundle/*.whl release-bundle/*.tar.gz publish/
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          packages-dir: publish
+
+  github-release:
+    needs: [build, attest, publish-pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-bundle
+          path: release-bundle
+      - name: Verify and publish the existing tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/write_checksums.py --verify release-bundle/SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" release-bundle/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --generate-notes \
+            --title "Skilldeck ${GITHUB_REF_NAME#v}"
+
+  verify-channels:
+    needs: [build, github-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.14"
+          enable-cache: false
+      - name: Download fresh GitHub Release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$GITHUB_REF_NAME" --dir downloaded
+      - name: Verify fresh bytes, GitHub attestations, and PyPI attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/write_checksums.py --verify downloaded/SHA256SUMS
+          for ARTIFACT in downloaded/*.whl downloaded/*.tar.gz; do
+            BASENAME=$(basename "$ARTIFACT")
+            gh attestation verify "$ARTIFACT" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+              --source-ref "$GITHUB_REF" \
+              --source-digest "$GITHUB_SHA" \
+              --deny-self-hosted-runners
+            gh attestation verify "$ARTIFACT" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+              --source-ref "$GITHUB_REF" \
+              --source-digest "$GITHUB_SHA" \
+              --deny-self-hosted-runners \
+              --predicate-type https://spdx.dev/Document/v2.3
+            uvx --from pypi-attestations==0.0.29 pypi-attestations verify pypi \
+              --repository https://github.com/IcebergAI/skilldeck \
+              "pypi:$BASENAME"
+          done
+      - name: Re-verify distribution identity from downloaded assets
+        env:
+          EXPECTED_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          uv run --extra dev python scripts/verify_distribution_identity.py \
+            --wheel downloaded/*.whl \
+            --sdist downloaded/*.tar.gz \
+            --plugin-dir claude-plugin \
+            --expected-version "$EXPECTED_VERSION" \
+            --expected-ref "$GITHUB_REF" \
+            --expected-commit "$GITHUB_SHA"
+      - name: Prove tampering is rejected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp -R downloaded tampered
+          printf 'tampered' >> tampered/*.whl
+          if python3 scripts/write_checksums.py --verify tampered/SHA256SUMS; then
+            echo "checksum verification accepted a tampered wheel" >&2
+            exit 1
+          fi
+          if gh attestation verify tampered/*.whl --repo "$GITHUB_REPOSITORY"; then
+            echo "attestation verification accepted a tampered wheel" >&2
+            exit 1
+          fi

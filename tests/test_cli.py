@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -137,6 +138,36 @@ def test_show_unknown_skill_fails():
     result = CliRunner().invoke(cli, ["show", "does-not-exist"])
     assert result.exit_code != 0
     assert isinstance(result.exception, Exception)
+
+
+def test_provenance_reports_package_source_and_bundled_versions():
+    result = CliRunner().invoke(cli, ["provenance", "--json"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data["schema_version"] == 1
+    assert data["distribution"]["name"] == "skilldeck"
+    assert data["distribution"]["source_repository"] == (
+        "https://github.com/IcebergAI/skilldeck"
+    )
+    assert data["distribution"]["source_ref"] is None
+    assert data["distribution"]["source_commit"] is None
+    expected = {skill.name: skill.version for skill in discover_skills()}
+    actual = {skill["name"]: skill["version"] for skill in data["skills"]}
+    assert actual == expected
+    assert all(
+        skill["canonical_sha256"].startswith("sha256:")
+        and len(skill["canonical_sha256"]) == 71
+        for skill in data["skills"]
+    )
+
+
+def test_provenance_human_output_is_readable():
+    result = CliRunner().invoke(cli, ["provenance"])
+    assert result.exit_code == 0, result.output
+    assert "repository: https://github.com/IcebergAI/skilldeck" in result.output
+    assert "source ref: unavailable" in result.output
+    assert "security-review" in result.output
+    assert "sha256:" in result.output
 
 
 def test_install_over_modified_file_fails_without_force(tmp_path, monkeypatch):
