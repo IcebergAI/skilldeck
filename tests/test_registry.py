@@ -102,3 +102,128 @@ def test_discover_sorted(tmp_path):
     _write_skill(tmp_path, "alpha")
     names = [s.name for s in discover_skills(tmp_path)]
     assert names == ["alpha", "bravo"]
+
+
+def _write_meta(root, name="demo", **overrides):
+    """Write a skill whose meta.yaml fields are raw YAML, overridable per test."""
+    fields = {
+        "name": name,
+        "description": "a test skill",
+        "category": "testing",
+        "version": "0.1.0",
+        "supported-agents": "[claude]",
+        **overrides,
+    }
+    skill_dir = root / name
+    skill_dir.mkdir()
+    (skill_dir / "meta.yaml").write_text(
+        "".join(f"{key}: {value}\n" for key, value in fields.items())
+    )
+    (skill_dir / "skill.md").write_text("body")
+    return skill_dir
+
+
+def test_bundled_skills_pass_validation():
+    from skilldeck.adapters import ADAPTERS
+
+    skills = discover_skills(known_agents=set(ADAPTERS))
+    assert skills
+    assert all(isinstance(skill.version, str) for skill in skills)
+
+
+@pytest.mark.parametrize("raw", ["1.10", "1", "2.0", "true"])
+def test_unquoted_numeric_version_is_rejected_with_a_hint(tmp_path, raw):
+    # #97: YAML reads ``version: 1.10`` as the float 1.1; stringifying it would
+    # record the wrong version, so the author is told to quote it instead.
+    skill_dir = _write_meta(tmp_path, version=raw)
+    with pytest.raises(SkillError, match="version must be a string.*quote it"):
+        load_skill(skill_dir)
+
+
+@pytest.mark.parametrize("raw", ['"1.10"', '"v1.0.0"', '"1.0.0-rc1"', '"01.0.0"'])
+def test_version_must_be_major_minor_patch(tmp_path, raw):
+    skill_dir = _write_meta(tmp_path, version=raw)
+    with pytest.raises(SkillError, match="MAJOR.MINOR.PATCH"):
+        load_skill(skill_dir)
+
+
+@pytest.mark.parametrize("raw", ['"1.10.0"', "0.1.0", "'10.0.3'"])
+def test_valid_versions_are_kept_verbatim(tmp_path, raw):
+    skill = load_skill(_write_meta(tmp_path, version=raw))
+    assert skill.version == raw.strip("\"'")
+
+
+@pytest.mark.parametrize(
+    "field,raw",
+    [
+        ("name", "123"),
+        ("name", "''"),
+        ("description", "[a, b]"),
+        ("description", "{a: b}"),
+        ("description", "''"),
+        ("description", "'   '"),
+        ("description", "42"),
+        ("category", "[security]"),
+        ("category", "''"),
+        ("category", "null"),
+    ],
+)
+def test_text_fields_must_be_non_empty_strings(tmp_path, field, raw):
+    skill_dir = _write_meta(tmp_path, **{field: raw})
+    with pytest.raises(SkillError, match=f"{field} must be a non-empty string"):
+        load_skill(skill_dir)
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["Demo", "-demo", "demo-", "de--mo", "de_mo", "de.mo", "a" * 65],
+)
+def test_name_must_be_a_short_slug(tmp_path, name):
+    # Agent Skills spec: 1-64 of [a-z0-9-], no leading/trailing/double hyphen.
+    # Adapters also build file paths from the name.
+    skill_dir = _write_meta(tmp_path, name=name)
+    with pytest.raises(SkillError, match="lowercase letters, digits"):
+        load_skill(skill_dir)
+
+
+def test_name_at_the_length_limit_is_accepted(tmp_path):
+    name = "a" * 64
+    assert load_skill(_write_meta(tmp_path, name=name)).name == name
+
+
+def test_description_must_be_a_single_line(tmp_path):
+    skill_dir = _write_meta(tmp_path, description="|\n  line one\n  line two")
+    with pytest.raises(SkillError, match="single line"):
+        load_skill(skill_dir)
+
+
+def test_description_length_is_capped(tmp_path):
+    assert load_skill(_write_meta(tmp_path, description="x" * 1024))
+    skill_dir = _write_meta(tmp_path, name="other", description="x" * 1025)
+    with pytest.raises(SkillError, match="1025 characters; the limit is 1024"):
+        load_skill(skill_dir)
+
+
+def test_supported_agents_must_be_strings(tmp_path):
+    skill_dir = _write_meta(tmp_path, **{"supported-agents": "[claude, 3]"})
+    with pytest.raises(SkillError, match="entries must be strings"):
+        load_skill(skill_dir)
+
+
+def test_supported_agents_must_be_a_list(tmp_path):
+    skill_dir = _write_meta(tmp_path, **{"supported-agents": "claude"})
+    with pytest.raises(SkillError, match="non-empty list"):
+        load_skill(skill_dir)
+
+
+def test_duplicate_supported_agents_rejected(tmp_path):
+    skill_dir = _write_meta(tmp_path, **{"supported-agents": "[claude, codex, claude]"})
+    with pytest.raises(SkillError, match="more than once: claude"):
+        load_skill(skill_dir)
+
+
+def test_invalid_yaml_is_a_clean_error(tmp_path):
+    skill_dir = _write_meta(tmp_path)
+    (skill_dir / "meta.yaml").write_text("name: [unclosed\n")
+    with pytest.raises(SkillError, match="not valid YAML"):
+        load_skill(skill_dir)

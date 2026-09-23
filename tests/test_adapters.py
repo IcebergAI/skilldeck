@@ -1,9 +1,13 @@
+import dataclasses
+import os
+import stat
+import sys
 from pathlib import Path
 
 import pytest
 import yaml
 
-from skilldeck.adapters import ADAPTERS, InstallState
+from skilldeck.adapters import ADAPTERS, InstallState, base
 from skilldeck.registry import Skill, SkillError
 from skilldeck.stamp import parse as parse_stamp
 from skilldeck.targets import Scope
@@ -263,3 +267,180 @@ def test_uninstall_keeps_shared_dir_named_like_the_skill(tmp_path, agent, name):
     adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path)
     shared_dir = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path).parent
     assert shared_dir.is_dir()
+
+
+def test_uninstall_refuses_unmanaged_file_unless_forced(skill, tmp_path):
+    # #95: uninstall deletes, so it must honour the same stamp checks as install.
+    adapter = ADAPTERS["cursor"]
+    dest = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path)
+    dest.parent.mkdir(parents=True)
+    dest.write_text("my own rule\n")
+
+    with pytest.raises(SkillError, match="not written by skilldeck.*--force"):
+        adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path)
+    assert dest.read_text() == "my own rule\n"
+
+    removed = adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path, force=True)
+    assert removed == dest
+    assert not dest.exists()
+
+
+def test_uninstall_refuses_modified_install_unless_forced(skill, tmp_path):
+    adapter = ADAPTERS["claude"]
+    dest = adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+    dest.write_text(dest.read_text() + "local edit\n")
+
+    with pytest.raises(SkillError, match="local modifications.*--force"):
+        adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path)
+    assert "local edit" in dest.read_text()
+
+    adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path, force=True)
+    assert not dest.exists()
+    assert not dest.parent.exists()
+
+
+def test_uninstall_removes_a_stale_install_without_force(skill, tmp_path):
+    adapter = ADAPTERS["codex"]
+    adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+    newer = dataclasses.replace(skill, version="0.2.0", body="NEW BODY")
+    assert adapter.inspect(newer, Scope.PROJECT, project_root=tmp_path)[0] is (
+        InstallState.STALE
+    )
+    assert adapter.uninstall(newer, Scope.PROJECT, project_root=tmp_path) is not None
+
+
+def test_symlink_to_a_stamped_file_is_not_treated_as_an_install(skill, tmp_path):
+    # skilldeck never creates symlinks, so inspect must not follow one to a
+    # stamped file elsewhere and report it as a managed (deletable) install.
+    adapter = ADAPTERS["codex"]
+    elsewhere = tmp_path / "other-project"
+    target = adapter.install(skill, Scope.PROJECT, project_root=elsewhere)
+    dest = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path)
+    dest.parent.mkdir(parents=True)
+    dest.symlink_to(target)
+
+    assert adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path) == (
+        InstallState.UNMANAGED,
+        None,
+    )
+    with pytest.raises(SkillError, match="symlink"):
+        adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path)
+    assert dest.is_symlink()
+
+    adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path, force=True)
+    assert not dest.is_symlink()
+    assert target.is_file()  # the link target is never deleted
+    assert parse_stamp(target.read_text()) is not None
+
+
+def test_dangling_symlink_is_present_not_missing(skill, tmp_path):
+    adapter = ADAPTERS["kiro"]
+    dest = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path)
+    dest.parent.mkdir(parents=True)
+    dest.symlink_to(tmp_path / "gone")
+    state, _ = adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path)
+    assert state is InstallState.UNMANAGED
+    adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path, force=True)
+    assert not dest.is_symlink()
+
+
+def test_non_utf8_file_is_unmanaged_not_a_crash(skill, tmp_path):
+    adapter = ADAPTERS["cursor"]
+    dest = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path)
+    dest.parent.mkdir(parents=True)
+    dest.write_bytes(b"\xff\xfe binary rule")
+    assert adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path)[0] is (
+        InstallState.UNMANAGED
+    )
+    with pytest.raises(SkillError, match="not written by skilldeck"):
+        adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+    with pytest.raises(SkillError, match="not written by skilldeck"):
+        adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path)
+    assert dest.read_bytes() == b"\xff\xfe binary rule"
+
+
+def test_directory_at_destination_is_never_removed(skill, tmp_path):
+    adapter = ADAPTERS["codex"]
+    dest = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path)
+    dest.mkdir(parents=True)
+    (dest / "keep.txt").write_text("keep")
+    assert adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path)[0] is (
+        InstallState.UNMANAGED
+    )
+    with pytest.raises(SkillError, match="cannot uninstall"):
+        adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path, force=True)
+    assert (dest / "keep.txt").read_text() == "keep"
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs POSIX FIFOs")
+def test_inspect_does_not_block_on_a_fifo(skill, tmp_path):
+    adapter = ADAPTERS["codex"]
+    dest = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path)
+    dest.parent.mkdir(parents=True)
+    os.mkfifo(dest)
+    assert adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path)[0] is (
+        InstallState.UNMANAGED
+    )
+
+
+def _leftovers(directory):
+    return [p.name for p in directory.iterdir() if p.name.endswith(".tmp")]
+
+
+def test_install_leaves_no_temp_files(skill, tmp_path):
+    dest = ADAPTERS["codex"].install(skill, Scope.PROJECT, project_root=tmp_path)
+    assert _leftovers(dest.parent) == []
+
+
+def test_failed_install_keeps_the_old_file_and_cleans_up(skill, tmp_path, monkeypatch):
+    # #98: installs write a sibling temp file and os.replace it into place, so a
+    # failure part-way leaves the previous install intact and no debris behind.
+    adapter = ADAPTERS["codex"]
+    dest = adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+    before = dest.read_text()
+    newer = dataclasses.replace(skill, version="0.2.0", body="NEW BODY")
+
+    def boom(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(base.os, "replace", boom)
+    with pytest.raises(SkillError, match="cannot install demo.*disk full"):
+        adapter.install(newer, Scope.PROJECT, project_root=tmp_path)
+    assert dest.read_text() == before
+    assert _leftovers(dest.parent) == []
+
+
+def test_interrupted_install_cleans_up_its_temp_file(skill, tmp_path, monkeypatch):
+    adapter = ADAPTERS["codex"]
+    dest = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path)
+
+    def interrupt(fd):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(base.os, "fsync", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+    assert not dest.exists()
+    assert _leftovers(dest.parent) == []
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+def test_install_file_modes(skill, tmp_path):
+    adapter = ADAPTERS["codex"]
+    old_umask = os.umask(0o022)
+    try:
+        dest = adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+        # a new file gets the umask-derived mode a plain write would give it
+        assert stat.S_IMODE(dest.stat().st_mode) == 0o644
+        # an overwrite keeps the mode the user chose
+        dest.chmod(0o600)
+        adapter.install(skill, Scope.PROJECT, project_root=tmp_path, force=True)
+        assert stat.S_IMODE(dest.stat().st_mode) == 0o600
+    finally:
+        os.umask(old_umask)
+
+
+def test_check_scope(skill):
+    ADAPTERS["claude"].check_scope(Scope.GLOBAL)
+    with pytest.raises(SkillError, match="does not support --scope global"):
+        ADAPTERS["cursor"].check_scope(Scope.GLOBAL)

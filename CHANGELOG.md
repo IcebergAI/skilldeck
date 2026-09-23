@@ -92,6 +92,24 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- `status` and `update` accept `--agent` more than once, or `--agent all`, like
+  `install` and `uninstall`. When more than one agent is selected, each
+  agent's results appear under a header (#98).
+- `--agent all` now means every agent that supports the chosen `--scope`. With
+  `--scope global`, the project-only agents (Copilot, Cursor) are skipped with
+  a note, where `install` used to report an error for each skill. Naming a
+  project-only agent explicitly with `--scope global` is still an error (#98).
+- Installs are atomic. The file is written to a temporary file in the same
+  directory and then renamed into place with `os.replace`, so an interrupted
+  install can't leave a half-written skill behind. The temporary file is
+  removed if anything fails, a new file gets the usual umask-based
+  permissions, and an overwritten file keeps its own (#98).
+- Passing skill names together with `--all` to `install` or `uninstall` is now
+  a usage error. Previously the names were silently ignored (#98).
+- `docs/adapters.md` now says that symlinked parent directories of an install
+  path are followed on purpose, and that `CODEX_HOME` and `CLAUDE_CONFIG_DIR`
+  are not read yet. Support for those two variables is deferred to the adapter
+  updates (#98).
 - `dependency-review` (0.2.1): advisory-ID guard rephrased to lead with the
   shared "Verify before reporting" instruction so the structural lint can
   assert it uniformly.
@@ -115,6 +133,35 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- `uninstall` no longer deletes files that skilldeck didn't write or that have
+  local edits. Like `install`, it refuses unless the new `uninstall --force` is
+  given. It also reports per-skill errors, carries on, and exits 1 at the end
+  (#95).
+- A symlink at an install path is no longer followed when skilldeck checks
+  that path. It counts as unmanaged, so a link to a stamped file elsewhere
+  can't pass for an install here. `uninstall --force` removes only the link,
+  never its target (#95).
+- A non-UTF-8 file, a directory, or a FIFO at an install path now counts as
+  unmanaged. Before, the non-UTF-8 file and the directory crashed the command
+  with a traceback, and reading the FIFO blocked it indefinitely (#95, #96).
+- `status` lists a file as an orphan only when it carries a skilldeck stamp. It
+  no longer reports your own prompts, rules, or skills that share an install
+  directory. Unreadable entries in those directories are skipped instead of
+  crashing the command. Orphans with local edits are marked as modified
+  (#96).
+- `meta.yaml` values are now type-checked (#97). `name`, `description`, and
+  `category` must be non-empty strings. `name` must follow the Agent Skills
+  rules: at most 64 characters of `a-z`, `0-9` and `-`, with no leading,
+  trailing, or doubled hyphen. `description` must be a single line of at most
+  1024 characters. `version` must be a YAML string of the form
+  `MAJOR.MINOR.PATCH`. An unquoted `version: 1.10`, which YAML reads as the
+  number `1.1`, used to be recorded as `"1.1"`; it is now rejected with a
+  message to quote it. `supported-agents` must be a list of strings with no
+  repeats. Invalid YAML now gives a clean error instead of a traceback.
+- `update` no longer stops at the first failure. It reports the error for that
+  skill, updates the rest, and exits 1 at the end (#98).
+- `status` and `provenance` no longer crash when there are no skills to list
+  (#98).
 - A `meta.yaml` that parses to something other than a YAML mapping now fails
   with a clean `error:` message instead of a `TypeError` traceback (which also
   broke every command, since discovery loads all skills).

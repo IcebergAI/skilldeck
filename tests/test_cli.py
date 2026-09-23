@@ -5,8 +5,11 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from skilldeck.adapters import ADAPTERS, base
 from skilldeck.cli import cli, main
+from skilldeck.provenance import distribution_provenance
 from skilldeck.registry import Skill, discover_skills
+from skilldeck.stamp import stamp
 
 
 def test_list_includes_bundled_skill():
@@ -76,6 +79,95 @@ def test_uninstall_removes_installed_skill(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "removed security-review" in result.output
     assert not (tmp_path / ".claude/skills/security-review/SKILL.md").exists()
+
+
+def test_uninstall_refuses_a_file_skilldeck_did_not_write(tmp_path, monkeypatch):
+    # #95: a hand-written rule at the destination is not skilldeck's to delete.
+    monkeypatch.chdir(tmp_path)
+    own = tmp_path / ".cursor/rules/security-review.mdc"
+    own.parent.mkdir(parents=True)
+    own.write_text("my own hand-written rule\n")
+    runner = CliRunner()
+    result = runner.invoke(cli, ["uninstall", "security-review", "--agent", "cursor"])
+    assert result.exit_code == 1
+    assert "was not written by skilldeck" in result.output
+    assert "--force" in result.output
+    assert own.read_text() == "my own hand-written rule\n"
+
+    result = runner.invoke(
+        cli, ["uninstall", "security-review", "--agent", "cursor", "--force"]
+    )
+    assert result.exit_code == 0, result.output
+    assert not own.exists()
+
+
+def test_uninstall_refuses_local_modifications(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    runner.invoke(cli, ["install", "logging", "--agent", "cursor"])
+    dest = tmp_path / ".cursor/rules/logging.mdc"
+    dest.write_text(dest.read_text() + "local edit\n")
+
+    result = runner.invoke(cli, ["uninstall", "logging", "--agent", "cursor"])
+    assert result.exit_code == 1
+    assert "has local modifications" in result.output
+    assert "local edit" in dest.read_text()
+
+    result = runner.invoke(
+        cli, ["uninstall", "logging", "--agent", "cursor", "--force"]
+    )
+    assert result.exit_code == 0, result.output
+    assert not dest.exists()
+
+
+def test_uninstall_reports_errors_and_keeps_going(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    runner.invoke(cli, ["install", "--all", "--agent", "codex"])
+    edited = tmp_path / ".codex/prompts/logging.md"
+    edited.write_text(edited.read_text() + "mine\n")
+
+    result = runner.invoke(cli, ["uninstall", "--all", "--agent", "codex"])
+    assert result.exit_code == 1
+    assert "error:" in result.output and "logging.md has local modifications" in (
+        result.output
+    )
+    remaining = sorted(p.name for p in (tmp_path / ".codex/prompts").iterdir())
+    assert remaining == ["logging.md"]  # every other skill was still removed
+
+
+def test_uninstall_force_removes_a_symlink_but_not_its_target(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "team-rules/security-review.md"
+    target.parent.mkdir()
+    target.write_text("shared team prompt\n")
+    link = tmp_path / ".codex/prompts/security-review.md"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(target)
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["uninstall", "security-review", "--agent", "codex"])
+    assert result.exit_code == 1
+    assert "is a symlink skilldeck did not create" in result.output
+    assert link.is_symlink()
+
+    result = runner.invoke(
+        cli, ["uninstall", "security-review", "--agent", "codex", "--force"]
+    )
+    assert result.exit_code == 0, result.output
+    assert not link.is_symlink() and not link.exists()
+    assert target.read_text() == "shared team prompt\n"
+
+
+@pytest.mark.parametrize("command", ["install", "uninstall"])
+def test_names_and_all_are_mutually_exclusive(tmp_path, monkeypatch, command):
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(
+        cli, [command, "security-review", "--all", "--agent", "claude"]
+    )
+    assert result.exit_code == 2  # click usage error
+    assert "not both" in result.output
+    assert not (tmp_path / ".claude").exists()
 
 
 def test_uninstall_reports_when_not_installed(tmp_path, monkeypatch):
@@ -212,11 +304,132 @@ def test_status_reports_orphans(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     orphan = tmp_path / ".claude/skills/retired-skill/SKILL.md"
     orphan.parent.mkdir(parents=True)
-    orphan.write_text("left behind\n")
+    orphan.write_text(stamp("left behind\n", "retired-skill", "0.1.0"))
     result = CliRunner().invoke(cli, ["status", "--agent", "claude"])
     assert result.exit_code == 0
     assert "orphan:" in result.output
-    assert "retired-skill" in result.output
+    assert "retired-skill 0.1.0" in result.output
+
+
+def test_status_orphans_flag_local_edits(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    orphan = tmp_path / ".codex/prompts/retired.md"
+    orphan.parent.mkdir(parents=True)
+    orphan.write_text(stamp("old\n", "retired", "0.1.0").replace("old", "mine"))
+    result = CliRunner().invoke(cli, ["status", "--agent", "codex"])
+    assert result.exit_code == 0, result.output
+    assert "(retired 0.1.0, modified locally)" in result.output
+
+
+@pytest.mark.parametrize(
+    "agent,relative",
+    [
+        ("copilot", ".github/prompts/deploy.prompt.md"),
+        ("cursor", ".cursor/rules/team-style.mdc"),
+        ("codex", ".codex/prompts/my-prompt.md"),
+        ("kiro", ".kiro/steering/product.md"),
+        ("claude", ".claude/skills/my-own-skill/SKILL.md"),
+    ],
+)
+def test_status_ignores_users_own_files_in_shared_dirs(
+    tmp_path, monkeypatch, agent, relative
+):
+    # The user's own prompts/rules live next to skilldeck's installs; only
+    # files carrying a skilldeck stamp can be skilldeck orphans (#96).
+    monkeypatch.chdir(tmp_path)
+    own = tmp_path / relative
+    own.parent.mkdir(parents=True)
+    own.write_text("my prompt\n")
+    result = CliRunner().invoke(cli, ["status", "--agent", agent])
+    assert result.exit_code == 0, result.output
+    assert "orphan" not in result.output
+
+
+def test_status_skips_unreadable_files_in_shared_dirs(tmp_path, monkeypatch):
+    # Shared dirs can hold anything: binary files, directories, dangling links
+    # whose names match the install glob. None of it may crash status (#96).
+    monkeypatch.chdir(tmp_path)
+    shared = tmp_path / ".cursor/rules"
+    shared.mkdir(parents=True)
+    (shared / "binary.mdc").write_bytes(b"\xff\xfe\x00 not utf-8")
+    (shared / "a-directory.mdc").mkdir()
+    (shared / "dangling.mdc").symlink_to(tmp_path / "missing")
+    stamped = tmp_path / "elsewhere.mdc"
+    stamped.write_text(stamp("x\n", "linked", "1.0.0"))
+    (shared / "linked.mdc").symlink_to(stamped)
+    result = CliRunner().invoke(cli, ["status", "--agent", "cursor"])
+    assert result.exit_code == 0, result.output
+    assert "orphan" not in result.output
+
+
+def test_status_accepts_several_agents_with_headers(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    runner.invoke(cli, ["install", "security-review", "--agent", "codex"])
+    result = runner.invoke(cli, ["status", "--agent", "claude", "--agent", "codex"])
+    assert result.exit_code == 0, result.output
+    claude_part, codex_part = result.output.split("\ncodex:\n")
+    assert claude_part.startswith("claude:\n")
+    assert "not installed" in claude_part.split("security-review")[1].split("\n")[0]
+    assert "up to date" in codex_part.split("security-review")[1].split("\n")[0]
+
+
+def test_status_agent_all_covers_every_adapter(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(cli, ["status", "--agent", "all"])
+    assert result.exit_code == 0, result.output
+    headers = [line for line in result.output.splitlines() if line.endswith(":")]
+    assert headers == [f"{name}:" for name in sorted(ADAPTERS)]
+
+
+def test_single_agent_status_has_no_header(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(cli, ["status", "--agent", "claude"])
+    assert result.exit_code == 0, result.output
+    assert "claude:" not in result.output
+
+
+def test_agent_all_skips_agents_without_the_scope(tmp_path, monkeypatch):
+    # cursor/copilot are project-only; 'all' means every agent that can
+    # install at the requested scope, so they are skipped rather than failed.
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    result = CliRunner().invoke(cli, ["status", "--agent", "all", "--scope", "global"])
+    assert result.exit_code == 0, result.output
+    assert "skip copilot: no --scope global support" in result.output
+    assert "skip cursor: no --scope global support" in result.output
+    headers = [line for line in result.output.splitlines() if line.endswith(":")]
+    assert headers == ["claude:", "codex:", "kiro:"]
+
+    result = CliRunner().invoke(
+        cli, ["install", "security-review", "--agent", "all", "--scope", "global"]
+    )
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / ".codex/prompts/security-review.md").is_file()
+    assert not (tmp_path / ".cursor").exists()
+
+
+def test_explicit_agent_without_the_scope_is_an_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    result = CliRunner().invoke(
+        cli, ["status", "--agent", "cursor", "--agent", "codex", "--scope", "global"]
+    )
+    assert result.exit_code == 1
+    assert "error: cursor does not support --scope global" in result.output
+    assert "security-review" in result.output  # codex still reported
+
+
+def test_status_and_provenance_handle_an_empty_skill_list(monkeypatch):
+    monkeypatch.setattr("skilldeck.cli.discover_skills", lambda **kw: [])
+    result = CliRunner().invoke(cli, ["status", "--agent", "claude"])
+    assert result.exit_code == 0, result.output
+
+    real = distribution_provenance()
+    monkeypatch.setattr(
+        "skilldeck.cli.distribution_provenance", lambda: {**real, "skills": []}
+    )
+    result = CliRunner().invoke(cli, ["provenance"])
+    assert result.exit_code == 0, result.output
+    assert "bundled skills:\n  (none)" in result.output
 
 
 def test_update_refreshes_stale_and_skips_modified(tmp_path, monkeypatch):
@@ -227,8 +440,6 @@ def test_update_refreshes_stale_and_skips_modified(tmp_path, monkeypatch):
     )
     stale = tmp_path / ".claude/skills/security-review/SKILL.md"
     # simulate an install from an older skilldeck: rewrite with an old stamp
-    from skilldeck.stamp import stamp
-
     stale.write_text(stamp("old body\n", "security-review", "0.0.1"))
     modified = tmp_path / ".claude/skills/test-review/SKILL.md"
     modified.write_text(modified.read_text() + "my tweak\n")
@@ -251,6 +462,62 @@ def test_update_with_nothing_installed_is_a_noop(tmp_path, monkeypatch):
     result = CliRunner().invoke(cli, ["update", "--agent", "claude"])
     assert result.exit_code == 0
     assert "nothing to update" in result.output
+
+
+def _make_stale(path, name):
+    path.write_text(stamp("old body\n", name, "0.0.1"))
+
+
+def test_update_reports_an_error_and_keeps_going(tmp_path, monkeypatch):
+    # One failing destination must not abort the rest of the update (#98).
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    runner.invoke(
+        cli, ["install", "security-review", "test-review", "--agent", "claude"]
+    )
+    skills_dir = tmp_path / ".claude/skills"
+    _make_stale(skills_dir / "security-review/SKILL.md", "security-review")
+    _make_stale(skills_dir / "test-review/SKILL.md", "test-review")
+
+    real_write = base.write_atomic
+
+    def flaky_write(dest, text):
+        if dest.parent.name == "security-review":
+            raise OSError("disk full")
+        real_write(dest, text)
+
+    monkeypatch.setattr(base, "write_atomic", flaky_write)
+    result = runner.invoke(cli, ["update", "--agent", "claude"])
+    assert result.exit_code == 1
+    assert "error: cannot install security-review" in result.output
+    assert "disk full" in result.output
+    assert "updated test-review (0.0.1 ->" in result.output
+    assert "old body" in (skills_dir / "security-review/SKILL.md").read_text()
+
+
+def test_update_accepts_several_agents(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    runner.invoke(cli, ["install", "logging", "--agent", "claude", "--agent", "kiro"])
+    _make_stale(tmp_path / ".kiro/steering/logging.md", "logging")
+    result = runner.invoke(cli, ["update", "--agent", "all"])
+    assert result.exit_code == 0, result.output
+    assert "claude:\n  nothing to update" in result.output
+    assert "kiro:\n  updated logging (0.0.1 ->" in result.output
+    assert "old body" not in (tmp_path / ".kiro/steering/logging.md").read_text()
+
+
+def test_update_leaves_a_symlinked_destination_alone(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "shared-copy.md"
+    target.write_text(stamp("old body\n", "logging", "0.0.1"))
+    dest = tmp_path / ".codex/prompts/logging.md"
+    dest.parent.mkdir(parents=True)
+    dest.symlink_to(target)
+    result = CliRunner().invoke(cli, ["update", "--agent", "codex"])
+    assert result.exit_code == 0, result.output
+    assert "skip logging: symlink, not managed by skilldeck" in result.output
+    assert dest.is_symlink() and "old body" in target.read_text()
 
 
 def test_main_reports_skill_error_cleanly(monkeypatch):
