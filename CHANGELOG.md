@@ -116,6 +116,41 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Five review skills cover defect classes their checklists missed, each
+  cited to a fetched source (#104):
+  - `ci-workflow-review` 0.4.0: newline injection through writes to
+    `$GITHUB_ENV`, `$GITHUB_OUTPUT`, and `$GITHUB_PATH`; `${{ }}` in
+    `actions/github-script` `script:` as JavaScript injection; label,
+    `issue_comment`, and environment-approval gates that check out a mutable
+    PR ref (time-of-check/time-of-use); `secrets: inherit`; `actions/checkout`
+    without `persist-credentials: false`; and a step not to re-flag what
+    zizmor or actionlint already report. A new eval fixture,
+    `ci-workflow-review-env-injection`, plants a `workflow_run` job that
+    writes a fork-controlled artifact into `$GITHUB_ENV` after a checkout
+    that persists its token.
+  - `iac-review` 0.3.0: CI OIDC trust that any repository or ref can satisfy
+    (no `sub` condition or a wildcard on an AWS role, no attribute condition
+    on a GCP pool, a broad Azure flexible federated credential), rated
+    critical; EC2 instances and launch templates that don't require IMDSv2;
+    and audit logging (CloudTrail, GCP audit configs, Azure activity-log
+    export) switched off or narrowed.
+  - `migration-review` 0.4.0: MySQL/MariaDB metadata-lock waits and
+    `lock_wait_timeout`, with gh-ost and pt-online-schema-change for large
+    rebuilds; the `INVALID` index a failed `CREATE INDEX CONCURRENTLY` leaves
+    behind; Rails column caching on a drop (`ignored_columns` first); `int` →
+    `bigint` primary keys; and PostgreSQL `NOT VALID` then `VALIDATE` for
+    CHECK and foreign-key constraints, and for not-null constraints on
+    PostgreSQL 18.
+  - `security-review` 0.5.0: SSTI (1.3.7, 1.3.5), ReDoS (1.2.9, 1.3.12), XXE
+    (1.5.1), open redirects (3.7.2), prototype pollution (15.3.6), and
+    business-logic races (2.3.4) named with their ASVS 5.0 requirements, and
+    one line sending LLM and prompt-injection surfaces to
+    `llm-integration-review`.
+  - `dependency-review` 0.4.0: `composer.lock`, `packages.lock.json`,
+    `Package.resolved`, and `bun.lock`/`bun.lockb`; Go `replace` directives;
+    pip `--extra-index-url` dependency confusion; and malware signals (new
+    install scripts, a brand-new package or version, a release with less
+    trust evidence than earlier ones, obfuscated code).
 - All review skills now rate severity on one shared rubric and agree on
   shared defects (#103). `docs/finding-output.md` defines the rubric as
   impact × likelihood, following the OWASP Risk Rating Methodology's severity

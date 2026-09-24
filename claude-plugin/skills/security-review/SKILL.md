@@ -48,21 +48,28 @@ report those only when the change gives them a concrete exploit path.
   prevent XSS (HTML, URL, JavaScript/JSON; 1.2.1–1.2.3); parameterized
   SQL/NoSQL queries and OS commands (1.2.4, 1.2.5) and other interpreter
   injection (LDAP, XPath; 1.2.6, 1.2.7); no `eval()`/dynamic code execution
-  or templates built from untrusted input (1.3.2, 1.3.7); **SSRF** —
+  (1.3.2); **SSTI** — user input used as template source rather than
+  template data, or user-supplied expression-template content (1.3.7,
+  1.3.5); **ReDoS** — user input in a regex unescaped (1.2.9), or a
+  backtracking-prone pattern run on untrusted input (1.3.12, L3); **SSRF** —
   untrusted data used to call another service validated against an allowlist
   of protocols, domains, paths, and ports (1.3.6); **safe deserialization** —
-  XML parsers with external entities disabled (XXE, 1.5.1) and no insecure
-  deserializers on untrusted input (1.5.2).
+  XML parsers with external-entity resolution off (**XXE**, 1.5.1) and no
+  insecure deserializers on untrusted input (1.5.2).
 - **V2 Validation & Business Logic** — input validated against an allow-list
   at a trusted service layer (2.2.1, 2.2.2); business-logic sequence, limits,
-  and all-or-nothing transactions enforced server-side (2.3); anti-automation
-  and rate limiting of abusable functions (2.4.1).
+  and all-or-nothing transactions enforced server-side (2.3.1–2.3.3);
+  **races** — a check-then-act on balances, stock, coupons, or bookings that
+  concurrent requests can pass twice, without a lock or atomic conditional
+  update (2.3.4); anti-automation and rate limiting of abusable functions
+  (2.4.1).
 - **V3 Web Frontend Security** — untrusted text rendered with safe DOM APIs,
   not as markup (DOM XSS: `textContent`, not `innerHTML`; 3.2.2); cookie
   `Secure`, `HttpOnly`, `SameSite`, and `__Host-` prefix (3.3); CSP, HSTS,
   `nosniff`, clickjacking protection via `frame-ancestors`, and CORS origin
-  handling (3.4); CSRF and other cross-origin request protections (3.5); open
-  redirects (3.7.2).
+  handling (3.4); CSRF and other cross-origin request protections (3.5);
+  **open redirects** — a user-supplied return URL followed to another domain
+  not on an allowlist (3.7.2).
 - **V4 API & Web Service** — correct response `Content-Type` (4.1.1) and
   only intended HTTP methods (4.1.4, L3); headers set by a proxy (e.g.
   `X-Forwarded-For`) not overridable by clients (4.1.3); request smuggling
@@ -109,15 +116,19 @@ report those only when the change gives them a concrete exploit path.
 - **V15 Secure Coding & Architecture** — risky or outdated components (15.2.1)
   and dependency confusion (15.2.4, L3; see `dependency-review`); whole
   objects returned instead of the needed fields (15.3.1) and mass assignment
-  (15.3.3); type juggling, prototype pollution, and HTTP parameter pollution
-  (15.3.5–15.3.7); race conditions and TOCTOU (15.4, L3).
+  (15.3.3); type juggling (15.3.5); **prototype pollution** — attacker-chosen
+  keys (`__proto__`, `constructor.prototype`) merged into plain objects
+  (15.3.6); HTTP parameter pollution (15.3.7); thread-safety and TOCTOU on
+  shared resources such as files (15.4.1, 15.4.2, L3).
 - **V16 Security Logging & Error Handling** — security events logged, no secrets
   or sensitive data in logs, no stack traces or internal detail leaked to users.
 - **V17 WebRTC** — only if the change touches WebRTC: TURN/STUN server abuse,
   signalling authentication, SDP and ICE handling, media-channel confidentiality.
 
 Cross-cutting: **secrets** — hardcoded credentials, tokens, or keys; secrets
-logged, committed, or returned in responses.
+logged, committed, or returned in responses. **LLM integrations** (prompt
+injection, model output reaching tools or sinks) have no ASVS 5.0 chapter;
+review them with `llm-integration-review`.
 
 ## Output
 

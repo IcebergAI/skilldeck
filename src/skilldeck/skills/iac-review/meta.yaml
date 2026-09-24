@@ -1,7 +1,7 @@
 name: iac-review
 description: Review infrastructure-as-code changes for security misconfigurations, aligned to CIS benchmark baselines and the Kubernetes Pod Security Standards.
 category: security
-version: 0.2.0
+version: 0.3.0
 supported-agents:
   - claude
   - codex

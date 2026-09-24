@@ -19,10 +19,13 @@ rest of the application surface.
    (`git ls-files --others --exclude-standard`; read them whole). If you are
    already on the base branch, review the uncommitted changes instead.
 2. Focus on dependency manifests and lockfiles, e.g.:
-   - JS/TS — `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`
+   - JS/TS — `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`,
+     `bun.lock` (a pre-1.2 binary `bun.lockb` can't be read in a diff)
    - Python — `pyproject.toml`, `requirements*.txt`, `uv.lock`, `poetry.lock`
-   - Go — `go.mod`, `go.sum`; Rust — `Cargo.toml`, `Cargo.lock`
+   - Go — `go.mod`, `go.sum`, `go.work`; Rust — `Cargo.toml`, `Cargo.lock`
    - Java — `pom.xml`, `build.gradle`; Ruby — `Gemfile`, `Gemfile.lock`
+   - PHP — `composer.json`, `composer.lock`; .NET — project files,
+     `packages.lock.json`; Swift — `Package.swift`, `Package.resolved`
    - Containers and CI — base-image and tool versions, for advisories only
      (their pins: step 4)
 3. Diff old vs new versions to see exactly what changed. If automated tooling is
@@ -46,11 +49,20 @@ rest of the application surface.
 - **Supply-chain red flags**:
   - **Typosquatting / confusion** — a name suspiciously close to a popular
     package, or an internal name resolvable from a public index (dependency
-    confusion).
+    confusion) — e.g. pip's `--extra-index-url`, whose indexes have no
+    priority, so the highest version on any of them wins
+    ([pip](https://pip.pypa.io/en/stable/cli/pip_install/)).
   - **Provenance** — source switched to a fork, a git URL, a non-canonical
-    registry, or a plain-HTTP index; signature or attestation checks
-    dropped; install/postinstall scripts newly introduced (the entry point
-    of the 2025 Shai-Hulud npm worm).
+    registry, or a plain-HTTP index, including via a Go
+    [`replace`](https://go.dev/ref/mod#go-mod-file-replace) (which only the
+    main module applies, so a library's never reaches its users); signature
+    or attestation checks dropped.
+  - **Malware signals** — install/postinstall scripts newly introduced (the
+    entry point of the 2025 Shai-Hulud npm worm); a brand-new package or a
+    version published hours ago; a release with less trust evidence than
+    earlier ones (not from the usual trusted publisher, or no provenance);
+    obfuscated code ([pnpm](https://pnpm.io/supply-chain-security),
+    [OpenSSF](https://github.com/ossf/wg-best-practices-os-developers/blob/main/docs/Concise-Guide-for-Evaluating-Open-Source-Software.md)).
   - **Trust footprint** — a new direct dependency that pulls a large transitive
     tree, or a tiny utility added for trivial functionality.
 - **Version hygiene** — mutable pins (`*`, `latest`, or a range no committed

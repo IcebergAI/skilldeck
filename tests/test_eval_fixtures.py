@@ -132,6 +132,37 @@ SAMPLE_REPORTS = {
             )
         ],
     ),
+    "ci-workflow-review-env-injection": (
+        [
+            _finding(
+                "critical",
+                "CICD-SEC-4 Poisoned Pipeline Execution",
+                ".github/workflows/preview.yml:27",
+                "the `workflow_run` job writes the fork-controlled artifact's "
+                "branch file into `$GITHUB_ENV`, so a newline in it adds "
+                "`LD_PRELOAD` for the deploy step that holds the deploy token.",
+                "validate the PR number as digits and write only that.",
+            ),
+            _finding(
+                "low",
+                "CICD-SEC-6 Insufficient Credential Hygiene",
+                ".github/workflows/preview.yml:17",
+                "the checkout leaves the job token in `.git/config` for every "
+                "later step, though nothing here pushes.",
+                "set `persist-credentials: false`.",
+            ),
+        ],
+        [
+            _finding(
+                "medium",
+                "CICD-SEC-1 Insufficient Flow Control Mechanisms",
+                ".github/workflows/preview.yml:13",
+                "any fork PR that passes CI is published to the preview site "
+                "with no environment protection rule or maintainer approval.",
+                "add an `environment:` with required reviewers.",
+            )
+        ],
+    ),
     "ci-workflow-review-gitlab": (
         [
             _finding(
