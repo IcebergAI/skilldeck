@@ -6,9 +6,11 @@ Everything here uses stand-in agents (a Python script in the harness's place)
 
 import itertools
 import json
+import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import textwrap
@@ -168,12 +170,18 @@ def _record(workdir):
 
 @pytest.fixture
 def no_subprocess(monkeypatch):
-    """Fail the test if anything -- an agent, git, a version probe -- runs."""
+    """Fail the test if anything but git -- an agent, a version probe -- runs.
 
-    def forbidden(cmd, **_):
-        raise AssertionError(f"unexpected subprocess: {cmd}")
+    Listing a fixture's files asks git (read-only); nothing else may run.
+    """
+    real_run = subprocess.run
 
-    monkeypatch.setattr(run_evals.subprocess, "run", forbidden)
+    def only_git(cmd, **kwargs):
+        if cmd[0] != "git":
+            raise AssertionError(f"unexpected subprocess: {cmd}")
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(run_evals.subprocess, "run", only_git)
     monkeypatch.setattr(
         run_evals.tempfile,
         "mkdtemp",
@@ -363,6 +371,110 @@ def test_a_repo_that_cannot_be_built_is_recorded(run_main, monkeypatch):
     assert run["problems"][0].startswith("could not build the review repo")
 
 
+def test_a_skill_that_cannot_install_is_recorded_and_the_rest_run(
+    run_main, monkeypatch, tmp_path
+):
+    # the second fixture ships an unstamped file where the skill installs:
+    # the adapter refuses (SkillError); that run errors, the record survives
+    fixtures = _copy_fixture(tmp_path)
+    broken = fixtures / "logging-unstamped"
+    shutil.copytree(fixtures / "logging", broken)
+    skill_file = broken / "base" / ".claude" / "skills" / "logging" / "SKILL.md"
+    skill_file.parent.mkdir(parents=True)
+    skill_file.write_text("hand-written\n", encoding="utf-8")
+    monkeypatch.setattr(run_evals, "FIXTURES", fixtures)
+    agent = _stand_in_agent(tmp_path, PASSING_AGENT)
+
+    status, workdir = run_main("--skill", "logging", "--agent-cmd", agent)
+    assert status == 1
+    _, record = _record(workdir)
+    assert schema_errors(record) == []
+    first, second = (f["runs"][0] for f in record["fixtures"])
+    assert first["status"] == "passed"
+    assert second["status"] == "error"
+    (problem,) = second["problems"]
+    assert problem.startswith("could not build the review repo: SkillError: ")
+    # paths are relative to the work dir, not absolute temp paths
+    assert "repos/run-1/logging-unstamped/.claude/skills/logging/SKILL.md" in (
+        problem.replace("\\", "/")
+    )
+    assert str(tmp_path) not in problem and tmp_path.as_posix() not in problem
+
+
+def test_a_scoring_error_keeps_the_agent_outcome(run_main, monkeypatch, tmp_path):
+    def broken(*_args):
+        raise ValueError("scorer bug")
+
+    monkeypatch.setattr(run_evals, "evaluate", broken)
+    agent = _stand_in_agent(tmp_path, PASSING_AGENT)
+    status, workdir = run_main("--skill", "logging", "--agent-cmd", agent)
+    assert status == 1
+    _, record = _record(workdir)
+    (run,) = record["fixtures"][0]["runs"]
+    assert run["status"] == "error"
+    assert run["problems"] == [
+        "could not store or score the report: ValueError: scorer bug"
+    ]
+    assert run["exit_code"] == 0 and run["duration_s"] is not None
+    assert (workdir / run["artifacts"]["report"]).is_file()
+
+
+def test_an_unexpected_runner_error_still_writes_the_record(
+    run_main, monkeypatch, tmp_path
+):
+    real_attempt = run_evals.attempt_run
+    calls = []
+
+    def second_one_breaks(*args, **kwargs):
+        calls.append(args)
+        if len(calls) == 2:
+            raise RuntimeError("runner bug")
+        return real_attempt(*args, **kwargs)
+
+    monkeypatch.setattr(run_evals, "attempt_run", second_one_breaks)
+    agent = _stand_in_agent(tmp_path, PASSING_AGENT)
+    with pytest.raises(RuntimeError, match="runner bug"):
+        run_main("--skill", "logging", "--agent-cmd", agent, "--repeat", "3")
+    (workdir,) = tmp_path.glob("work-*")
+    _, record = _record(workdir)
+    assert schema_errors(record) == []
+    assert record["status"] == "incomplete"
+    runs = record["fixtures"][0]["runs"]
+    assert [run["status"] for run in runs] == ["passed", "error", "not_run"]
+    assert runs[1]["problems"] == ["runner error: RuntimeError: runner bug"]
+    assert runs[2]["problems"] == ["not run: runner error: RuntimeError: runner bug"]
+
+
+def test_an_interrupt_mid_plan_records_what_ran(run_main, monkeypatch, tmp_path):
+    real_attempt = run_evals.attempt_run
+    calls = []
+
+    def interrupted_second(*args, **kwargs):
+        calls.append(args)
+        if len(calls) == 2:
+            raise KeyboardInterrupt
+        return real_attempt(*args, **kwargs)
+
+    monkeypatch.setattr(run_evals, "attempt_run", interrupted_second)
+    agent = _stand_in_agent(tmp_path, PASSING_AGENT)
+    status, workdir = run_main(
+        "--skill", "logging", "--agent-cmd", agent, "--repeat", "3"
+    )
+    assert status == 130
+    _, record = _record(workdir)
+    runs = record["fixtures"][0]["runs"]
+    assert [run["status"] for run in runs] == ["passed", "error", "not_run"]
+    assert runs[2]["problems"] == ["not run: interrupted"]
+
+
+def test_describe_error_relativises_work_dir_paths(tmp_path):
+    workdir = tmp_path / "work"
+    exc = OSError(f"cannot write {workdir / 'repos' / 'x.py'} or {workdir}")
+    assert run_evals.describe_error(exc, workdir) == (
+        f"OSError: cannot write {Path('repos') / 'x.py'} or ."
+    )
+
+
 def test_the_schema_rejects_a_malformed_record(run_main, tmp_path):
     agent = _stand_in_agent(tmp_path, PASSING_AGENT)
     _, workdir = run_main("--skill", "logging", "--agent-cmd", agent)
@@ -433,6 +545,81 @@ def test_fixture_digest_covers_content_and_paths_but_not_line_endings(tmp_path):
     assert run_evals.fixture_digest(path) != original
 
 
+def test_fixture_digest_ignores_junk_files(tmp_path):
+    path = _copy_fixture(tmp_path) / "logging"
+    original = run_evals.fixture_digest(path)
+    cache = path / "change" / "auth" / "__pycache__"
+    cache.mkdir()
+    (cache / "session.cpython-312.pyc").write_bytes(b"\x00junk")
+    (path / "base" / ".DS_Store").write_bytes(b"\x00junk")
+    (path / "change" / "auth" / "stray.pyc").write_bytes(b"\x00junk")
+    assert run_evals.fixture_digest(path) == original
+    # and the review repo is built from the same files
+    names = {f.relative for f in run_evals.fixture_files(path)}
+    assert not any("pycache" in n or n.endswith((".pyc", ".DS_Store")) for n in names)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows has no exec bit")
+def test_fixture_digest_covers_the_exec_bit(tmp_path):
+    path = _copy_fixture(tmp_path) / "logging"
+    original = run_evals.fixture_digest(path)
+    session = path / "change" / "auth" / "session.py"
+    session.chmod(session.stat().st_mode | stat.S_IXUSR)
+    assert run_evals.fixture_digest(path) != original
+
+
+def _git_in(repo, *args):
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@localhost", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_fixture_digest_in_git_follows_what_git_tracks(tmp_path):
+    repo = tmp_path / "repo"
+    fixtures = repo / "fixtures"
+    shutil.copytree(run_evals.FIXTURES / "logging", fixtures / "logging")
+    path = fixtures / "logging"
+    (repo / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    _git_in(repo, "init", "-q")
+    _git_in(repo, "add", "-A")
+    _git_in(repo, "commit", "-q", "-m", "fixture")
+    original = run_evals.fixture_digest(path)
+    # the same files outside git hash the same
+    assert original == run_evals.fixture_digest(run_evals.FIXTURES / "logging")
+
+    (path / "change" / "debug.log").write_text("ignored\n", encoding="utf-8")
+    assert run_evals.fixture_digest(path) == original  # ignored by git
+    new = path / "change" / "notes.txt"
+    new.write_text("untracked but not ignored\n", encoding="utf-8")
+    assert run_evals.fixture_digest(path) != original  # being authored
+    new.unlink()
+
+    # the exec bit comes from the index, so every platform agrees
+    _git_in(repo, "update-index", "--chmod=+x", "fixtures/logging/expected.yaml")
+    assert run_evals.fixture_digest(path) != original
+
+
+def test_rendered_digest_is_the_install_stamp_hash(tmp_path):
+    fixture = run_evals.load_fixture(run_evals.FIXTURES / "logging")
+    for adapter in ("claude", "codex"):
+        repo = run_evals.prepare_repo(fixture, tmp_path / adapter, adapter)
+        installed = repo / run_evals.skill_path(fixture, adapter)
+        (stamp_hash,) = re.findall(
+            r"hash=([0-9a-f]{64}) -->", installed.read_text(encoding="utf-8")
+        )
+        identity = run_evals.plan_fixture(fixture, adapter).identity
+        assert identity["skill"]["rendered_sha256"] == f"sha256:{stamp_hash}"
+
+
+def test_commit_ids_may_be_sha1_or_sha256():
+    assert run_evals._COMMIT_RE.fullmatch("a" * 40)
+    assert run_evals._COMMIT_RE.fullmatch("a" * 64)
+    assert not run_evals._COMMIT_RE.fullmatch("a" * 50)
+
+
 # -- harness presets -----------------------------------------------------------
 
 
@@ -483,12 +670,132 @@ def test_agent_cmd_and_adapter_override_a_preset():
         ({"agent_cmd": "agent -m {model} {prompt}"}, "pass --model"),
         ({"agent_cmd": "agent '{prompt}"}, "No closing quotation"),
         ({"name": "claude", "model": " "}, "--model must not be empty"),
+        ({"name": "claude", "model": "--yolo"}, "looks like an option"),
+        ({"name": "claude", "agent_cmd": ""}, "the agent command is empty"),
         ({"name": "gemini"}, "unknown harness 'gemini'"),
     ],
 )
 def test_invalid_harness_options_are_config_errors(kwargs, message):
     with pytest.raises(run_evals.ConfigError, match=re.escape(message)):
         run_evals.resolve_harness(**kwargs)
+
+
+def test_agents_and_probes_get_no_stdin(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(kwargs)
+        return subprocess.CompletedProcess(cmd, 0, stdout="v1\n", stderr="")
+
+    monkeypatch.setattr(run_evals.subprocess, "run", fake_run)
+    run_evals.run_agent("agent {prompt}", "p", tmp_path, 5)
+    run_evals.harness_version(["agent", "--version"])
+    assert [call["stdin"] for call in calls] == [subprocess.DEVNULL] * 2
+
+
+def test_an_agent_reading_stdin_does_not_block_on_an_open_pipe(tmp_path):
+    # the runner's own stdin is a pipe that never closes (as under a CI
+    # step or a wrapper script); an agent that reads stdin -- codex exec
+    # does when it isn't a TTY -- must see EOF at once, not hang or ingest it
+    agent = _stand_in_agent(
+        tmp_path, "import sys\nprint(repr(sys.stdin.read()))\n", "reader.py"
+    )
+    script = tmp_path / "runner.py"
+    script.write_text(
+        textwrap.dedent(
+            f"""\
+            import importlib.util, pathlib, sys
+            spec = importlib.util.spec_from_file_location(
+                "run_evals", {str(ROOT / "evals" / "run_evals.py")!r}
+            )
+            module = importlib.util.module_from_spec(spec)
+            sys.modules["run_evals"] = module
+            spec.loader.exec_module(module)
+            run = module.run_agent({agent!r}, "p", pathlib.Path("."), 20)
+            print(run.returncode, run.stdout.strip())
+            """
+        ),
+        encoding="utf-8",
+    )
+    runner = subprocess.Popen(
+        [sys.executable, str(script)],
+        cwd=tmp_path,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+    )
+    try:
+        runner.stdin.write("secret piped input\n")
+        runner.stdin.flush()
+        # stdin stays open while the runner works
+        assert runner.wait(timeout=60) == 0, runner.stderr.read()
+        assert runner.stdout.read().strip() == "0 ''"
+    finally:
+        runner.stdin.close()
+        if runner.poll() is None:
+            runner.kill()
+        runner.stdout.close()
+        runner.stderr.close()
+
+
+@pytest.mark.parametrize(
+    ("name", "command", "probe"),
+    [
+        ("claude", "claude -p {prompt}", ["claude", "--version"]),
+        (
+            "claude",
+            "/opt/bin/claude -p {prompt}",
+            ["/opt/bin/claude", "--version"],
+        ),
+        ("codex", "codex.exe exec {prompt}", ["codex.exe", "--version"]),
+        (
+            "codex",
+            r"C:\\tools\\CODEX.CMD exec {prompt}",
+            [r"C:\tools\CODEX.CMD", "--version"],
+        ),
+        # a wrapper would credit its own version to the harness
+        ("claude", "env FOO=1 claude -p {prompt}", None),
+        ("codex", "npx @openai/codex exec {prompt}", None),
+        ("codex", "claude -p {prompt}", None),
+        ("custom", "claude -p {prompt}", None),
+    ],
+)
+def test_only_the_presets_own_executable_is_probed(name, command, probe):
+    harness = run_evals.Harness(name, command, "claude")
+    assert harness.version_command == probe
+
+
+@pytest.mark.skipif(os.name == "nt", reason="needs an executable script")
+def test_a_preset_records_the_version_its_executable_reports(run_main, tmp_path):
+    # a stand-in named like the preset's CLI, run by absolute path (never via
+    # PATH, where the real CLI may be): its --version answer is recorded
+    stand_in = tmp_path / "bin" / "codex"
+    stand_in.parent.mkdir()
+    stand_in.write_text(
+        f"#!{sys.executable}\n"
+        + textwrap.dedent(
+            """\
+            import sys
+            if sys.argv[1:] == ["--version"]:
+                print("codex-cli 9.9.9-stand-in")
+                raise SystemExit(0)
+            assert sys.argv[1] == "exec"
+            print("Reviewed main..HEAD: no findings.")
+            """
+        ),
+        encoding="utf-8",
+    )
+    stand_in.chmod(0o755)
+    agent = f"{shlex.quote(str(stand_in))} exec {{prompt}}"
+    status, workdir = run_main(
+        "--skill", "logging", "--harness", "codex", "--agent-cmd", agent
+    )
+    assert status == 1  # an empty review misses the plant
+    _, record = _record(workdir)
+    assert record["harness"]["version"] == "codex-cli 9.9.9-stand-in"
+    assert record["harness"]["version_command"] == [str(stand_in), "--version"]
 
 
 def test_harness_version_is_best_effort():
@@ -500,10 +807,9 @@ def test_harness_version_is_best_effort():
     assert run_evals.harness_version(None) is None
 
 
-def test_a_preset_harness_records_its_version_and_model(run_main, tmp_path, capsys):
+def test_a_preset_harness_records_its_model(run_main, tmp_path, capsys):
     # --harness codex with a stand-in in its place: the codex adapter installs
-    # the skill, the model reaches the command, and the version probe runs
-    # the command's own executable
+    # the skill and the model reaches the command
     agent = _stand_in_agent(
         tmp_path,
         """\
@@ -533,8 +839,9 @@ def test_a_preset_harness_records_its_version_and_model(run_main, tmp_path, caps
     assert record["adapter"] == "codex"
     assert record["harness"]["name"] == "codex"
     assert record["harness"]["model"] == "tiny-model"
-    assert record["harness"]["version_command"] == [sys.executable, "--version"]
-    assert record["harness"]["version"].startswith("Python ")
+    # the command runs python, not codex: no version is credited to codex
+    assert record["harness"]["version_command"] is None
+    assert record["harness"]["version"] is None
     (run,) = record["fixtures"][0]["runs"]
     assert run["status"] == "failed"
     assert ".agents/skills/logging/SKILL.md" in record["fixtures"][0]["prompt"]
@@ -644,7 +951,7 @@ def _first_record(run_main, tmp_path, agent_body=PASSING_AGENT, *extra):
 def test_replay_reruns_the_recorded_configuration(run_main, tmp_path):
     path = _first_record(run_main, tmp_path, PASSING_AGENT, "--repeat", "2")
     original = json.loads(path.read_text(encoding="utf-8"))
-    status, workdir = run_main("--replay", str(path))
+    status, workdir = run_main("--replay", str(path), "--trust-record-command")
     assert status == 0
     _, replayed = _record(workdir)
     assert schema_errors(replayed) == []
@@ -676,7 +983,7 @@ def test_replay_refuses_a_changed_fixture(run_main, monkeypatch, tmp_path, capsy
     )
     path.write_text(json.dumps(record), encoding="utf-8")
 
-    status, workdir = run_main("--replay", str(path))
+    status, workdir = run_main("--replay", str(path), "--trust-record-command")
     assert status == 2
     assert workdir is None  # refused before a work dir, let alone an agent
     assert not marker.exists()
@@ -685,16 +992,18 @@ def test_replay_refuses_a_changed_fixture(run_main, monkeypatch, tmp_path, capsy
     )
 
 
-def _minimal_record(tmp_path, **skill_changes):
+def _minimal_record(tmp_path, harness=None, prompt=None, **skill_changes):
     """A hand-written record of the logging fixture's current identity."""
     fixture = run_evals.load_fixture(run_evals.FIXTURES / "logging")
-    identity = run_evals.plan_fixture(fixture, "claude").identity
+    planned = run_evals.plan_fixture(fixture, "claude")
+    identity = {**planned.identity, "prompt": prompt or planned.prompt}
     identity["skill"].update(skill_changes)
     record = {
         "schema_version": 1,
         "record_type": "skilldeck-eval-run",
         "skilldeck": {"runner_sha256": None},
-        "harness": {
+        "harness": harness
+        or {
             "name": "claude",
             "command": "claude -p {prompt}",
             "model": None,
@@ -718,7 +1027,7 @@ def _minimal_record(tmp_path, **skill_changes):
         ),
         (
             {"rendered_sha256": "sha256:" + "0" * 64},
-            "logging: installed skill file changed since the record",
+            "logging: rendered skill changed since the record",
         ),
         ({"version": "9.9.9"}, "logging: skill version changed since the record"),
     ],
@@ -737,6 +1046,66 @@ def test_replay_dry_run_verifies_digests_and_plans(no_subprocess, tmp_path, caps
     out = capsys.readouterr().out
     assert "plan: 1 fixture(s) x 1 repeat(s) = 1 run(s)" in out
     assert "harness: claude (adapter claude, model harness default)" in out
+    # the hand-written record names no runner digest: the drift is noted
+    assert "note: the eval runner (scorer or prompt) changed" in out
+
+
+def test_replay_refuses_a_changed_prompt(no_subprocess, tmp_path, capsys):
+    path = _minimal_record(tmp_path, prompt="Review it with some other wording.")
+    assert run_evals.main(["--replay", str(path), "--dry-run"]) == 2
+    assert "logging: the review prompt changed since the record" in (
+        capsys.readouterr().err
+    )
+
+
+@pytest.mark.parametrize(
+    "harness",
+    [
+        # a preset's name on a command that isn't the preset's
+        {"name": "claude", "command": "sh -c 'touch PWNED' {prompt}"},
+        {"name": "codex", "command": "claude -p {prompt}"},
+        # a custom command is always the record's own
+        {"name": "custom", "command": "my-agent {prompt}"},
+    ],
+    ids=["claude-name", "codex-name", "custom"],
+)
+def test_replay_refuses_a_command_that_is_not_the_preset(
+    no_subprocess, tmp_path, capsys, harness
+):
+    harness = {**harness, "model": None, "version": None}
+    path = _minimal_record(tmp_path, harness=harness)
+    assert run_evals.main(["--replay", str(path), "--dry-run"]) == 2
+    err = capsys.readouterr().err
+    assert f"harness command {harness['command']!r} is not the built-in" in err
+    assert "--trust-record-command" in err
+    # an explicit opt-in accepts it (the dry run still runs nothing)
+    argv = ["--replay", str(path), "--dry-run", "--trust-record-command"]
+    assert run_evals.main(argv) == 0
+    assert f"command: {harness['command']}" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("name", "model", "command"),
+    [
+        ("claude", None, "claude -p {prompt}"),
+        ("claude", "opus", "claude --model {model} -p {prompt}"),
+        ("codex", None, "codex exec {prompt}"),
+        ("codex", "gpt-5", "codex exec  --model {model} {prompt}"),
+    ],
+)
+def test_replay_accepts_a_preset_command(no_subprocess, tmp_path, name, model, command):
+    harness = {"name": name, "command": command, "model": model, "version": None}
+    path = _minimal_record(tmp_path, harness=harness)
+    spec = run_evals.load_replay(path)
+    assert spec.harness.command == command
+    assert spec.harness.model == model
+
+
+def test_trust_record_command_needs_replay(capsys):
+    assert run_evals.main(["--trust-record-command", "--dry-run"]) == 2
+    assert "--trust-record-command only applies to --replay" in (
+        capsys.readouterr().err
+    )
 
 
 def test_replay_takes_its_configuration_only_from_the_record(tmp_path, capsys):
@@ -756,6 +1125,10 @@ def test_replay_takes_its_configuration_only_from_the_record(tmp_path, capsys):
             '{"record_type": "skilldeck-eval-run", "schema_version": 99}',
             "unsupported schema_version 99",
         ),
+        (
+            '{"record_type": "skilldeck-eval-run", "schema_version": true}',
+            "unsupported schema_version True",
+        ),
     ],
 )
 def test_replay_rejects_an_unreadable_record(tmp_path, capsys, text, message):
@@ -770,7 +1143,8 @@ def test_replay_refuses_a_fixture_that_no_longer_exists(run_main, tmp_path, caps
     record = json.loads(path.read_text(encoding="utf-8"))
     record["fixtures"][0]["name"] = "../logging"
     path.write_text(json.dumps(record), encoding="utf-8")
-    assert run_evals.main(["--replay", str(path)]) == 2
+    argv = ["--replay", str(path), "--trust-record-command"]
+    assert run_evals.main(argv) == 2
     assert "fixture '../logging' from the record no longer exists" in (
         capsys.readouterr().err
     )

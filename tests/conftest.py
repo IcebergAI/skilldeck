@@ -5,6 +5,7 @@
 """
 
 import importlib.util
+import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -39,6 +40,25 @@ def _no_agent_home_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     # setup must not leak into the tests; tests that need one set it.
     for var in AGENT_HOME_VARS:
         monkeypatch.delenv(var, raising=False)
+
+
+#: agent CLIs the eval runner's presets name; a real one costs money to run
+_REAL_AGENT_CLIS = frozenset({"claude", "codex"})
+
+
+@pytest.fixture(autouse=True)
+def _no_real_agent_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The eval runner's presets run `claude`/`codex` from PATH, where a real,
+    # logged-in CLI may be installed. Tests use stand-ins by absolute path;
+    # a bare preset name reaching subprocess.run is a test bug, not a run.
+    real_run = subprocess.run
+
+    def guarded(cmd: object, *args: object, **kwargs: object) -> object:
+        if isinstance(cmd, list) and cmd and cmd[0] in _REAL_AGENT_CLIS:
+            raise AssertionError(f"a test tried to run the real agent CLI: {cmd}")
+        return real_run(cmd, *args, **kwargs)  # type: ignore[call-overload]
+
+    monkeypatch.setattr(subprocess, "run", guarded)
 
 
 @pytest.fixture

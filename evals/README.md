@@ -37,8 +37,9 @@ python evals/run_evals.py --keep              # keep the review repos
 | `--repeat N` | Run each fixture `N` times (fresh repo each time) and print its pass rate — agents are nondeterministic, so one run says little about a borderline fixture. |
 | `--timeout S` | Per-run agent timeout in seconds (default 600). |
 | `--max-runs N` | Refuse to start if more than `N` runs (fixtures × repeats) are planned (default 50). |
-| `--dry-run` | Validate the fixtures and print the planned runs; no agent (or anything else) is run. Exits 2 on an invalid fixture or a plan over `--max-runs`. |
+| `--dry-run` | Validate the fixtures and print the planned runs; no agent or version probe is run (only read-only `git ls-files`, to list fixture files). Exits 2 on an invalid fixture or a plan over `--max-runs`. |
 | `--replay RECORD` | Re-run a [run record](#run-records)'s exact configuration; see [Replaying](#replaying). |
+| `--trust-record-command` | With `--replay`: run the record's command even though it is not a built-in preset's command (see [Replaying](#replaying)). |
 | `--include-reports` | Also copy each run's raw stdout and stderr into the run record. |
 | `--keep` | Keep the review repos even when every run passes. |
 
@@ -68,10 +69,15 @@ skilldeck-evals-XXXX/
 ```
 
 The review repos are deleted when every run passes (unless `--keep`); the
-record and the raw output are always kept. The process exits 0 when every run
-passed, 1 when any failed, 2 when the evals could not run (invalid fixture,
-budget, changed digests on replay, agent command not found) and 130 when
-interrupted — the record is written in every case that started running.
+record and the raw output are always kept. The agent gets no stdin (it reads
+`/dev/null`), so a CLI that reads a piped stdin neither blocks nor ingests the
+runner's. The process exits 0 when every run passed, 1 when any failed, 2 when
+the evals could not run (invalid fixture, budget, changed digests or prompt on
+replay, agent command not found) and 130 when interrupted. Once runs start, the
+record is always written: a run whose repo can't be built (the adapter refuses
+to install, git fails) or whose report can't be stored or scored is recorded as
+`error` and the rest go on; an interrupt or a runner bug records the runs so
+far, the one in flight as `error` and the rest as `not_run`.
 
 ## Harnesses
 
@@ -86,10 +92,14 @@ flags: Claude Code's print mode, and `codex exec`, which prints the final
 message on stdout (progress goes to stderr, which is not scored) and runs in a
 read-only sandbox by default. The Codex preset is best-effort — it has not yet
 been exercised in a recorded run. `--agent-cmd` overrides a preset's command
-but keeps its name, adapter and version probe (the command's own executable
-with `--version`); add flags there, such as an approval or sandbox mode. A
-harness that reports token usage or cost would fill the record's `usage` and
-`cost_usd`; no preset parses them yet, so both are `null`.
+but keeps its name and adapter; add flags there, such as an approval or sandbox
+mode. The version probe runs the command's own executable with `--version`,
+and only when that executable is the preset's (`claude` or `codex`, by any
+path, with or without `.exe`/`.cmd`): through a wrapper such as
+`env FOO=1 claude …` or `npx @openai/codex …` it would report the wrapper's
+version, so the record's `version` is `null` instead. A harness that reports
+token usage or cost would fill the record's `usage` and `cost_usd`; no preset
+parses them yet, so both are `null`.
 
 ## Run records
 
@@ -101,10 +111,15 @@ platform:
 - **what ran**: the skilldeck version, the checkout's git commit and whether
   it had uncommitted changes (`null` outside a checkout), and the digest of
   `run_evals.py` itself (the scorer and the prompt);
-- **against what**: per fixture, a digest of every file in its directory
-  (newlines normalised, so a Windows checkout agrees), the skill's name,
-  version, canonical digest (the one in `src/skilldeck/_content_manifest.json`)
-  and the digest of the file the adapter installed, plus the exact prompt;
+- **against what**: per fixture, a digest of its files — in a git checkout
+  the files git tracks plus untracked ones it doesn't ignore, elsewhere every
+  file, never `__pycache__`, `*.pyc` or `.DS_Store` — covering each path,
+  executable bit (from the git index when tracked) and content (newlines
+  normalised, so a Windows checkout agrees); the review repo is built from
+  exactly those files. Then the skill's name, version, canonical digest (the
+  one in `src/skilldeck/_content_manifest.json`) and `rendered_sha256`: the
+  rendered skill content the adapter installs, excluding the install stamp
+  (it equals the stamp's `hash=`); plus the exact prompt;
 - **how**: the harness name, the exact command template, the model (if
   requested), the harness version (the probe's first line, `null` if it
   failed), the adapter, and the repeat, timeout and budget;
@@ -126,13 +141,20 @@ dir beside it.
 command, model, adapter, repeat count and timeout (so it takes no other
 configuration options; `--max-runs`, `--dry-run`, `--keep` and
 `--include-reports` still apply). Before anything runs it recomputes every
-fixture digest and skill digest and **refuses** (exit 2) if any fixture, skill
-or installed skill file changed since the record — a changed eval is a
-different experiment. A different harness version or a changed runner is
+fixture digest, skill digest and review prompt and **refuses** (exit 2) if any
+fixture, skill, rendered skill or prompt changed since the record — the agent
+would see a different input, so it is a different experiment. A different
+harness version or a changed runner (`run_evals.py`, which holds the scorer) is
 printed as a note, not refused. The new record's `config.replay_of` holds the
 digest of the record it replayed; comparing the two records' runs is the
-variance check. `--replay RECORD --dry-run` verifies the digests without
-running anything.
+variance check. `--replay RECORD --dry-run` verifies all of this without
+running an agent.
+
+**A record is data, and replaying it runs its command.** A record can be
+edited, or come from someone else, so replay accepts only a built-in preset's
+own command (`claude` or `codex`, with or without a model) under that preset's
+name. A custom harness's command, or a preset name on any other command, is
+refused unless you read the command and pass `--trust-record-command`.
 
 ## Scoring
 

@@ -74,7 +74,7 @@
           "type": ["string", "null"]
         },
         "version": {
-          "description": "First line of the version probe's output; null if it failed or the harness is custom.",
+          "description": "First line of the version probe's output; null if it failed, the harness is custom, or the command's executable is not the preset's.",
           "type": ["string", "null"]
         },
         "version_command": {
@@ -149,7 +149,7 @@
       "properties": {
         "name": {"type": "string"},
         "digest": {
-          "description": "Digest of every file in the fixture directory (newlines normalised).",
+          "description": "Digest of the fixture's files (git-tracked or untracked-and-not-ignored in a checkout, else all; junk excluded): path, executable bit, content with newlines normalised.",
           "$ref": "#/$defs/digest"
         },
         "skill": {
@@ -164,7 +164,7 @@
               "$ref": "#/$defs/digest"
             },
             "rendered_sha256": {
-              "description": "Digest of the file the adapter installs: what the agent reads.",
+              "description": "Rendered skill content the adapter installs, excluding the install stamp (equals the stamp's hash=).",
               "$ref": "#/$defs/digest"
             }
           }

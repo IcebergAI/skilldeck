@@ -24,7 +24,7 @@ and commit, each skill's and fixture's digest, the harness, its command
 template, version and model, and one entry per planned run -- passed, failed,
 timed out, errored or not run. Raw reports and stderr stay in the work dir as
 separate files the record points to. ``--replay`` re-runs a record's exact
-configuration after checking that no skill or fixture changed since.
+configuration after checking that no skill, fixture or prompt changed.
 
 This calls a real agent and costs real money -- it is run manually (e.g.
 before a release), not in CI. CI only validates fixture structure and the
@@ -39,7 +39,7 @@ Usage:
     python evals/run_evals.py --harness codex       # codex CLI + codex adapter
     python evals/run_evals.py --model sonnet        # pass a model to the harness
     python evals/run_evals.py --agent-cmd 'claude -p {prompt}'
-    python evals/run_evals.py --adapter codex --agent-cmd 'codex exec {prompt}'
+    python evals/run_evals.py --harness codex --agent-cmd 'codex exec {prompt}'
     python evals/run_evals.py --dry-run             # validate + plan, no agent
     python evals/run_evals.py --replay run-record.json   # same config again
     python evals/run_evals.py --keep                # keep temp repos to inspect
@@ -67,7 +67,7 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import TypedDict
 
 import yaml
@@ -103,7 +103,11 @@ RECORD_NAME = "run-record.json"
 RECORD_SCHEMA_VERSION = 1
 RECORD_TYPE = "skilldeck-eval-run"
 _FIXTURE_DOMAIN = b"skilldeck-eval-fixture-v1\0"
-_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+# a SHA-1 or SHA-256 object name
+_COMMIT_RE = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
+#: files a fixture directory may pick up that are not part of the fixture
+_JUNK_NAMES = frozenset({"__pycache__", ".DS_Store"})
+_JUNK_SUFFIXES = (".pyc", ".pyo")
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 #: the finding severity scale from docs/finding-output.md, lowest first
@@ -163,6 +167,13 @@ class HarnessPreset:
     #: the same command with the harness's model option (``{model}``)
     model_command: str
 
+    @property
+    def executable(self) -> str:
+        return shlex.split(self.command)[0]
+
+    def expected_command(self, model: str | None) -> str:
+        return self.command if model is None else self.model_command
+
 
 #: built-in harnesses; ``--harness custom`` takes its command from --agent-cmd
 HARNESSES = {
@@ -198,10 +209,23 @@ class Harness:
 
     @property
     def version_command(self) -> list[str] | None:
-        """How to ask a preset harness its version (None for a custom one)."""
-        if self.name not in HARNESSES:
+        """How to ask the harness its version, or None if that can't be known.
+
+        Only a preset's own executable is probed: a custom harness, or a
+        preset whose --agent-cmd runs it through a wrapper (``env ... claude``,
+        ``npx @openai/codex``), would otherwise credit the wrong program.
+        """
+        preset = HARNESSES.get(self.name)
+        if preset is None:
             return None
-        return [shlex.split(self.command)[0], "--version"]
+        executable = shlex.split(self.command)[0]
+        # PureWindowsPath splits on both separators; drop a Windows suffix
+        name = PureWindowsPath(executable).name.lower()
+        for suffix in (".exe", ".cmd"):
+            name = name.removesuffix(suffix)
+        if name != preset.executable:
+            return None
+        return [executable, "--version"]
 
 
 @dataclass(frozen=True)
@@ -616,6 +640,7 @@ def _git(repo: Path, *args: str) -> None:
         ["git", "-c", "user.name=evals", "-c", "user.email=evals@localhost", *args],
         cwd=repo,
         check=True,
+        stdin=subprocess.DEVNULL,
         capture_output=True,
     )
 
@@ -645,13 +670,89 @@ def build_prompt(fixture: Fixture, adapter: str = DEFAULT_ADAPTER) -> str:
     )
 
 
+@dataclass(frozen=True)
+class FixtureFile:
+    #: POSIX path relative to the fixture directory
+    relative: str
+    path: Path
+    executable: bool
+
+
+def _is_junk(relative: str) -> bool:
+    return relative.endswith(_JUNK_SUFFIXES) or any(
+        part in _JUNK_NAMES for part in relative.split("/")
+    )
+
+
+def _executable(path: Path) -> bool:
+    # Windows has no exec bit; git there doesn't track one either
+    return os.name != "nt" and bool(path.stat().st_mode & stat.S_IXUSR)
+
+
+def _git_listed_files(root: Path) -> dict[str, bool] | None:
+    """Tracked and untracked-but-not-ignored files under ``root``, if in git.
+
+    Maps each path (relative to ``root``) to its executable bit -- from the
+    index for a tracked file, so every platform agrees. None outside a git
+    work tree, or when git lists nothing there (e.g. an ignored directory).
+    """
+    staged = _git_output(root, "ls-files", "-z", "--stage")
+    others = _git_output(root, "ls-files", "-z", "--others", "--exclude-standard")
+    if staged is None or others is None:
+        return None
+    files: dict[str, bool] = {}
+    for entry in staged.split("\0"):
+        meta, _, relative = entry.partition("\t")
+        if relative:
+            files[relative] = meta.split()[0] == "100755"
+    for relative in others.split("\0"):
+        if relative:
+            files[relative] = _executable(root / relative)
+    return files or None
+
+
+def fixture_files(root: Path) -> list[FixtureFile]:
+    """The files that make up a fixture, sorted by relative POSIX path.
+
+    In a git work tree: what git tracks plus untracked files it doesn't
+    ignore. Elsewhere (a copy of a fixture, say): every file. Either way
+    without stray junk (``__pycache__``, ``*.pyc``, ``.DS_Store``).
+    """
+    listed = _git_listed_files(root)
+    if listed is None:
+        listed = {
+            file.relative_to(root).as_posix(): _executable(file)
+            for file in root.rglob("*")
+            if file.is_file()
+        }
+    return [
+        FixtureFile(relative, root / relative, executable)
+        for relative, executable in sorted(listed.items())
+        if not _is_junk(relative) and (root / relative).is_file()
+    ]
+
+
+def _overlay(files: Sequence[FixtureFile], part: str, repo: Path) -> None:
+    """Copy the fixture's ``part/`` files (base or change) into ``repo``."""
+    prefix = f"{part}/"
+    for file in files:
+        if file.relative.startswith(prefix):
+            target = repo / file.relative.removeprefix(prefix)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(file.path, target)
+
+
 def prepare_repo(
     fixture: Fixture, workdir: Path, adapter: str = DEFAULT_ADAPTER
 ) -> Path:
     """Materialize the fixture as a git repo with a ``change`` branch."""
     skill = installable_skill(fixture, adapter)
     repo = workdir / fixture.name
-    shutil.copytree(fixture.path / "base", repo)
+    # exactly the files fixture_digest covers, so a record's digest names
+    # what the agent saw
+    files = fixture_files(fixture.path)
+    repo.mkdir(parents=True)
+    _overlay(files, "base", repo)
     # installed before the base commit, so the skill file is neither part of
     # the diff under review nor an untracked change the skill's scope step
     # would pick up
@@ -660,7 +761,7 @@ def prepare_repo(
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "base")
     _git(repo, "checkout", "-q", "-b", "change")
-    shutil.copytree(fixture.path / "change", repo, dirs_exist_ok=True)
+    _overlay(files, "change", repo)
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "change under review")
     return repo
@@ -720,6 +821,9 @@ def run_agent(
         result = subprocess.run(
             cmd,
             cwd=repo,
+            # an agent CLI that reads a non-TTY stdin (codex exec does) must
+            # neither block on nor ingest the runner's own stdin
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -771,10 +875,7 @@ def resolve_harness(
         command, default_adapter = agent_cmd, DEFAULT_ADAPTER
     elif name in HARNESSES:
         preset = HARNESSES[name]
-        if agent_cmd is not None:
-            command = agent_cmd
-        else:
-            command = preset.command if model is None else preset.model_command
+        command = agent_cmd if agent_cmd is not None else preset.expected_command(model)
         default_adapter = preset.adapter
     else:
         choices = [*sorted(HARNESSES), CUSTOM_HARNESS]
@@ -786,6 +887,9 @@ def resolve_harness(
         )
     if model is not None and not model.strip():
         raise ConfigError("--model must not be empty")
+    if model is not None and model.startswith("-"):
+        # it lands in the harness's argv: a "model" like --yolo is a flag
+        raise ConfigError(f"--model {model!r} looks like an option, not a model")
     try:
         parts = shlex.split(command)
     except ValueError as exc:
@@ -813,6 +917,7 @@ def harness_version(command: Sequence[str] | None) -> str | None:
     try:
         result = subprocess.run(
             list(command),
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -834,7 +939,9 @@ class SkillIdentity(TypedDict):
     version: str
     #: skilldeck.provenance.canonical_skill_digest of meta.yaml + skill.md
     canonical_sha256: str
-    #: the file the adapter installs, i.e. exactly what the agent reads
+    #: the rendered skill content the adapter installs, excluding the install
+    #: stamp -- the stamp's own ``hash=`` (and, for claude, the content
+    #: manifest's claude_rendered_sha256)
     rendered_sha256: str
 
 
@@ -845,25 +952,21 @@ class FixtureIdentity(TypedDict):
 
 
 def fixture_digest(path: Path) -> str:
-    """Hash every file under a fixture directory, by POSIX path and content.
+    """Hash a fixture's files (see fixture_files): path, exec bit, content.
 
     Domain-separated and length-framed like the canonical skill digest. UTF-8
     text is hashed with normalised newlines, so a CRLF checkout on Windows
     and an LF one agree; any other file is hashed as raw bytes.
     """
     digest = hashlib.sha256(_FIXTURE_DOMAIN)
-    files = sorted(
-        (file.relative_to(path).as_posix(), file)
-        for file in path.rglob("*")
-        if file.is_file()
-    )
-    for relative, file in files:
-        data = file.read_bytes()
+    for file in fixture_files(path):
+        data = file.path.read_bytes()
         with contextlib.suppress(UnicodeDecodeError):
             data = normalise_text(data.decode("utf-8")).encode("utf-8")
-        name = relative.encode("utf-8")
+        name = file.relative.encode("utf-8")
         digest.update(len(name).to_bytes(4, "big"))
         digest.update(name)
+        digest.update(b"\x01" if file.executable else b"\x00")
         digest.update(len(data).to_bytes(8, "big"))
         digest.update(data)
     return f"sha256:{digest.hexdigest()}"
@@ -874,11 +977,13 @@ def runner_digest() -> str:
     return sha256_text(Path(__file__).read_text(encoding="utf-8"))
 
 
-def _git_output(*args: str) -> str | None:
+def _git_output(cwd: Path, *args: str) -> str | None:
+    """git's stdout in ``cwd``, or None if git is missing or fails."""
     try:
         result = subprocess.run(
             ["git", *args],
-            cwd=ROOT,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -902,14 +1007,14 @@ def source_identity() -> dict[str, object]:
     """The skilldeck version and, in a git checkout, its commit and state."""
     commit: str | None = None
     dirty: bool | None = None
-    toplevel = _git_output("rev-parse", "--show-toplevel")
+    toplevel = _git_output(ROOT, "rev-parse", "--show-toplevel")
     # only this checkout's own commit: a source tree unpacked inside some
     # other repository must not borrow that repository's HEAD
     if toplevel is not None and _same_path(Path(toplevel.strip()), ROOT):
-        head = (_git_output("rev-parse", "HEAD") or "").strip()
+        head = (_git_output(ROOT, "rev-parse", "HEAD") or "").strip()
         if _COMMIT_RE.fullmatch(head):
             commit = head
-            status = _git_output("status", "--porcelain")
+            status = _git_output(ROOT, "status", "--porcelain")
             dirty = None if status is None else bool(status.strip())
     return {
         "version": __version__,
@@ -946,6 +1051,18 @@ def fixture_layout_problems(fixture: Fixture) -> list[str]:
     return problems
 
 
+def rendered_digest(adapter: str, skill: Skill) -> str:
+    """The hash an install stamp records: the rendered skill, stamp excluded.
+
+    Computed as skilldeck.stamp does -- the content, newline-terminated, as
+    UTF-8 -- so it equals the installed file's ``hash=``.
+    """
+    content = ADAPTERS[adapter].render(skill)
+    if not content.endswith("\n"):
+        content += "\n"
+    return "sha256:" + hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
 def plan_fixture(fixture: Fixture, adapter: str) -> PlannedFixture:
     """Validate ``fixture`` for ``adapter`` and pin down its identity."""
     problems = fixture_layout_problems(fixture)
@@ -963,7 +1080,7 @@ def plan_fixture(fixture: Fixture, adapter: str) -> PlannedFixture:
                 "name": skill.name,
                 "version": skill.version,
                 "canonical_sha256": canonical_skill_digest(meta_text, skill.body),
-                "rendered_sha256": sha256_text(ADAPTERS[adapter].render(skill)),
+                "rendered_sha256": rendered_digest(adapter, skill),
             },
         },
     )
@@ -1015,6 +1132,8 @@ class ReplaySpec:
     repeat: int
     timeout: int
     fixtures: tuple[FixtureIdentity, ...]
+    #: the prompt each fixture's runs were given, in ``fixtures`` order
+    prompts: tuple[str, ...]
     runner_sha256: str | None
     #: sha256 of the record itself, stored in the new record's replay_of
     record_sha256: str
@@ -1054,8 +1173,12 @@ def _get_digest(where: str, mapping: object, key: str) -> str:
     return value
 
 
-def load_replay(path: Path) -> ReplaySpec:
-    """Read the configuration and identities to replay from a run record."""
+def load_replay(path: Path, trust_command: bool = False) -> ReplaySpec:
+    """Read the configuration and identities to replay from a run record.
+
+    A record is data, and replaying it runs its command: unless
+    ``trust_command``, the command must be the recorded preset's own.
+    """
     try:
         text = path.read_text(encoding="utf-8")
         data = json.loads(text)
@@ -1065,7 +1188,8 @@ def load_replay(path: Path) -> ReplaySpec:
     if _get(where, data, "record_type") != RECORD_TYPE:
         raise ConfigError(f"{where}: not a skilldeck eval run record")
     version = _get(where, data, "schema_version")
-    if version != RECORD_SCHEMA_VERSION:
+    # type check first: True == 1 in Python, but not in JSON
+    if type(version) is not int or version != RECORD_SCHEMA_VERSION:
         raise ConfigError(
             f"{where}: unsupported schema_version {version!r} "
             f"(this runner reads {RECORD_SCHEMA_VERSION})"
@@ -1076,9 +1200,11 @@ def load_replay(path: Path) -> ReplaySpec:
     if not isinstance(raw_fixtures, list) or not raw_fixtures:
         raise ConfigError(f"{where}: 'fixtures' must be a non-empty list")
     identities: list[FixtureIdentity] = []
+    prompts: list[str] = []
     for i, entry in enumerate(raw_fixtures):
         at = f"{where}: fixtures[{i}]"
         skill = _get(at, entry, "skill")
+        prompts.append(_get_str(at, entry, "prompt"))
         identities.append(
             {
                 "name": _get_str(at, entry, "name"),
@@ -1099,17 +1225,31 @@ def load_replay(path: Path) -> ReplaySpec:
     if len(names) != len(set(names)):
         raise ConfigError(f"{where}: a fixture is listed twice")
     source = _get(where, data, "skilldeck")
+    harness = resolve_harness(
+        _get_str(f"{where}: harness", harness_data, "name"),
+        _get_str(f"{where}: harness", harness_data, "command"),
+        _get_str(where, data, "adapter"),
+        _get_optional_str(f"{where}: harness", harness_data, "model"),
+    )
+    preset = HARNESSES.get(harness.name)
+    if not trust_command and (
+        preset is None
+        or shlex.split(harness.command)
+        != shlex.split(preset.expected_command(harness.model))
+    ):
+        raise ConfigError(
+            f"{where}: the record's {harness.name} harness command "
+            f"{harness.command!r} is not the built-in preset's, and replaying "
+            "runs it as-is; read it, and pass --trust-record-command if you "
+            "trust the record"
+        )
     return ReplaySpec(
-        harness=resolve_harness(
-            _get_str(f"{where}: harness", harness_data, "name"),
-            _get_str(f"{where}: harness", harness_data, "command"),
-            _get_str(where, data, "adapter"),
-            _get_optional_str(f"{where}: harness", harness_data, "model"),
-        ),
+        harness=harness,
         harness_version=_get_optional_str(f"{where}: harness", harness_data, "version"),
         repeat=_get_count(f"{where}: config", config, "repeat"),
         timeout=_get_count(f"{where}: config", config, "timeout_s"),
         fixtures=tuple(identities),
+        prompts=tuple(prompts),
         runner_sha256=_get_optional_str(f"{where}: skilldeck", source, "runner_sha256"),
         record_sha256=sha256_text(text),
     )
@@ -1129,8 +1269,10 @@ def replay_fixtures(spec: ReplaySpec) -> list[Fixture]:
     return fixtures
 
 
-def replay_problems(recorded: FixtureIdentity, planned: PlannedFixture) -> list[str]:
-    """How ``planned`` differs from the identity a run record pinned."""
+def replay_problems(
+    recorded: FixtureIdentity, prompt: str, planned: PlannedFixture
+) -> list[str]:
+    """How ``planned`` differs from the identity and prompt a record pinned."""
     current = planned.identity
     name = recorded["name"]
 
@@ -1143,9 +1285,13 @@ def replay_problems(recorded: FixtureIdentity, planned: PlannedFixture) -> list[
         ("skill", before["name"], after["name"]),
         ("skill version", before["version"], after["version"]),
         ("skill content", before["canonical_sha256"], after["canonical_sha256"]),
-        ("installed skill file", before["rendered_sha256"], after["rendered_sha256"]),
+        ("rendered skill", before["rendered_sha256"], after["rendered_sha256"]),
     )
-    return [changed(what, old, new) for what, old, new in pairs if old != new]
+    problems = [changed(what, old, new) for what, old, new in pairs if old != new]
+    if prompt != planned.prompt:
+        # the prompt lives in this runner, or names the adapter's install path
+        problems.append(f"{name}: the review prompt changed since the record")
+    return problems
 
 
 # -- running and recording ---------------------------------------------------
@@ -1197,6 +1343,15 @@ def run_status(run: AgentRun, passed: bool) -> str:
     return "passed" if passed else "failed"
 
 
+def describe_error(exc: BaseException, workdir: Path) -> str:
+    """``exc`` as a record problem, with work dir paths made relative to it."""
+    text = f"{type(exc).__name__}: {exc}"
+    for form in dict.fromkeys((str(workdir), workdir.as_posix())):
+        text = text.replace(form + "/", "").replace(form + os.sep, "")
+        text = text.replace(form, ".")
+    return text
+
+
 def attempt_run(
     planned: PlannedFixture,
     harness: Harness,
@@ -1207,42 +1362,47 @@ def attempt_run(
 ) -> tuple[RunEntry, AgentRun | None]:
     """Build a fresh repo, run the agent in it, score it, and store its output.
 
-    Raises AgentStartError if the agent command can't be started at all.
+    Any failure other than the agent's is recorded as an ``error`` entry, so
+    one broken run never costs the record of the paid ones. Raises
+    AgentStartError if the agent command can't be started at all.
     """
     fixture = planned.fixture
     try:
         repo = prepare_repo(
             fixture, workdir / "repos" / f"run-{attempt}", harness.adapter
         )
-    except (OSError, subprocess.CalledProcessError) as exc:
-        problem = f"could not build the review repo: {exc}"
+    except Exception as exc:  # a SkillError from the adapter, git, I/O, ...
+        problem = f"could not build the review repo: {describe_error(exc, workdir)}"
         return RunEntry(attempt, "error", [problem]), None
     started_at, clock = _now(), time.monotonic()
     run = run_agent(harness.command, planned.prompt, repo, timeout, harness.model)
-    duration = round(time.monotonic() - clock, 3)
-    finished_at = _now()
-
-    # raw output lives beside the record, never in it (unless asked for)
-    out = workdir / "artifacts" / f"run-{attempt}" / fixture.name
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "report.txt").write_text(run.stdout, encoding="utf-8")
-    (out / "stderr.txt").write_text(run.stderr, encoding="utf-8")
-    problems, passed = evaluate(fixture, run)
     entry = RunEntry(
         attempt=attempt,
-        status=run_status(run, passed),
-        problems=problems,
+        status="error",
+        problems=[],
         started_at=started_at,
-        finished_at=finished_at,
-        duration_s=duration,
+        finished_at=_now(),
+        duration_s=round(time.monotonic() - clock, 3),
         exit_code=run.returncode,
-        finding_count=len(parse_findings(run.stdout)),
-        artifacts={
-            name: (out / f"{name}.txt").relative_to(workdir).as_posix()
-            for name in ("report", "stderr")
-        },
         raw={"report": run.stdout, "stderr": run.stderr} if include_reports else None,
     )
+    try:
+        # raw output lives beside the record, never in it (unless asked for)
+        out = workdir / "artifacts" / f"run-{attempt}" / fixture.name
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "report.txt").write_text(run.stdout, encoding="utf-8")
+        (out / "stderr.txt").write_text(run.stderr, encoding="utf-8")
+        entry.artifacts = {
+            name: (out / f"{name}.txt").relative_to(workdir).as_posix()
+            for name in ("report", "stderr")
+        }
+        entry.finding_count = len(parse_findings(run.stdout))
+        problems, passed = evaluate(fixture, run)
+    except Exception as exc:
+        problem = f"could not store or score the report: {describe_error(exc, workdir)}"
+        entry.problems = [problem]
+        return entry, run
+    entry.status, entry.problems = run_status(run, passed), problems
     return entry, run
 
 
@@ -1254,10 +1414,22 @@ def build_record(
     planned: Sequence[PlannedFixture],
     entries: dict[str, list[RunEntry]],
     config: dict[str, object],
+    repeat: int,
     started_at: str,
-    stopped: bool,
+    stopped: str | None,
 ) -> dict[str, object]:
-    """The run record: provider-neutral, and free of raw agent output."""
+    """The run record: provider-neutral, and free of raw agent output.
+
+    ``entries`` may stop short of the plan; every planned run it lacks is
+    recorded as ``not_run``.
+    """
+    reason = f"not run: {stopped}" if stopped else "not run"
+    for p in planned:
+        done = entries.setdefault(p.fixture.name, [])
+        done.extend(
+            RunEntry(attempt, "not_run", [reason])
+            for attempt in range(len(done) + 1, repeat + 1)
+        )
     runs = [entry for p in planned for entry in entries[p.fixture.name]]
     not_run = sum(entry.status == "not_run" for entry in runs)
     passed = sum(entry.passed for entry in runs)
@@ -1369,8 +1541,14 @@ def _parser() -> argparse.ArgumentParser:
         "--replay",
         type=Path,
         metavar="RECORD",
-        help="re-run a run record's configuration, refusing if a skill or "
-        "fixture changed since",
+        help="re-run a run record's configuration, refusing if a skill, "
+        "fixture or prompt changed since, or if its command is not a preset's",
+    )
+    parser.add_argument(
+        "--trust-record-command",
+        action="store_true",
+        help="with --replay: run the record's command even if it is not the "
+        "built-in preset's (a custom harness always needs this)",
     )
     parser.add_argument(
         "--include-reports",
@@ -1404,10 +1582,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "--replay takes its configuration from the record; drop "
                     + ", ".join(clashes)
                 )
-            replay = load_replay(args.replay)
+            replay = load_replay(args.replay, args.trust_record_command)
             harness, repeat, timeout = replay.harness, replay.repeat, replay.timeout
             fixtures = replay_fixtures(replay)
         else:
+            if args.trust_record_command:
+                raise ConfigError("--trust-record-command only applies to --replay")
             harness = resolve_harness(
                 args.harness, args.agent_cmd, args.adapter, args.model
             )
@@ -1424,8 +1604,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     # adapter can't install -- or, replaying, on anything that changed
     planned, problems = plan_fixtures(fixtures, harness.adapter)
     if replay is not None and not problems:
-        for recorded, current in zip(replay.fixtures, planned, strict=True):
-            problems.extend(replay_problems(recorded, current))
+        pairs = zip(replay.fixtures, replay.prompts, planned, strict=True)
+        for recorded, prompt, current in pairs:
+            problems.extend(replay_problems(recorded, prompt, current))
     if problems:
         for problem in problems:
             print(f"error: {problem}", file=sys.stderr)
@@ -1440,94 +1621,107 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    if replay is not None and runner_digest() != replay.runner_sha256:
+        print("note: the eval runner (scorer or prompt) changed since the record")
     if args.dry_run:
         print("\ndry run: fixtures are valid; no agent was invoked")
         return 0
 
     source = source_identity()
     version = harness_version(harness.version_command)
-    if replay is not None:
-        if version != replay.harness_version:
-            print(
-                f"note: harness version {version!r} differs from the record's "
-                f"{replay.harness_version!r}"
-            )
-        if source["runner_sha256"] != replay.runner_sha256:
-            print("note: the eval runner (scorer or prompt) changed since the record")
+    if replay is not None and version != replay.harness_version:
+        print(
+            f"note: harness version {version!r} differs from the record's "
+            f"{replay.harness_version!r}"
+        )
 
     workdir = Path(tempfile.mkdtemp(prefix="skilldeck-evals-"))
     print(f"work dir: {workdir}\n")
     started_at = _now()
-    entries: dict[str, list[RunEntry]] = {}
-    pass_counts: dict[str, int] = {}
+    entries: dict[str, list[RunEntry]] = {p.fixture.name: [] for p in planned}
     stop: str | None = None  # why the remaining runs were not attempted
     status = 0
-    for p in planned:
-        fixture = p.fixture
-        entries[fixture.name] = []
-        passes = 0
-        for attempt in range(1, repeat + 1):
-            if stop is not None:
-                entry = RunEntry(attempt, "not_run", [f"not run: {stop}"])
+    in_flight: tuple[str, int] | None = None  # the run under way, if any
+
+    def record_in_flight(problem: str) -> None:
+        if in_flight is not None:
+            name, attempt = in_flight
+            if len(entries[name]) < attempt:
+                entries[name].append(RunEntry(attempt, "error", [problem]))
+
+    try:
+        for p in planned:
+            fixture = p.fixture
+            for attempt in range(1, repeat + 1):
+                in_flight = (fixture.name, attempt)
+                label = fixture.name if repeat == 1 else f"{fixture.name} #{attempt}"
+                run: AgentRun | None = None
+                try:
+                    entry, run = attempt_run(
+                        p, harness, attempt, workdir, timeout, args.include_reports
+                    )
+                except AgentStartError as exc:
+                    stop, status = str(exc), 2
+                    entry = RunEntry(attempt, "error", [stop])
                 entries[fixture.name].append(entry)
-                continue
-            label = fixture.name if repeat == 1 else f"{fixture.name} #{attempt}"
-            run: AgentRun | None = None
-            try:
-                entry, run = attempt_run(
-                    p, harness, attempt, workdir, timeout, args.include_reports
-                )
-            except AgentStartError as exc:
-                stop, status = str(exc), 2
-                entry = RunEntry(attempt, "error", [stop])
-            except KeyboardInterrupt:
-                stop, status = "interrupted", 130
-                entry = RunEntry(attempt, "error", [stop])
-            entries[fixture.name].append(entry)
-            count = entry.finding_count
-            findings = "" if count is None else f"  ({count} findings)"
-            print(f"{'PASS' if entry.passed else 'FAIL'}  {label}{findings}")
-            for problem in entry.problems:
-                print(f"      {problem}")
-            if not entry.passed and run is not None and run.stderr.strip():
-                print("      agent stderr:")
-                print(textwrap.indent(run.stderr.rstrip(), " " * 8))
-            passes += entry.passed
-        pass_counts[fixture.name] = passes
+                count = entry.finding_count
+                findings = "" if count is None else f"  ({count} findings)"
+                print(f"{'PASS' if entry.passed else 'FAIL'}  {label}{findings}")
+                for problem in entry.problems:
+                    print(f"      {problem}")
+                if not entry.passed and run is not None and run.stderr.strip():
+                    print("      agent stderr:")
+                    print(textwrap.indent(run.stderr.rstrip(), " " * 8))
+                if stop is not None:
+                    break
+            if stop is not None:
+                break
+    except KeyboardInterrupt:
+        stop, status = "interrupted", 130
+        record_in_flight(stop)
+    except BaseException as exc:
+        # still record the runs already paid for, then fail loudly
+        stop = f"runner error: {describe_error(exc, workdir)}"
+        record_in_flight(stop)
+        raise
+    finally:
+        config: dict[str, object] = {
+            "repeat": repeat,
+            "timeout_s": timeout,
+            "max_runs": args.max_runs,
+            "jobs": 1,
+            "include_reports": args.include_reports,
+            "replay_of": None if replay is None else replay.record_sha256,
+        }
+        record = build_record(
+            source=source,
+            harness=harness,
+            version=version,
+            planned=planned,
+            entries=entries,
+            config=config,
+            repeat=repeat,
+            started_at=started_at,
+            stopped=stop,
+        )
+        record_path = workdir / RECORD_NAME
+        write_record(record_path, record)
+        print(f"run record: {record_path}")
 
-    config: dict[str, object] = {
-        "repeat": repeat,
-        "timeout_s": timeout,
-        "max_runs": args.max_runs,
-        "jobs": 1,
-        "include_reports": args.include_reports,
-        "replay_of": None if replay is None else replay.record_sha256,
+    pass_counts = {
+        name: sum(entry.passed for entry in runs) for name, runs in entries.items()
     }
-    record = build_record(
-        source=source,
-        harness=harness,
-        version=version,
-        planned=planned,
-        entries=entries,
-        config=config,
-        started_at=started_at,
-        stopped=stop is not None,
-    )
-    record_path = workdir / RECORD_NAME
-    write_record(record_path, record)
-
-    runs = len(planned) * repeat
-    failed = runs - sum(pass_counts.values())
+    runs_total = len(planned) * repeat
+    failed = runs_total - sum(pass_counts.values())
     if repeat > 1:
         print("\npass rate per fixture:")
         for name, passes in pass_counts.items():
             print(f"  {passes}/{repeat} ({passes / repeat:4.0%})  {name}")
-        print(f"\n{runs - failed}/{runs} runs passed")
+        print(f"\n{runs_total - failed}/{runs_total} runs passed")
     else:
-        print(f"\n{runs - failed}/{runs} fixtures passed")
+        print(f"\n{runs_total - failed}/{runs_total} fixtures passed")
     if stop is not None:
         print(f"stopped early: {stop}", file=sys.stderr)
-    print(f"run record: {record_path}")
     print(f"reports and stderr: {workdir / 'artifacts'}")
     if args.keep or failed:
         print(f"review repos kept in {workdir / 'repos'}")
