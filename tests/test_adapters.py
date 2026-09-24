@@ -70,13 +70,18 @@ def test_cursor_rule_renders_agent_requested_rule(skill):
 
 
 def _mdc_line_fields(text):
-    """Cursor's .mdc reader: one ``key: value`` per line, not YAML."""
+    """Cursor's .mdc reader: one ``key: value`` per line, not YAML. A value is
+    trimmed and loses one pair of matching outer quotes; nothing inside them
+    is unescaped."""
     fields = {}
     for line in text.split("---\n")[1].splitlines():
         if line.startswith((" ", "\t")) or ":" not in line:
             continue  # continuation lines are dropped
         key, value = line.split(":", 1)
-        fields[key.strip()] = value.strip().strip("'\"")
+        value = value.strip()
+        if value[:1] in ("'", '"') and value[:1] == value[-1:]:
+            value = value[1:-1]
+        fields[key.strip()] = value
     return fields
 
 
@@ -87,6 +92,33 @@ def test_cursor_rule_keeps_a_long_description_on_one_line(skill):
     out = LEGACY_ADAPTERS["cursor-rule"].render(long)
     assert _mdc_line_fields(out)["description"] == long.description
     assert _frontmatter(out)["description"] == long.description
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "Don't miss: the reviewer's checklist",  # YAML would double the '
+        "'quoted' at both ends",
+        "It's plain",
+        'a "quoted" word: kept',
+        "a demo skill",
+    ],
+)
+def test_cursor_rule_description_reads_back_verbatim_in_cursor(skill, description):
+    # Cursor strips a value's quotes but doesn't unescape it, so a quoting
+    # that doubles an apostrophe would reach it with the apostrophe doubled.
+    quoted = dataclasses.replace(skill, description=description)
+    out = LEGACY_ADAPTERS["cursor-rule"].render(quoted)
+    assert _mdc_line_fields(out)["description"] == description
+    assert _frontmatter(out) == {"description": description, "alwaysApply": False}
+
+
+def test_cursor_rule_refuses_a_description_cursor_would_misread(skill):
+    # no quoting reads back verbatim: single quotes double the apostrophe,
+    # double quotes escape the double quote
+    bad = dataclasses.replace(skill, description='Don\'t say "never": ok')
+    with pytest.raises(SkillError, match="Cursor doesn't unescape"):
+        LEGACY_ADAPTERS["cursor-rule"].render(bad)
 
 
 def test_copilot_prompt_runs_in_agent_mode(skill):

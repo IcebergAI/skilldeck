@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..registry import Skill
+from ..registry import Skill, SkillError
 from ..targets import UserDir
 from .base import Adapter, yaml_frontmatter
 
@@ -30,6 +30,12 @@ class LegacyAdapter(Adapter):
     agent: str = ""
     #: appended to the skill name to make the file name
     suffix: str = ""
+    #: whether skilldeck 0.3.0 or earlier, which didn't stamp installs, wrote
+    #: this format at these locations. If so, an unstamped file at a skill's
+    #: path may be an old install, which ``migrate`` takes with ``--force``;
+    #: otherwise only a stamped file there is skilldeck's, and ``migrate``
+    #: leaves anything else alone.
+    unstamped_installs: bool = False
 
     def entry(self, skill: Skill) -> Path:
         return Path(f"{skill.name}{self.suffix}")
@@ -70,9 +76,10 @@ class CursorRuleAdapter(LegacyAdapter):
     agent-requested: the agent pulls it in when the description matches the
     task. Cursor reads ``.mdc`` frontmatter one ``key: value`` line at a time
     rather than as YAML, so the description is written on a single line; a
-    folded one would reach Cursor cut off at the first line break. Cursor is
-    not known to load user-level rules from disk, so this is project-scope
-    only.
+    folded one would reach Cursor cut off at the first line break. That reader
+    also strips a value's quotes without unescaping it, so the description is
+    quoted in a way it reads back verbatim. Cursor is not known to load
+    user-level rules from disk, so this is project-scope only.
     """
 
     name = "cursor-rule"
@@ -86,7 +93,34 @@ class CursorRuleAdapter(LegacyAdapter):
             "description": skill.description,
             "alwaysApply": False,
         }
-        return f"{yaml_frontmatter(fields, wrap=False)}\n{skill.body}"
+        front = yaml_frontmatter(fields, wrap=False)
+        written = front.split("\n")[1].partition(":")[2]
+        if _mdc_value(written) != skill.description:
+            # YAML quoted it in a way Cursor's reader doesn't undo: a
+            # single-quoted value with an apostrophe (doubled inside). Double
+            # quotes are read back verbatim when there is nothing to escape.
+            text = skill.description
+            if '"' in text or "\\" in text or not text.isprintable():
+                raise SkillError(
+                    f"cannot write {skill.name} as a Cursor rule: Cursor doesn't "
+                    "unescape quoted frontmatter values, and its description "
+                    "needs escaping (an apostrophe with a double quote or "
+                    "backslash, or an unprintable character)"
+                )
+            front = f'---\ndescription: "{text}"\nalwaysApply: false\n---\n'
+        return f"{front}\n{skill.body}"
+
+
+def _mdc_value(text: str) -> str:
+    """What Cursor's ``.mdc`` reader makes of the text after ``key:``.
+
+    It trims the text and removes one pair of matching outer quotes, but
+    doesn't unescape anything inside them.
+    """
+    text = text.strip()
+    if text[:1] in ("'", '"') and text[:1] == text[-1:]:
+        return text[1:-1]
+    return text
 
 
 class KiroSteeringAdapter(LegacyAdapter):
@@ -112,6 +146,20 @@ class KiroSteeringAdapter(LegacyAdapter):
         return f"---\ninclusion: manual\n---\n\n{skill.body}"
 
 
+class OldKiroSteeringAdapter(KiroSteeringAdapter):
+    """Where skilldeck used to install Kiro skills, as steering files:
+    ``.kiro/steering/<name>.md`` and ``~/.kiro/steering/<name>.md``.
+
+    Not an install target: ``skilldeck migrate`` uses it to find old installs,
+    which were written under the home directory whatever ``KIRO_HOME`` said
+    (``kiro-steering`` follows it now). skilldeck 0.3.0 wrote them without a
+    stamp, or frontmatter.
+    """
+
+    global_dir = UserDir(".kiro", "steering")
+    unstamped_installs = True
+
+
 class CodexPromptAdapter(LegacyAdapter):
     """Where skilldeck used to install Codex skills, as custom prompts:
     ``.codex/prompts/<name>.md`` and ``~/.codex/prompts/<name>.md``.
@@ -128,6 +176,7 @@ class CodexPromptAdapter(LegacyAdapter):
     installed_glob = "*.md"
     project_dir = ".codex/prompts"
     global_dir = UserDir(".codex", "prompts")
+    unstamped_installs = True
 
     def render(self, skill: Skill) -> str:
         return skill.body

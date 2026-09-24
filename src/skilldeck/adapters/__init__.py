@@ -21,6 +21,7 @@ from .legacy import (
     CursorRuleAdapter,
     KiroSteeringAdapter,
     LegacyAdapter,
+    OldKiroSteeringAdapter,
 )
 
 ADAPTERS: dict[str, Adapter] = {
@@ -46,12 +47,15 @@ LEGACY_ADAPTERS: dict[str, Adapter] = {
 ALL_ADAPTERS: dict[str, Adapter] = {**ADAPTERS, **LEGACY_ADAPTERS}
 
 #: for each agent, the older formats ``skilldeck migrate`` moves installs out
-#: of, into that agent's native adapter
+#: of, into that agent's native adapter. Kiro has two: where skilldeck used to
+#: write steering files (always under ``~/.kiro``), and where ``kiro-steering``
+#: writes them now (``$KIRO_HOME/steering`` when set). Sources that resolve
+#: to the same directory are scanned once, by the first of them.
 MIGRATIONS: dict[str, tuple[LegacyAdapter, ...]] = {
     "codex": (CodexPromptAdapter(),),
     "copilot": (_COPILOT_PROMPT,),
     "cursor": (_CURSOR_RULE,),
-    "kiro": (_KIRO_STEERING,),
+    "kiro": (OldKiroSteeringAdapter(), _KIRO_STEERING),
 }
 
 __all__ = [

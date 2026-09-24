@@ -152,15 +152,18 @@ write. skilldeck never writes through a symlink at an install path.
 [docs/adapters.md](docs/adapters.md#stamps-what-skilldeck-will-overwrite-or-delete)
 for the details.
 
-Upgrading from skilldeck 0.3.0 or earlier: Codex, Copilot, Cursor and Kiro
-skills now install as `SKILL.md` folders instead of prompt, rule and steering
-files, and Codex no longer reads the custom prompts skilldeck used to write.
-Run `skilldeck migrate --agent all` (and again with `--scope global` for
-global installs) to replace the old files with skills; `status` prints a hint
-while old files remain. Those versions also didn't stamp what they installed,
-so skilldeck treats their files as ones it didn't write. `migrate` needs
-`--force` for them. For Claude skills from those versions, run
-`install --force` once to replace them with stamped copies (or
+Upgrading: Codex and Kiro skills now install as `SKILL.md` folders instead of
+the custom prompts and steering files that skilldeck 0.3.0 and earlier wrote.
+(Codex never read custom prompts from a project, and has since removed them
+altogether.) If you used a development build with the Copilot and Cursor
+adapters, their prompt files and rules become skills too. Run
+`skilldeck migrate --agent all` (and again with `--scope global` for global
+installs) to replace the old files with skills; `status` prints a hint while
+old files remain. skilldeck 0.3.0 and earlier didn't stamp what they
+installed, so skilldeck treats their files as ones it didn't write: check the
+files the hint counts, then run `migrate` with `--force`, which never
+overwrites a `SKILL.md` you have edited. For Claude skills from those
+versions, run `install --force` once to replace them with stamped copies (or
 `uninstall --force` to remove them), after which `update` and `uninstall`
 work without `--force`. See
 [Migrating from the old formats](docs/adapters.md#migrating-from-the-old-formats).

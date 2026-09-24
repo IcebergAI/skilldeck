@@ -225,7 +225,10 @@ All notable changes to this project are documented here. The format is based on
 - Cursor rules keep their whole description. Cursor reads `.mdc` frontmatter
   one line at a time rather than as YAML, so a long description folded onto a
   second line reached Cursor cut short (7 of the 10 bundled skills). The
-  `cursor-rule` adapter writes it on one line.
+  `cursor-rule` adapter writes it on one line. Cursor also strips a value's
+  quotes without unescaping it, so a description YAML would single-quote with
+  a doubled apostrophe is written in double quotes, and one that needs
+  escaping either way is refused.
 - `uninstall` no longer deletes files that skilldeck didn't write or that have
   local edits. Like `install`, it refuses unless the new `uninstall --force` is
   given. It also reports per-skill errors, carries on, and exits 1 at the end.
@@ -358,13 +361,20 @@ All notable changes to this project are documented here. The format is based on
 - `skilldeck migrate --agent <agent>|all [--scope ...] [--force]` moves skills
   installed in an agent's old format (Codex custom prompts, Copilot prompt
   files, Cursor rules, Kiro steering files) to its `SKILL.md` folder: it
-  installs the native skill, then removes the old file. The #95 rules apply:
-  an old file with local edits, without a stamp (such as an install from
-  skilldeck 0.3.0 or earlier) or that is a symlink is left in place and
-  reported unless `--force` is given, a directory is never removed, and a
-  modified or unmanaged file at the new location stops the move. Running it
-  again is a no-op. `status` and `update` print a one-line hint for each
-  agent with files at the old locations (#100).
+  installs the native skill, then removes the old file. Global Codex prompts
+  and Kiro steering files are found under `~/.codex/prompts` and
+  `~/.kiro/steering`, where skilldeck wrote them whatever `CODEX_HOME` or
+  `KIRO_HOME` said, and in `$KIRO_HOME/steering`. The #95 rules apply to the
+  old file: one with local edits is left in place and reported unless
+  `--force` is given, and so, for Codex and Kiro, is one without a stamp
+  (such as an install from skilldeck 0.3.0 or earlier) or a symlink; a
+  directory is never removed. skilldeck always stamped Copilot prompt files
+  and Cursor rules, so an unstamped one is the user's own and is never
+  touched. `--force` never reaches the new location: a locally modified
+  `SKILL.md` there is kept as it is, and a file skilldeck didn't write there
+  stops the move. Running it again is a no-op. `status` and `update` print a
+  one-line hint for each agent with old installs, counting unstamped files
+  separately (#100).
 - Legacy adapters for agent versions without skills support, selected by
   name and applied to every skill that supports their agent, so no
   `meta.yaml` changes: `copilot-prompt` (`.github/prompts/<name>.prompt.md`,

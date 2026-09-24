@@ -80,8 +80,9 @@ instead of guessing.
 - **`COPILOT_HOME`** replaces `~/.copilot` for Copilot CLI. VS Code's local
   agent reads `~/.copilot/skills` whatever the variable says, so with
   `COPILOT_HOME` set a global install reaches the CLI but not that VS Code
-  agent. skilldeck treats an empty value as unset, as VS Code's Agent Host
-  code does; how the Copilot CLI treats one is unverified.
+  agent. From Copilot CLI 1.0.66, setting it also stops the CLI loading
+  `~/.agents/skills`. skilldeck treats an empty value as unset, as VS Code's
+  Agent Host code does; how the Copilot CLI treats one is unverified.
 - **`KIRO_HOME`** replaces `~/.kiro` for Kiro CLI; Kiro treats an empty value
   as unset, and so does skilldeck. Whether the Kiro IDE honours `KIRO_HOME` is
   unverified.
@@ -98,8 +99,8 @@ Several agents also read other agents' folders:
 | Agent | Project folders it reads | User folders it reads |
 |---|---|---|
 | Claude Code | `.claude/skills` (start directory up to the repository root) | `~/.claude/skills`, or `$CLAUDE_CONFIG_DIR/skills` |
-| Codex | `.agents/skills` (repository root down to the working directory), `.codex/skills` | `~/.agents/skills`, `$CODEX_HOME/skills` (deprecated), `/etc/codex/skills` |
-| Copilot | `.github/skills`, `.agents/skills`, `.claude/skills` | `~/.copilot/skills`, `~/.agents/skills`; VS Code's local agent also `~/.claude/skills` |
+| Codex | `.agents/skills` (repository root down to the working directory), `.codex/skills` | `~/.agents/skills`, `$CODEX_HOME/skills` (deprecated); admin scope: `/etc/codex/skills` |
+| Copilot | `.github/skills`, `.agents/skills` (CLI 0.0.401+), `.claude/skills` | `~/.copilot/skills`, `~/.agents/skills` (CLI 1.0.11+, and not while `COPILOT_HOME` is set from CLI 1.0.66); VS Code's local agent also `~/.claude/skills` |
 | Cursor | `.cursor/skills`, `.agents/skills`; `.claude/skills` and `.codex/skills` when third-party extensibility is on | the same folders under `~` |
 | Kiro | `.kiro/skills` | `~/.kiro/skills`, or `$KIRO_HOME/skills` |
 
@@ -143,9 +144,14 @@ Install each skill **once per agent**, at **one scope**:
 
 If you want a single copy for several agents, Codex, Copilot and Cursor all
 read `.agents/skills`, so `--agent codex` serves all three at project scope.
-Copilot code review on GitHub.com is the exception, as GitHub documents only
-`.github/skills` for it. `skilldeck status --agent copilot` then reports the
-skills as not installed, since skilldeck tracks each agent's own folder.
+For Copilot that needs Copilot CLI 0.0.401 or later, and a VS Code release
+that reads `.agents/skills`: VS Code 1.109's release notes list only
+`.github/skills` and `.claude/skills`, and the release that added
+`.agents/skills` could not be verified. On older versions, install
+`--agent copilot` as well. Copilot code review on GitHub.com is another
+exception, as GitHub documents only `.github/skills` for it.
+`skilldeck status --agent copilot` reports skills shared this way as not
+installed, since skilldeck tracks each agent's own folder.
 
 ## Legacy adapters
 
@@ -158,7 +164,7 @@ named with `--agent`.
 |---|---|---|---|---|
 | `copilot-prompt` | `.github/prompts/<name>.prompt.md` | project | `description`, `agent: agent` | VS Code's local agent, Visual Studio, JetBrains (preview); not the Copilot CLI, GitHub.com or VS Code's Agent Host |
 | `cursor-rule` | `.cursor/rules/<name>.mdc` | project | `description`, `alwaysApply: false` | Cursor |
-| `kiro-steering` | `.kiro/steering/<name>.md` | both (`$KIRO_HOME/steering` globally) | `inclusion: manual` | Kiro IDE (`#<name>`), Kiro CLI (`/context add`) |
+| `kiro-steering` | `.kiro/steering/<name>.md` | both (`$KIRO_HOME/steering` globally) | `inclusion: manual` | Kiro IDE (`#<name>`); Kiro CLI (`/context add`) only where it honours `inclusion` (see below) |
 
 - `agent: agent` makes a Copilot prompt file run in agent mode, where it can
   run `git diff` and read files. Without it the prompt runs in whatever mode
@@ -166,12 +172,20 @@ named with `--agent`.
 - Cursor reads `.mdc` frontmatter one `key: value` line at a time rather than
   as YAML, so `cursor-rule` writes the description on a single line. (The
   Cursor adapter used to fold long descriptions onto a second line, which the
-  reader in Cursor's published SDK drops.)
+  reader in Cursor's published SDK drops.) That reader also strips a value's
+  outer quotes without unescaping it, so a description YAML would
+  single-quote with a doubled apostrophe is written in double quotes instead,
+  and one that would need escaping either way is refused.
 - Kiro loads a steering file with `inclusion: manual` only when you ask for
   it, according to the Kiro IDE docs and the docs shipped in Kiro CLI 2.24.0.
-  Kiro CLI before 2.19.0 is reported to have loaded every steering file
-  regardless, which puts every review prompt in every session; that report
-  comes from Kiro's KiroCrew notes and could not be verified.
+  The Kiro CLI may not: Kiro's KiroCrew mirror of the current kiro.dev
+  steering page says inclusion modes are not supported on Kiro CLI and every
+  steering file is loaded automatically, which contradicts those 2.24.0 docs
+  (the engine or version it applies to is unknown). Kiro CLI before 2.19.0 is
+  also reported to have loaded every steering file regardless. Either way
+  every review prompt would be in every session. Neither report could be
+  checked against the live docs or a running CLI, so on Kiro CLI prefer the
+  `kiro` skills adapter.
 - Codex custom prompts (`.codex/prompts/<name>.md`) are gone. Codex only ever
   read them from `$CODEX_HOME/prompts`, never from a project, deprecated them
   in 0.117.0 and removed them in 0.118.0, so there is no Codex legacy adapter.
@@ -195,30 +209,38 @@ a file at the old location it installs the native `SKILL.md`, then removes the
 old file. It follows the
 [stamp rules](#stamps-what-skilldeck-will-overwrite-or-delete):
 
-- A stamped, unedited old install is migrated.
-- An old file with local edits, without a stamp, or that is a symlink is left
-  in place and reported. `--force` migrates it anyway: the bundled skill
-  replaces your edits, and a symlink is removed while its target is kept.
+- A stamped, unedited old install is migrated, including one an earlier
+  skilldeck rendered differently (reported as stale).
+- An old file with local edits is left in place and reported; `--force`
+  migrates it anyway, and the bundled skill replaces your edits.
+- An unstamped old file, or a symlink, is treated as a possible old install
+  only where skilldeck 0.3.0 and earlier wrote without a stamp: the Codex
+  prompt and Kiro steering folders in the table above. It is left in place
+  and reported, and `--force` migrates it (a symlink is removed; its target
+  is kept). Every Copilot prompt file and Cursor rule skilldeck wrote, and
+  every `kiro-steering` file in `$KIRO_HOME/steering`, was stamped, so an
+  unstamped one there, or a symlink, is your own and `migrate` never touches
+  it, even with `--force`.
 - A directory at the old path is never removed.
-- If the new location already holds a file with local edits, or one skilldeck
-  didn't write, the old file stays and the skill is reported as an error,
-  unless you pass `--force`.
+- `--force` applies only to the old file. `migrate` never overwrites a
+  locally modified or unmanaged file at the new location: a `SKILL.md` you
+  have edited is kept as it is (the old file is still removed), and anything
+  else skilldeck didn't write there is reported as an error with the old file
+  kept. Move it aside, or replace it with `install --force`, and run
+  `migrate` again. A stale `SKILL.md` there is refreshed.
 
 Running it again is harmless: it reports `nothing to migrate`. `status` and
-`update` print a one-line `hint:` for an agent with files at the old locations,
-counting how many need `--force`.
+`update` print a one-line `hint:` for an agent with old installs, counting
+the stamped ones and how many of those have local edits; for Codex and Kiro
+it counts unstamped files with a bundled skill's name separately. Those may
+be 0.3.0 installs or files of your own, so check the reported paths before
+adding `--force`.
 
-Installs from skilldeck 0.3.0 and earlier carry no stamp, so they need
-`--force`. The same goes for a file of your own that shares a bundled skill's
-name, so check the reported paths first.
-
-Two global-scope details: skilldeck used to write Codex prompts under
-`~/.codex/prompts` whatever `CODEX_HOME` said, and that is where `migrate`
-looks. Kiro steering files were likewise written under `~/.kiro/steering`,
-but `migrate` looks in `$KIRO_HOME/steering` when `KIRO_HOME` is set. To clear
-out old files there, run `KIRO_HOME= skilldeck uninstall --all --agent
-kiro-steering --scope global` (with `--force` for unstamped ones) and install
-afresh.
+skilldeck used to write global Codex prompts under `~/.codex/prompts` and
+global Kiro steering files under `~/.kiro/steering`, whatever `CODEX_HOME` or
+`KIRO_HOME` said, and `migrate` looks there. For Kiro it also looks in
+`$KIRO_HOME/steering`, where `kiro-steering` installs now. The new Kiro
+skills go to `$KIRO_HOME/skills` when `KIRO_HOME` is set.
 
 ## Stamps: what skilldeck will overwrite or delete
 
@@ -327,8 +349,9 @@ sources in September 2026:
   so an empty string is kept; it is undocumented and may change.
 - **Codex**: `openai/codex@17cd2834` (same files as tag `rust-v0.156.1`)
   `codex-rs/ext/skills/src/host_roots.rs` lines 95–108 (`~/.agents/skills`
-  from the home directory; `$CODEX_HOME/skills` "deprecated") and 142–154
-  (`.agents/skills` from the project root down), and
+  from the home directory; `$CODEX_HOME/skills` "deprecated"), 115–120 (the
+  system config folder's `skills`, admin scope) and 142–154 (`.agents/skills`
+  from the project root down), and
   `codex-rs/skills/src/selection.rs` lines 188–190 (a plain name must be
   unique); commits `39a6a84097` (#10317, `rust-v0.94.0`) and `e24058b7a8`
   (#10437, `rust-v0.95.0`) for `.agents/skills`; `b8e8454b3f` (#2696, custom
@@ -343,9 +366,13 @@ sources in September 2026:
   lines 172–179 (VS Code's skill folders) and
   `src/vs/workbench/contrib/chat/browser/widget/chatWidget.ts` lines 4127–4145
   (a prompt's `agent` sets the mode); `microsoft/vscode-docs@44133f07`
-  `release-notes/v1_109.md` line 449 and
+  `release-notes/v1_109.md` lines 449 (skills on by default) and 455 (the
+  default skill folders), and
   `docs/agent-customization/prompt-files.md` line 28 (prompt files not loaded
-  by the Agent Host); `github/copilot-cli@57dd2440` `changelog.md` (0.0.371).
+  by the Agent Host); `github/copilot-cli@57dd2440` `changelog.md` lines 2886
+  (0.0.371, skills), 2574 (0.0.401, `.agents/skills`), 1979 (1.0.11,
+  `~/.agents/skills`) and 842 (1.0.66, `COPILOT_HOME` stops
+  `~/.agents/skills`).
 - **Cursor**: npm `@cursor/sdk` 1.0.32, `dist/esm/34.js` (the bundled
   `local-exec` skills loader's folder table at byte offset 552915, its
   duplicate key at 559645, and the line-based `.mdc` frontmatter reader at
@@ -355,7 +382,8 @@ sources in September 2026:
   (`docs/features/skills.md` for the default locations,
   `docs/commands/chat.md` for `KIRO_HOME`, `docs/features/steering-files.md`
   for manual steering); `kirodotdev/KiroCrew@f1f891b`
-  `docs/reference/kiro-cli/skills.md` and `steering.md`, a mirror of
+  `docs/reference/kiro-cli/skills.md` and `steering.md` (lines 38–42: the
+  upstream page on Kiro CLI ignoring `inclusion`), a mirror of
   `kiro.dev/docs`.
 - **Agent Skills format**: `agentskills/agentskills@69ef37e`
   `docs/specification.mdx` lines 27–28.

@@ -10,7 +10,14 @@ from pathlib import Path
 
 import click
 
-from .adapters import ADAPTERS, ALL_ADAPTERS, MIGRATIONS, Adapter, InstallState
+from .adapters import (
+    ADAPTERS,
+    ALL_ADAPTERS,
+    MIGRATIONS,
+    Adapter,
+    InstallState,
+    LegacyAdapter,
+)
 from .provenance import distribution_provenance
 from .registry import Skill, SkillError, discover_skills
 from .stamp import read as read_stamp
@@ -122,49 +129,101 @@ def _unmanaged_detail(adapter: Adapter, skill: Skill, scope: Scope) -> str:
     return "no skilldeck stamp (adopt with: install --force)"
 
 
+def _migration_sources(agent: str, scope: Scope) -> list[LegacyAdapter]:
+    """``agent``'s older formats that have a location at ``scope``, one per
+    directory: when two resolve to the same one, the first listed in
+    ``MIGRATIONS`` is used.
+    """
+    sources: list[LegacyAdapter] = []
+    roots: set[Path] = set()
+    for source in MIGRATIONS.get(agent, ()):
+        if scope not in source.scopes:
+            continue
+        root = source.root(scope)
+        if root not in roots:
+            roots.add(root)
+            sources.append(source)
+    return sources
+
+
+def _old_install(
+    source: LegacyAdapter, skill: Skill, scope: Scope
+) -> tuple[InstallState, Path] | None:
+    """The state and path of ``skill``'s file in ``source``'s format at
+    ``scope``; None if nothing there can be an install skilldeck made.
+
+    A stamped file always can. Anything else (no stamp, a symlink, a
+    directory) is considered only where skilldeck 0.3.0 and earlier wrote
+    unstamped installs (``unstamped_installs``); elsewhere it is the user's.
+    """
+    if not source.supports(skill):
+        return None
+    state, _ = source.inspect(skill, scope)
+    if state is InstallState.NOT_INSTALLED:
+        return None
+    if state is InstallState.UNMANAGED and not source.unstamped_installs:
+        return None
+    return state, source.destination(skill, scope)
+
+
 def _legacy_hint(adapter: Adapter, skills: list[Skill], scope: Scope) -> str | None:
     """Point at ``migrate`` if ``adapter``'s agent has skills installed in an
     older format at ``scope``; None if it has none.
 
-    Counts the bundled skills' old-format paths that hold a stamped install,
-    and also regular files there without a stamp: skilldeck 0.3.0 and earlier
-    wrote those, so they are likely installs too, but ``migrate`` takes them
-    (like locally modified ones) only with ``--force``.
+    Counts the stamped installs at the bundled skills' old-format paths, and
+    how many of those have local edits. Where skilldeck 0.3.0 and earlier
+    wrote installs without a stamp, regular files there without one are
+    counted separately: they may be old installs or the user's own files, so
+    the hint asks for a check before ``--force``.
     """
-    found = needs_force = 0
+    stamped = modified = unstamped = 0
     roots: list[str] = []
-    for source in MIGRATIONS.get(adapter.name, ()):
-        if scope not in source.scopes:
-            continue
-        before = found
+    for source in _migration_sources(adapter.name, scope):
+        before = stamped + unstamped
         for skill in skills:
-            if not source.supports(skill):
-                continue
             try:
-                state, _ = source.inspect(skill, scope)
-                dest = source.destination(skill, scope)
+                found = _old_install(source, skill, scope)
             except SkillError:
                 continue  # unreadable; migrate will report it
-            if state is InstallState.NOT_INSTALLED:
+            if found is None:
                 continue
-            if state is InstallState.UNMANAGED and _entry_kind(dest) != "file":
-                continue  # a symlink or directory is not an old install
-            found += 1
-            if state in (InstallState.UNMANAGED, InstallState.MODIFIED):
-                needs_force += 1
-        if found > before:
+            state, path = found
+            if state is InstallState.UNMANAGED:
+                # a symlink or directory is not an old install
+                if _entry_kind(path) == "file":
+                    unstamped += 1
+                continue
+            stamped += 1
+            if state is InstallState.MODIFIED:
+                modified += 1
+        if stamped + unstamped > before:
             roots.append(str(source.root(scope)))
-    if not found:
+    if not (stamped or unstamped):
         return None
+    found_parts = []
+    if stamped:
+        found_parts.append(f"{stamped} {adapter.name} skill(s) in an older format")
+    if unstamped:
+        found_parts.append(
+            f"{unstamped} file(s) named like a bundled skill without a skilldeck stamp"
+        )
     command = f"skilldeck migrate --agent {adapter.name}"
     if scope is not Scope.PROJECT:
         command += f" --scope {scope.value}"
     hint = (
-        f"hint: {found} {adapter.name} skill(s) in an older format in "
-        f"{', '.join(roots)}; convert them with: {command}"
+        f"hint: {' and '.join(found_parts)} in {', '.join(roots)}; convert them "
+        f"with: {command}"
     )
-    if needs_force:
-        hint += f" ({needs_force} unstamped or modified: add --force)"
+    notes = []
+    if modified:
+        notes.append(f"{modified} locally modified: add --force")
+    if unstamped:
+        notes.append(
+            "skilldeck 0.3.0 and earlier didn't stamp installs, so check the "
+            "unstamped file(s) are old installs before adding --force"
+        )
+    if notes:
+        hint += f" ({'; '.join(notes)})"
     return hint
 
 
@@ -448,15 +507,17 @@ def update(agents: tuple[str, ...], scope: str, force: bool) -> None:
     "--force",
     is_flag=True,
     help="Also migrate old files that are locally modified or have no "
-    "skilldeck stamp (the bundled skill replaces them), and overwrite a "
-    "modified or unmanaged file at the new location.",
+    "skilldeck stamp (the bundled skill replaces them; a symlink is unlinked, "
+    "its target kept). A modified or unmanaged file at the new location is "
+    "never overwritten.",
 )
 def migrate(agents: tuple[str, ...], scope: str, force: bool) -> None:
     """Move skills installed in an older format to the native skills folder.
 
     For each bundled skill installed in the agent's old format (Codex custom
     prompts, Copilot prompt files, Cursor rules, Kiro steering files), install
-    the SKILL.md version, then remove the old file.
+    the SKILL.md version, then remove the old file. A locally modified
+    SKILL.md already in place is kept as it is.
     """
     scope_enum = Scope(scope)
     skills = _all_skills()
@@ -469,29 +530,32 @@ def migrate(agents: tuple[str, ...], scope: str, force: bool) -> None:
                 click.echo()
             click.echo(f"{adapter.name}:")
         migrated = skipped = errors = 0
-        for source in MIGRATIONS[adapter.name]:
-            if scope_enum not in source.scopes:
-                continue
+        for source in _migration_sources(adapter.name, scope_enum):
             for skill in skills:
-                if not adapter.supports(skill):
-                    continue
                 try:
-                    state, _ = source.inspect(skill, scope_enum)
-                    if state is InstallState.NOT_INSTALLED:
+                    found = _old_install(source, skill, scope_enum)
+                    if found is None:
                         continue
-                    old = source.destination(skill, scope_enum)
+                    state, old = found
                     reason = _migrate_blocker(old, state, force)
                     if reason:
                         click.echo(f"{indent}skip {skill.name}: {reason}", err=True)
                         skipped += 1
                         continue
-                    new = adapter.install(skill, scope_enum, force=force)
+                    kept = _install_native(adapter, skill, scope_enum)
                     source.uninstall(skill, scope_enum, force=force)
                 except SkillError as exc:
                     click.echo(f"{indent}error: {exc}", err=True)
                     errors += 1
                     continue
-                click.echo(f"{indent}migrated {skill.name}: {old} -> {new}")
+                new = adapter.destination(skill, scope_enum)
+                if kept:
+                    click.echo(
+                        f"{indent}migrated {skill.name}: removed {old}; kept the "
+                        f"locally modified {new}"
+                    )
+                else:
+                    click.echo(f"{indent}migrated {skill.name}: {old} -> {new}")
                 migrated += 1
         if errors:
             failed = True
@@ -499,6 +563,37 @@ def migrate(agents: tuple[str, ...], scope: str, force: bool) -> None:
             click.echo(f"{indent}nothing to migrate")
     if failed:
         raise SystemExit(1)
+
+
+def _install_native(adapter: Adapter, skill: Skill, scope: Scope) -> bool:
+    """Put ``skill`` in ``adapter``'s own folder for ``migrate``; return
+    whether a locally modified install already there was kept.
+
+    Unlike ``install --force``, this never overwrites a file with local edits
+    or one skilldeck didn't write: ``migrate --force`` is about the old file.
+    A modified install of the skill counts as migrated already; anything else
+    in the way raises :class:`SkillError`, so the old file is kept.
+    """
+    state, _ = adapter.inspect(skill, scope)
+    if state is InstallState.MODIFIED:
+        return True
+    if state is InstallState.UNMANAGED:
+        dest = adapter.destination(skill, scope)
+        kind = _entry_kind(dest)
+        if kind == "file":
+            what = "has no skilldeck stamp"
+            fix = "move it aside, or replace it with install --force"
+        else:
+            what = f"is a {kind}"
+            fix = "move it aside"
+        raise SkillError(
+            f"cannot migrate {skill.name}: {dest} {what}, and migrate never "
+            f"replaces what skilldeck didn't write; {fix}, then re-run "
+            "(the old file is kept)"
+        )
+    if state is not InstallState.CURRENT:
+        adapter.install(skill, scope)
+    return False
 
 
 def _migrate_blocker(old: Path, state: InstallState, force: bool) -> str | None:
