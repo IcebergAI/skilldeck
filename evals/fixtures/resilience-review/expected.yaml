@@ -1,5 +1,7 @@
 skill: resilience-review
 plants:
   - file: services/client.py
-    keywords: [timeout]
+    lines: [13, 13]
+    keywords: [deadline, unbounded, hang]
+    min-severity: medium
 max-findings: 5

@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- Eval scoring now matches each planted defect to a distinct structured
+  finding with its file, line range, Issue keyword and minimum severity.
+  Alternate bullet styles count toward the findings cap; malformed or empty
+  reports and failed agent commands cannot pass. Fixture checks reject
+  keywords copied from the planted source (#106).
+
 ### Security
 
 - CI/release workflows pin all GitHub Actions to full commit SHAs (tag noted in

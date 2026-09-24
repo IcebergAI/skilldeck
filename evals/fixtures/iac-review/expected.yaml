@@ -1,5 +1,7 @@
 skill: iac-review
 plants:
   - file: infra/network.tf
-    keywords: [0.0.0.0, internet, world]
+    lines: [13, 19]
+    keywords: [internet, world, public]
+    min-severity: high
 max-findings: 4

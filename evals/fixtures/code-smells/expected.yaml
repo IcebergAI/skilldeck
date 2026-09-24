@@ -1,5 +1,7 @@
 skill: code-smells
 plants:
   - file: billing/invoice.py
+    lines: [8, 62]
     keywords: [Long Method, Extract]
+    min-severity: low
 max-findings: 6

@@ -1,7 +1,11 @@
 skill: ci-workflow-review
 plants:
   - file: .gitlab-ci.yml
-    keywords: [injection, CI_MERGE_REQUEST_TITLE, untrusted]
+    lines: [24, 24]
+    keywords: [injection, untrusted]
+    min-severity: high
   - file: .gitlab-ci.yml
-    keywords: [privileged, dind, docker-in-docker, runner]
+    lines: [14, 22]
+    keywords: [isolation, host access, escape]
+    min-severity: high
 max-findings: 6

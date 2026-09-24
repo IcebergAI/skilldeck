@@ -1,5 +1,7 @@
 skill: authentication-review
 plants:
   - file: app/saml_acs.py
-    keywords: [assertion, signature, XSW, wrapping]
+    lines: [22, 31]
+    keywords: [XSW, wrapping, unsigned]
+    min-severity: high
 max-findings: 5
