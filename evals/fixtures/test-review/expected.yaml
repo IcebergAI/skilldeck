@@ -1,5 +1,17 @@
 skill: test-review
 plants:
+  # test_coupon calls the code but never checks the result. Keywords name the
+  # missing check itself, so a coverage-gap finding that merely suggests a test
+  # which "asserts ValueError" doesn't count for this plant.
   - file: tests/test_discount.py
-    keywords: [assertion, asserts]
+    keywords:
+      - assertion-free
+      - no assertion
+      - no assertions
+      - without an assertion
+      - without assertions
+      - never asserts
+      - asserts nothing
+      - no assert
+    min-severity: medium
 max-findings: 6

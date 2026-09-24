@@ -1,5 +1,13 @@
 skill: code-smells
 plants:
+  # generate_invoice validates, prices, discounts, taxes, renders and delivers
+  # in one function. Keywords name the smell, not a refactoring: "Extract" also
+  # fits the fix for a magic-number finding in the same function.
   - file: billing/invoice.py
-    keywords: [Long Method, Extract]
+    keywords:
+      - Long Method
+      - long function
+      - too long
+      - too many responsibilities
+      - single responsibility
 max-findings: 6

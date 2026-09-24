@@ -1,2 +1,6 @@
+# Every package resolves through the corp mirror, which proxies PyPI and
+# hosts our internal corp-* packages.
+--index-url https://pypi.corp.example.com/simple/
 click==8.1.7
 requests==2.33.0
+corp-auth-client~=2.4

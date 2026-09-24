@@ -8,6 +8,9 @@ on:
 permissions:
   contents: read
 
+# Every `uv run`/`uv sync` below passes --locked: a stale uv.lock fails CI
+# instead of being silently re-resolved. The one exception is `test-lowest`,
+# which deliberately resolves the declared dependency floors.
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -18,13 +21,13 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
-      - run: uv sync --extra dev
+      - run: uv sync --locked --extra dev
       - name: Ruff lint
-        run: uv run ruff check .
+        run: uv run --locked --extra dev ruff check .
       - name: Ruff format
-        run: uv run ruff format --check .
+        run: uv run --locked --extra dev ruff format --check .
       - name: Mypy
-        run: uv run mypy
+        run: uv run --locked --extra dev mypy
       - name: Release consistency (version matches CHANGELOG)
         run: python scripts/check_release_consistency.py
 
@@ -41,8 +44,70 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
+          python-version: ${{ matrix.python-version }}
       - name: Run tests
-        run: uv run --python ${{ matrix.python-version }} --extra dev pytest -q
+        run: uv run --locked --extra dev pytest -q
+
+  test-os:
+    # Installs land in home-folder config dirs, where Windows and macOS differ
+    # from Linux in path handling, line endings, encodings, and symlink rules.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          python-version: "3.14"
+      - name: Run tests
+        run: uv run --locked --extra dev pytest -q
+
+  test-lowest:
+    # Resolve the lowest versions the declared ranges allow (click>=8.1,
+    # pyyaml>=6.0.1, ...) instead of uv.lock, so a floor that is too low fails
+    # here rather than for users. No --locked: this job must re-resolve.
+    # Both ends of the supported Python range, because a floor can install on
+    # one and not the other (PyYAML 6.0 cannot be built on 3.12+).
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-suffix: lowest-direct-${{ matrix.python-version }}
+          python-version: ${{ matrix.python-version }}
+      - name: Run tests against the lowest direct dependency versions
+        run: uv run --resolution lowest-direct --extra dev pytest -q
+
+  zizmor:
+    # Static analysis of the workflows and Dependabot config (template
+    # injection, credential persistence, unpinned or impostor actions, ...).
+    # The version is pinned; bump it deliberately and fix what it reports.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: false
+      - name: Audit .github with zizmor
+        env:
+          # read-only token for zizmor's online audits (impostor commits,
+          # known-vulnerable actions); the job has only contents: read
+          GH_TOKEN: ${{ github.token }}
+        run: uvx zizmor==1.30.1 --min-severity=medium --no-progress .github
 
   build:
     runs-on: ubuntu-latest
@@ -56,7 +121,7 @@ jobs:
       - name: Stamp simulated immutable source identity
         id: release
         run: |
-          VERSION=$(python3 -c 'import re; print(re.search(r"^version\s*=\s*\"([^\"]+)\"", open("pyproject.toml").read(), re.M).group(1))')
+          VERSION=$(python3 scripts/_pyproject.py)
           python3 scripts/stamp_build_metadata.py \
             --source-ref "refs/tags/v${VERSION}" \
             --source-commit "$GITHUB_SHA"
@@ -69,18 +134,66 @@ jobs:
         env:
           EXPECTED_VERSION: ${{ steps.release.outputs.version }}
         run: |
-          uv run --extra dev python scripts/verify_distribution_identity.py \
+          uv run --locked --extra dev python scripts/verify_distribution_identity.py \
             --wheel dist/*.whl \
             --sdist dist/*.tar.gz \
             --plugin-dir claude-plugin \
             --expected-version "$EXPECTED_VERSION" \
             --expected-ref "refs/tags/v${EXPECTED_VERSION}" \
             --expected-commit "$GITHUB_SHA"
-      - name: Install only the release wheel and runtime dependencies
+      - name: Build with the hatchling floor and verify the same identity
+        # [build-system] allows the oldest hatchling below (keep the two in
+        # step; tests/test_build_floor.py checks), so prove it still builds
+        # distributions with the identity verified above.
+        env:
+          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          echo "hatchling==1.27.0" > "$RUNNER_TEMP/hatchling-floor.txt"
+          uv build --build-constraints "$RUNNER_TEMP/hatchling-floor.txt" \
+            --out-dir "$RUNNER_TEMP/dist-floor"
+          uv run --locked --extra dev python scripts/verify_distribution_identity.py \
+            --wheel "$RUNNER_TEMP"/dist-floor/*.whl \
+            --sdist "$RUNNER_TEMP"/dist-floor/*.tar.gz \
+            --plugin-dir claude-plugin \
+            --expected-version "$EXPECTED_VERSION" \
+            --expected-ref "refs/tags/v${EXPECTED_VERSION}" \
+            --expected-commit "$GITHUB_SHA"
+      - name: Export locked runtime dependencies
+        run: |
+          uv export --locked --no-dev --no-emit-project --no-header \
+            --format requirements-txt \
+            --output-file "$RUNNER_TEMP/runtime-requirements.txt"
+      - name: Install only the release wheel and locked runtime dependencies
+        env:
+          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
         run: |
           uv venv .release-venv --python 3.14
-          uv pip install --python .release-venv/bin/python dist/*.whl
-          .release-venv/bin/skilldeck provenance --json > /tmp/skilldeck-provenance.json
+          uv pip install --python .release-venv/bin/python \
+            --require-hashes -r "$RUNNER_TEMP/runtime-requirements.txt"
+          uv pip install --python .release-venv/bin/python --no-deps dist/*.whl
+          uv pip check --python .release-venv/bin/python
+          .release-venv/bin/skilldeck provenance --json > "$RUNNER_TEMP/wheel-provenance.json"
+          python3 scripts/verify_provenance.py "$RUNNER_TEMP/wheel-provenance.json" \
+            --expected-version "$EXPECTED_VERSION" \
+            --expected-ref "refs/tags/v${EXPECTED_VERSION}" \
+            --expected-commit "$GITHUB_SHA"
+      - name: Install the sdist into a clean venv and smoke-test it
+        env:
+          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          uv venv "$RUNNER_TEMP/sdist-venv" --python 3.14
+          SDIST_PYTHON="$RUNNER_TEMP/sdist-venv/bin/python"
+          uv pip install --python "$SDIST_PYTHON" \
+            --require-hashes -r "$RUNNER_TEMP/runtime-requirements.txt"
+          uv pip install --python "$SDIST_PYTHON" --no-deps dist/*.tar.gz
+          uv pip check --python "$SDIST_PYTHON"
+          "$RUNNER_TEMP/sdist-venv/bin/skilldeck" list
+          "$RUNNER_TEMP/sdist-venv/bin/skilldeck" provenance --json \
+            > "$RUNNER_TEMP/sdist-provenance.json"
+          python3 scripts/verify_provenance.py "$RUNNER_TEMP/sdist-provenance.json" \
+            --expected-version "$EXPECTED_VERSION" \
+            --expected-ref "refs/tags/v${EXPECTED_VERSION}" \
+            --expected-commit "$GITHUB_SHA"
       - name: Generate SPDX runtime SBOM
         uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:

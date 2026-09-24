@@ -10,8 +10,51 @@ on:
 permissions:
   contents: read
 
+# One release at a time: a tag pushed while another release runs waits for it
+# instead of racing it to PyPI, and a running release is never cancelled.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
+  # Only a commit already on main that passes lint, types, and tests gets
+  # built. This catches a tag pushed on the wrong commit by mistake; it cannot
+  # stop a malicious tagger, because a tag push runs the tagged commit's own
+  # copy of this file, which that commit can change. The `v*` tag ruleset and
+  # the `pypi` environment's required reviewer (repository settings, see
+  # docs/releasing.md) are the controls for that.
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # full history plus origin/* branches, for the ancestry check
+          fetch-depth: 0
+      - name: Require the tagged commit to be on main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "error: $GITHUB_REF ($GITHUB_SHA) is not reachable from main;" \
+              "only tag commits that are already on main" >&2
+            exit 1
+          fi
+      - name: Verify tag, package version, and CHANGELOG
+        run: python3 scripts/check_release_consistency.py --tag "$GITHUB_REF"
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.14"
+          enable-cache: false
+      - name: Lint, type-check, and test the tagged commit
+        run: |
+          uv run --locked --extra dev ruff check .
+          uv run --locked --extra dev ruff format --check .
+          uv run --locked --extra dev mypy
+          uv run --locked --extra dev pytest -q
+
   build:
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -21,8 +64,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Verify tag, package version, and CHANGELOG
-        run: python3 scripts/check_release_consistency.py --tag "$GITHUB_REF_NAME"
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.14"
@@ -43,18 +84,32 @@ jobs:
         env:
           EXPECTED_VERSION: ${{ steps.release.outputs.version }}
         run: |
-          uv run --extra dev python scripts/verify_distribution_identity.py \
+          uv run --locked --extra dev python scripts/verify_distribution_identity.py \
             --wheel dist/*.whl \
             --sdist dist/*.tar.gz \
             --plugin-dir claude-plugin \
             --expected-version "$EXPECTED_VERSION" \
             --expected-ref "$GITHUB_REF" \
             --expected-commit "$GITHUB_SHA"
-      - name: Install only release runtime dependencies
+      # The SBOM describes this venv, so it must hold exactly what uv.lock pins
+      # (hash-checked), not whatever a fresh resolve would pick at tag time.
+      - name: Install only the release wheel and locked runtime dependencies
+        env:
+          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
         run: |
+          uv export --locked --no-dev --no-emit-project --no-header \
+            --format requirements-txt \
+            --output-file "$RUNNER_TEMP/runtime-requirements.txt"
           uv venv .release-venv --python 3.14
-          uv pip install --python .release-venv/bin/python dist/*.whl
-          .release-venv/bin/skilldeck provenance --json > /tmp/skilldeck-provenance.json
+          uv pip install --python .release-venv/bin/python \
+            --require-hashes -r "$RUNNER_TEMP/runtime-requirements.txt"
+          uv pip install --python .release-venv/bin/python --no-deps dist/*.whl
+          uv pip check --python .release-venv/bin/python
+          .release-venv/bin/skilldeck provenance --json > "$RUNNER_TEMP/provenance.json"
+          python3 scripts/verify_provenance.py "$RUNNER_TEMP/provenance.json" \
+            --expected-version "$EXPECTED_VERSION" \
+            --expected-ref "$GITHUB_REF" \
+            --expected-commit "$GITHUB_SHA"
       - name: Generate SPDX runtime SBOM
         uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
@@ -131,7 +186,7 @@ jobs:
           python3 scripts/write_checksums.py --verify release-bundle/SHA256SUMS
           mkdir publish
           cp release-bundle/*.whl release-bundle/*.tar.gz publish/
-      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: publish
 
@@ -205,7 +260,7 @@ jobs:
         env:
           EXPECTED_VERSION: ${{ needs.build.outputs.version }}
         run: |
-          uv run --extra dev python scripts/verify_distribution_identity.py \
+          uv run --locked --extra dev python scripts/verify_distribution_identity.py \
             --wheel downloaded/*.whl \
             --sdist downloaded/*.tar.gz \
             --plugin-dir claude-plugin \

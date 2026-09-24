@@ -4,8 +4,20 @@ plants:
   # default-branch job with protected variables. After a merge that title is
   # attacker-chosen text: the merge commit's "Merge branch '<source branch>'
   # into ...", or the MR title under fast-forward + squash.
+  # Keywords match whole words, so list each inflection (a stem never matches).
   - file: .gitlab-ci.yml
-    keywords: [injection, re-pars, re-evaluat, command substitution, positional parameter]
+    keywords:
+      - injection
+      - re-parse
+      - re-parses
+      - re-parsed
+      - re-parsing
+      - re-evaluates
+      - re-evaluated
+      - re-evaluation
+      - re-evaluating
+      - command substitution
+      - positional parameter
   # build-image: MR pipelines routed to a privileged docker-in-docker runner
   - file: .gitlab-ci.yml
     keywords: [docker-in-docker, privileged mode, privileged runner, container escape, root access]
