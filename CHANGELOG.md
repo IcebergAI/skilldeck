@@ -139,9 +139,15 @@ All notable changes to this project are documented here. The format is based on
   package, per pip's install docs) instead of an npm package in
   `requirements.txt`; `migration-review` gains PostgreSQL/table-size context
   (`config/database.yml`, `db/schema.rb`, a hot ~200M-row `events` table);
-  `authentication-review`'s email-keyed identity becomes an intentional second
-  plant. Every fixture's keywords now describe the defect instead of echoing
-  the planted code, and security-relevant plants set a `min-severity`.
+  `authentication-review`'s email-keyed identity and `ci-workflow-review`'s
+  `pull_request_target` head checkout become intentional second plants, so a
+  report can't pass on the other defect alone. Every fixture's keywords now
+  describe the defect instead of echoing the planted code or naming a
+  category or fix that also fits a neighbouring defect (the SAML `unverified`,
+  resilience `hang`, code-smells `Extract`, dependency `public index`, and
+  CI `CICD-SEC-4` keywords are gone; the GitLab fixture's stems become whole
+  words), and plants with a clear rubric level (all but `code-smells` and the
+  GitLab variant) set a `min-severity` one step below it (#106).
 
 ### Fixed
 
@@ -203,6 +209,16 @@ All notable changes to this project are documented here. The format is based on
   fixture with a clear message (stderr is printed), and a fixture with plants
   but zero parsed findings fails as `output format drift?` instead of silently
   disabling the `max-findings` cap. `expected.yaml` is validated on load.
+  A finding ends where its markdown list item does (a heading, a `---` rule,
+  a sibling list item, or unindented text after a blank line), so a clean
+  verdict on the planted file after the last finding, or after the closing
+  fence of a ```` ```markdown ````-wrapped report, no longer counts; code
+  fences close only on a run at least as long as the opener; a severity-led
+  list item in another format fails even a clean-diff fixture as format drift
+  rather than escaping the `max-findings` cap; and phrase keywords match
+  across inline markdown (``no `assert` ``). The skill is installed in the
+  review repo's base commit, so it is no longer an untracked change the skill
+  would review.
 - `ci-workflow-review` (0.2.1) no longer applies GitHub's `${{ }}` threat model
   to GitLab (#101). GitLab CI/CD variables reach the job as environment
   variables and the shell expands them once, so a quoted
@@ -263,8 +279,10 @@ All notable changes to this project are documented here. The format is based on
   selects a skill's variant fixtures. Clean-diff fixtures (`plants: []`) are
   now allowed, with `security-review-clean` (parameterized, owner-scoped query)
   and `resilience-review-clean` (timeout plus bounded, jittered retry on an
-  idempotent GET) measuring false positives. A structural test rejects plant
-  keywords that appear verbatim in the planted file.
+  idempotent GET that ignores an uncapped `Retry-After`) measuring false
+  positives. A structural test rejects plant keywords that appear verbatim in
+  the planted file, and per-fixture sample reports check that a correct report
+  passes and a finding about a neighbouring defect satisfies no plant.
 
 ## [0.3.0] - 2026-06-27
 

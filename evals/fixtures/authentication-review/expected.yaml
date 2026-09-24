@@ -4,10 +4,11 @@ plants:
   # browser session, so the callback accepts any authorization code (login CSRF)
   - file: app/sso.py
     keywords: [state, PKCE, CSRF, code_verifier]
-    min-severity: high
+    # the rubric names missing state/PKCE high; one step below
+    min-severity: medium
   # the local account is keyed on the IdP's email claim instead of the stable
-  # iss+sub subject identifier (the skill rates "identity keyed on email" high)
+  # iss+sub subject identifier (the rubric names "identity keyed on email" high)
   - file: app/sso.py
     keywords: [sub, subject identifier, email_verified, reassignable]
-    min-severity: high
+    min-severity: medium
 max-findings: 6

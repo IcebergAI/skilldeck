@@ -68,13 +68,31 @@ DEFAULT_PROMPT = (
 SEVERITIES = ("low", "medium", "high", "critical")
 
 # A finding opens with a list marker ("-", "*", "1." or "1)") followed by the
-# "**[severity]" marker of the shared finding format; it runs until the next
-# finding or markdown heading.
+# "**[severity]" marker of the shared finding format (see parse_findings for
+# where it ends).
 FINDING_START_RE = re.compile(
-    r"^[ \t]*(?:[-*]|\d+[.)])[ \t]+\*\*\[(?P<severity>[^\]\n]*)\]"
+    r"^(?P<indent>[ \t]*)(?:[-*]|\d+[.)])[ \t]+\*\*\[(?P<severity>[^\]\n]*)\]"
 )
 HEADING_RE = re.compile(r"^[ \t]{0,3}#{1,6}(?:[ \t]|$)")
-FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
+# a thematic break (---, ***, ___) or a setext heading underline (===)
+BREAK_RE = re.compile(
+    r"^[ \t]{0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|=+[ \t]*)$"
+)
+LIST_ITEM_RE = re.compile(r"^(?P<indent>[ \t]*)(?:[-*+]|\d+[.)])(?:[ \t]|$)")
+# the finding's own Issue/Fix lines, which some reports leave unindented
+FIELD_RE = re.compile(
+    r"^[ \t]*(?:\*\*|__)?(?:Issue|Fix)(?:\*\*|__)?[ \t]*:", re.IGNORECASE
+)
+# an opening code fence: 3+ backticks (with no backtick after them, so a line
+# that starts with ```inline code``` isn't one) or 3+ tildes
+FENCE_RE = re.compile(r"^[ \t]*(?P<fence>`{3,}(?=[^`]*$)|~{3,})")
+# a list item led by a severity that isn't the "**[severity]" marker, e.g.
+# "1. [high] ..." or "- **High** — ...": a finding the parser can't count
+DRIFTED_FINDING_RE = re.compile(
+    r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+[*_\[(]*(?:critical|high|medium|low)"
+    r"(?:\]|\)|\*\*|__|:|[ \t]+[—–-])",
+    re.IGNORECASE,
+)
 
 _FIXTURE_KEYS = frozenset({"skill", "plants", "max-findings"})
 _PLANT_KEYS = frozenset({"file", "keywords", "min-severity", "locators"})
@@ -226,56 +244,133 @@ def load_fixture(path: Path) -> Fixture:
 # -- report parsing and scoring ----------------------------------------------
 
 
+def _width(indent: str) -> int:
+    return len(indent.expandtabs(4))
+
+
+def _indent_of(line: str) -> int:
+    return _width(line[: len(line) - len(line.lstrip(" \t"))])
+
+
+def _opens_fence(line: str) -> tuple[str, int] | None:
+    """(char, length) of the code fence ``line`` opens, if it opens one."""
+    match = FENCE_RE.match(line)
+    return None if match is None else (match["fence"][0], len(match["fence"]))
+
+
+def _closes_fence(line: str, fence: tuple[str, int]) -> bool:
+    # CommonMark: only a run of the same character, at least as long as the
+    # opening one and with nothing after it, closes a fence
+    char, length = fence
+    run = line.strip()
+    return len(run) >= length and run == char * len(run)
+
+
+def _ends_finding(line: str, indent: int, after_blank: bool) -> bool:
+    """Whether non-blank ``line`` ends a finding whose bullet is at ``indent``."""
+    if HEADING_RE.match(line) or BREAK_RE.match(line):
+        return True
+    item = LIST_ITEM_RE.match(line)
+    if item is not None and _width(item["indent"]) <= indent:
+        return True  # a sibling list item that isn't a finding
+    # after a blank line, text back at the bullet's column has left the list
+    # item (a closing summary, say) -- unless it is an unindented Issue/Fix
+    return after_blank and _indent_of(line) <= indent and not FIELD_RE.match(line)
+
+
 def parse_findings(report: str) -> list[Finding]:
     """Split a report into findings in the shape of docs/finding-output.md.
 
     A finding starts at a ``- **[severity]`` bullet (``*``, ``1.`` and ``1)``
-    markers also count) and spans to the next finding bullet or markdown
-    heading. Inside a finding, fenced code blocks are opaque: a ``#`` comment
-    in a suggested fix is not a heading.
+    markers also count) and, like a markdown list item, runs until the next
+    finding, a heading, a thematic break, a sibling list item, or -- after a
+    blank line -- text no longer indented past the bullet (unindented
+    ``**Issue:**``/``**Fix:**`` lines are tolerated). Fenced code inside a
+    finding is opaque: a ``#`` comment in a suggested fix is not a heading. A
+    fence opened outside any finding (the whole report wrapped in
+    ```` ```markdown ````) is looked into, and its closing line ends the
+    finding it lands in.
     """
     findings: list[Finding] = []
+    lines: list[str] | None = None  # the open finding's lines
     severity = ""
-    lines: list[str] | None = None
-    fence: str | None = None
+    indent = 0  # the open finding's bullet column
+    after_blank = False
+    inner: tuple[str, int] | None = None  # a fence opened inside the finding
+    outer: tuple[str, int] | None = None  # a fence opened outside any finding
 
-    def flush() -> None:
+    def close() -> None:
+        nonlocal lines, inner
         if lines is not None:
-            findings.append(Finding(severity, "\n".join(lines)))
+            findings.append(Finding(severity, "\n".join(lines).rstrip()))
+        lines, inner = None, None
 
     for line in report.splitlines():
-        if fence is None:
-            start = FINDING_START_RE.match(line)
-            if start is not None or HEADING_RE.match(line):
-                flush()
-                lines = None
-                if start is not None:
-                    severity = start["severity"].strip().lower()
-                    lines = [line]
+        start = FINDING_START_RE.match(line)
+        if lines is not None and inner is not None:
+            # fenced code is opaque -- unless a finding bullet at this
+            # finding's own column shows the fence was never closed
+            if start is None or _width(start["indent"]) > indent:
+                lines.append(line)
+                if _closes_fence(line, inner):
+                    inner = None
                 continue
-        if lines is None:
-            # fences outside any finding (e.g. the whole report wrapped in
-            # ```markdown) must not hide the findings inside them
+            close()
+        if start is not None:
+            close()
+            lines = [line]
+            severity = start["severity"].strip().lower()
+            indent = _width(start["indent"])
+            after_blank = False
             continue
-        lines.append(line)
-        marker = FENCE_RE.match(line)
-        if marker is not None:
-            if fence is None:
-                fence = marker[1][0]
-            elif marker[1][0] == fence:
-                fence = None
-    flush()
+        if lines is not None:
+            if not line.strip():
+                lines.append(line)
+                after_blank = True
+                continue
+            if (
+                outer is not None
+                and _closes_fence(line, outer)
+                and _indent_of(line) <= indent
+            ):
+                # the wrapper's closing fence (a fence of the fix's own code
+                # sits indented inside the finding)
+                close()
+                outer = None
+                continue
+            if not _ends_finding(line, indent, after_blank):
+                lines.append(line)
+                after_blank = False
+                inner = _opens_fence(line)
+                continue
+            close()
+        # outside any finding only fences matter, so findings inside a fence
+        # (the whole report wrapped in ```markdown) still parse
+        if outer is None:
+            outer = _opens_fence(line)
+        elif _closes_fence(line, outer):
+            outer = None
+    close()
     return findings
+
+
+def drifted_findings(report: str) -> list[str]:
+    """Severity-led list items that aren't in the finding format."""
+    return [
+        line.strip()
+        for line in report.splitlines()
+        if DRIFTED_FINDING_RE.match(line) and not FINDING_START_RE.match(line)
+    ]
 
 
 @functools.cache
 def _term_re(term: str) -> re.Pattern[str]:
-    # whole-word, case-insensitive; a multi-word phrase tolerates any
-    # whitespace (including a line wrap) between its words. Lookarounds rather
-    # than \b so terms that start or end with punctuation (".gitlab-ci.yml")
-    # still match.
+    # whole-word, case-insensitive; a multi-word phrase tolerates whitespace
+    # (including a line wrap) and inline markdown between its words, so "no
+    # assert" matches "no `assert`". Lookarounds rather than \b so terms that
+    # start or end with punctuation (".gitlab-ci.yml") still match.
     words = (re.escape(word) for word in term.split())
-    return re.compile(r"(?<!\w)" + r"\s+".join(words) + r"(?!\w)", re.IGNORECASE)
+    return re.compile(r"(?<!\w)" + r"[\s`*]+".join(words) + r"(?!\w)", re.IGNORECASE)
 
 
 def mentions(text: str, term: str) -> bool:
@@ -373,6 +468,14 @@ def score(fixture: Fixture, report: str) -> tuple[list[str], bool]:
             "'- **[severity] ...' bullets)"
         )
     else:
+        # a finding the parser can't see can't count toward max-findings
+        # either, which would quietly pass a clean-diff fixture
+        drifted = drifted_findings(report)
+        if drifted:
+            problems.append(
+                f"{len(drifted)} finding(s) not in the '- **[severity] ...' "
+                f"format — output format drift? (first: {drifted[0]!r})"
+            )
         matched = match_plants(fixture.plants, findings)
         problems.extend(
             _miss_reason(plant, findings)
@@ -448,6 +551,10 @@ def prepare_repo(
     skill = installable_skill(fixture, adapter)
     repo = workdir / fixture.name
     shutil.copytree(fixture.path / "base", repo)
+    # installed before the base commit, so the skill file is neither part of
+    # the diff under review nor an untracked change the skill's scope step
+    # would pick up
+    ADAPTERS[adapter].install(skill, Scope.PROJECT, project_root=repo)
     _git(repo, "init", "-q", "-b", "main")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "base")
@@ -455,7 +562,6 @@ def prepare_repo(
     shutil.copytree(fixture.path / "change", repo, dirs_exist_ok=True)
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "change under review")
-    ADAPTERS[adapter].install(skill, Scope.PROJECT, project_root=repo)
     return repo
 
 

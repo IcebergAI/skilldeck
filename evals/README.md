@@ -33,9 +33,10 @@ python evals/run_evals.py --keep              # keep temp repos + reports
 
 For each fixture (and each repeat) the runner:
 
-1. builds a git repo from `base/` (committed to `main`) and overlays
-   `change/` on a `change` branch — the diff under review;
-2. installs the skill through the chosen adapter at project scope;
+1. builds a git repo from `base/` plus the skill, installed through the
+   chosen adapter at project scope (committed to `main`, so the skill file is
+   neither in the diff nor an untracked change the skill would review);
+2. overlays `change/` on a `change` branch — the diff under review;
 3. runs the agent inside the repo with a fixed review prompt that points at the
    installed skill (e.g. `.claude/skills/<skill>/SKILL.md`);
 4. scores the agent's **stdout** (see [Scoring](#scoring)).
@@ -50,8 +51,14 @@ non-zero if any run failed.
 The report is split into individual findings using the shared shape in
 [`docs/finding-output.md`](../docs/finding-output.md): a finding starts at a
 list item whose text opens with `**[severity]` — the marker may be `-`, `*`,
-`1.` or `1)` — and runs until the next finding or markdown heading (a `#`
-comment inside a fenced code block doesn't count as a heading).
+`1.` or `1)` — and, like a markdown list item, runs until the next finding, a
+heading, a thematic break (`---`), a sibling list item, or, after a blank
+line, text that is no longer indented past the bullet (an unindented
+`**Issue:**` or `**Fix:**` line is tolerated). Fenced code inside a finding is
+opaque, so a `#` comment in a suggested fix isn't a heading; a fence closes
+only on a run of the same character at least as long as the one that opened
+it. A report wrapped in a ```` ```markdown ```` fence still parses, and the
+wrapper's closing fence ends the last finding.
 
 - **Each plant needs its own finding.** A finding satisfies a plant only if it
   names the plant's file (relative path or basename, or one of its `locators`)
@@ -60,17 +67,22 @@ comment inside a fenced code block doesn't count as a heading).
   file need two different findings: plants are matched to findings one-to-one.
 - **Whole words, case-insensitive.** `git` does not match `github`, `state`
   does not match `statement`. A keyword may be a phrase (`long method`); it
-  matches across a line wrap. Inflections are not folded, so list `lock` and
-  `locking` if either would do.
+  matches across a line wrap and inline markdown (`no assert` matches
+  ``no `assert` ``). Inflections are not folded and a stem never matches
+  (`re-pars` matches nothing), so list `lock` and `locking` if either would do.
 - **False-positive pressure.** The number of parsed findings must not exceed
   `max-findings`.
 - **Format drift is loud.** If a fixture has plants but no findings could be
   parsed, the run fails with `no findings parsed — output format drift?`
-  rather than a silent miss; an empty stdout fails as `empty report`.
+  rather than a silent miss. On any fixture, clean ones included, a list item
+  led by a severity in another shape (`1. [high] …`, `- **High** — …`) fails
+  the run as `output format drift?` too: a finding the parser can't see would
+  otherwise not count toward `max-findings`. An empty stdout fails as
+  `empty report`.
 
-Text outside any finding — the one-line report header, a closing summary under
-its own heading — never satisfies a plant, so "`auth/session.py`: no secrets
-logged" in a summary doesn't count as finding the defect.
+Text outside any finding — the one-line report header, a closing summary after
+the last finding — never satisfies a plant, so "`auth/session.py`: no secrets
+logged" at the end of a report doesn't count as finding the defect.
 
 ## Fixture layout
 
@@ -85,8 +97,8 @@ evals/fixtures/<skill>[-<variant>]/
 skill: dependency-review          # the bundled skill to install
 plants:                           # [] for a clean-diff fixture
   - file: requirements.txt        # a file in change/, part of the diff
-    keywords: [confusion, public index]   # words that describe the defect
-    min-severity: high            # optional: low | medium | high | critical
+    keywords: [confusion, same name]      # words that describe the defect
+    min-severity: medium          # optional: low | medium | high | critical
     locators: [corp-auth-client]  # optional: other terms that locate a finding
 max-findings: 3                   # cap on total findings (>= number of plants)
 ```
@@ -98,15 +110,19 @@ are all errors.
 - `locators` is for skills whose finding location isn't a file path —
   `dependency-review` reports `package old→new`, so its fixture lists the
   package name.
-- `min-severity` should be the lowest severity the skill's own severity rubric
-  could defensibly assign the plant (usually one step below what the rubric
-  names), so it catches a critical defect reported as `[low]` without making
-  the eval flaky.
+- `min-severity` is a floor, not the expected rating: set it one step below
+  the level the skill's severity rubric (or its worked example) gives the
+  defect, so it catches a critical defect reported as `[low]` without failing
+  a run over a one-step disagreement.
 
 CI validates fixture structure (`tests/test_eval_fixtures.py`): the fixture
 loads, targets a bundled skill, every plant is part of the diff, no plant
 keyword appears verbatim in its planted file, and the repo builds — no API
-calls. The scorer itself is unit-tested in `tests/test_eval_scoring.py`.
+calls. Each planted fixture also has sample reports there
+(`SAMPLE_REPORTS`): a correct report must pass, and a finding about a
+different real defect in the same file must satisfy no plant, which catches
+keywords that are too narrow to match or generic enough to match the wrong
+finding. The scorer itself is unit-tested in `tests/test_eval_scoring.py`.
 
 A skill may have more than one fixture: name the directory for the skill, or
 add a `-<variant>` suffix (e.g. `ci-workflow-review-gitlab`) and set the
@@ -119,7 +135,10 @@ skill says it judges by (engine and table size for a migration, the trigger
 and permissions for a workflow), clearly planted defects, and a `max-findings`
 low enough to punish noise. Keywords must identify the *finding kind* — words a
 correct finding would use to describe the defect, not identifiers copied from
-the code (a structural test rejects those). Avoid copying the skill's own
+the code (a structural test rejects those), nor a category or fix that also
+fits other defects in the file (a CICD-SEC classifier, "Extract"). Plant every
+serious defect the file really has, so a report can't pass on the wrong one,
+and add the fixture's `SAMPLE_REPORTS` entry. Avoid copying the skill's own
 worked example: an eval that plants the example mostly tests recall of the
 example.
 

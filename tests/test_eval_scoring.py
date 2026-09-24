@@ -66,6 +66,46 @@ def test_a_negative_mention_of_the_file_does_not_satisfy_the_plant():
     ]
 
 
+@pytest.mark.parametrize(
+    "trailer",
+    [
+        "\n`auth/session.py`: no secrets logged, clean.\n",
+        "\n**Summary:** I checked auth/session.py; no secret is logged.\n",
+        "\n---\nNo secret reaches the log in auth/session.py.\n",
+        "***\nNo secret reaches the log in auth/session.py.\n",
+        "\nSummary\n=======\nauth/session.py handles the secret correctly.\n",
+        "- auth/session.py: no secret logged.\n",
+    ],
+    ids=["line", "bold-label", "thematic-break", "stars", "setext", "sibling-item"],
+)
+def test_text_after_the_last_finding_is_not_part_of_it(trailer):
+    # the #106 example: a clean verdict on the planted file, after the last
+    # finding and without a heading, must not satisfy the plant
+    report = HEADER + _finding("auth/audit.py:3", "the actor is missing", "low")
+    report += trailer
+    (finding,) = run_evals.parse_findings(report)
+    assert "session.py" not in finding.text
+    assert not run_evals.score(_fixture(_plant()), report)[1]
+
+
+def test_indented_paragraphs_and_unindented_fields_stay_in_the_finding():
+    report = textwrap.dedent(
+        """\
+        1. **[high] Secret in log** — `auth/audit.py:3`
+
+           A second paragraph, indented under the numbered bullet.
+
+        **Issue:** an unindented Issue line after a blank line.
+
+        **Fix:** and an unindented Fix line.
+          - a nested bullet
+        """
+    )
+    (finding,) = run_evals.parse_findings(report)
+    for text in ("second paragraph", "unindented Issue", "unindented Fix", "nested"):
+        assert text in finding.text
+
+
 def test_file_and_keyword_split_across_findings_do_not_count():
     report = _finding("auth/session.py:14", "logs the user id") + _finding(
         "auth/audit.py:3", "a secret is logged"
@@ -96,6 +136,13 @@ def test_keywords_are_case_insensitive_and_phrases_span_line_wraps():
         "billing/invoice.py:8", "generate_invoice is a textbook long\n  method"
     )
     assert run_evals.score(fixture, report)[1]
+
+
+def test_phrase_keywords_match_across_inline_markdown():
+    fixture = _fixture(_plant(file="tests/test_d.py", keywords=["no assert"]))
+    for text in ("has no `assert`", "has **no** assert", "has no\n  `assert`"):
+        assert run_evals.score(fixture, _finding("tests/test_d.py:8", text))[1], text
+    assert not run_evals.mentions("no `assertion`", "no assert")
 
 
 def test_keywords_with_punctuation_match_whole():
@@ -245,12 +292,117 @@ def test_a_report_wrapped_in_a_code_fence_still_parses():
     assert run_evals.score(_fixture(_plant()), report)[1]
 
 
+def test_a_summary_after_a_wrapping_fence_is_not_part_of_the_last_finding():
+    report = (
+        "```markdown\n"
+        + HEADER
+        + _finding("auth/audit.py:3", "the actor is missing", "low")
+        + "```\n\n## Summary\n`auth/session.py` never logs a secret.\n"
+    )
+    (finding,) = run_evals.parse_findings(report)
+    assert "session.py" not in finding.text
+    assert not run_evals.score(_fixture(_plant()), report)[1]
+
+
+def test_a_fix_fence_inside_a_wrapped_report_does_not_close_the_wrapper():
+    report = textwrap.dedent(
+        """\
+        ```markdown
+        - **[high] Secret in log** — `auth/session.py:14`
+          **Issue:** the token is logged.
+          **Fix:**
+          ```
+          # log the user id, not the secret
+          ```
+        - **[low] Missing event** — `auth/audit.py:3`
+          **Issue:** no logout event.
+        ```
+        ## Summary
+        auth/audit.py is otherwise fine.
+        """
+    )
+    first, second = run_evals.parse_findings(report)
+    assert "not the secret" in first.text
+    assert "Summary" not in second.text
+
+
+def test_a_fence_closes_only_on_a_run_at_least_as_long():
+    # a ```` fence showing markdown that itself contains ``` must not end
+    # early and swallow the findings after it
+    report = textwrap.dedent(
+        """\
+        - **[low] A** — `a.py:1`
+          **Fix:**
+          ````markdown
+          ```python
+          ````
+        - **[low] B** — `b.py:2`
+          **Issue:** second.
+        - **[low] C** — `c.py:3`
+          **Issue:** ```inline code``` is not a fence.
+        - **[low] D** — `d.py:4`
+          **Issue:** fourth.
+        """
+    )
+    assert len(run_evals.parse_findings(report)) == 4
+
+
+def test_an_unclosed_fence_ends_at_the_next_finding():
+    report = textwrap.dedent(
+        """\
+        - **[high] A** — `a.py:1`
+          **Fix:**
+          ```python
+          log.info("user %s", user_id)
+        - **[critical] B** — `b.py:2`
+          **Issue:** second.
+        """
+    )
+    assert [f.severity for f in run_evals.parse_findings(report)] == [
+        "high",
+        "critical",
+    ]
+
+
 def test_zero_parsed_findings_flags_format_drift():
     report = "Reviewed main..HEAD: auth/session.py logs a secret (high).\n"
     problems, passed = run_evals.score(_fixture(_plant()), report)
     assert not passed
     assert len(problems) == 1
     assert problems[0].startswith("no findings parsed — output format drift?")
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "1. [critical] V5 Validation — `app/documents.py:20`",
+        "- [high] V8 Authorization — `app/documents.py:21`",
+        "- **High — V4 API** — `app/documents.py:16`",
+        "* **critical** — `app/documents.py:20`",
+        "2) Medium: no rate limit on `app/documents.py:16`",
+    ],
+    ids=["numbered", "no-bold", "no-brackets", "bold-word", "colon"],
+)
+def test_findings_in_a_drifted_format_fail_even_a_clean_fixture(line):
+    # unparsed, they would count as zero findings and pass max-findings
+    report = HEADER + line + "\n  **Issue:** something.\n"
+    problems, passed = run_evals.score(_fixture(max_findings=1), report)
+    assert not passed
+    assert problems == [
+        "1 finding(s) not in the '- **[severity] ...' format — output format "
+        f"drift? (first: {line!r})"
+    ]
+
+
+def test_ordinary_list_items_are_not_drift():
+    report = HEADER + textwrap.dedent(
+        """\
+        - High-level: the change only removes string-built SQL.
+        - Low risk overall; no findings.
+        - No high-severity issues.
+        """
+    )
+    assert run_evals.score(_fixture(max_findings=0), report) == ([], True)
 
 
 def test_empty_report_fails():

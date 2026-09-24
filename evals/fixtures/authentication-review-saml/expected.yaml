@@ -1,8 +1,9 @@
 skill: authentication-review
 plants:
   # verify() checks the signature, but its result is discarded and identity is
-  # read back from the raw document (XML Signature Wrapping)
+  # read back from the raw document (XML Signature Wrapping). signxml's README
+  # says to trust only the data verify() returns (its `signed_xml`).
   - file: app/saml_acs.py
-    keywords: [XSW, wrapping, unsigned, unverified, signed_xml]
+    keywords: [XSW, wrapping, unsigned, signed_xml, signed data, return value]
     min-severity: high
 max-findings: 5

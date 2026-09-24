@@ -41,9 +41,15 @@ Skilldeck is a collection of skills for coding assistants to use mostly for secu
     add an agent by subclassing `Adapter` and registering it in
     `adapters/__init__.py`
 - `tests/` — pytest suite (`uv run --extra dev pytest`)
-- `evals/` — golden-diff skill evals (`python evals/run_evals.py`): fixtures
-  with planted defects, scored against a real agent; manual (paid API), CI only
-  validates fixture structure. New/changed skills should be run through them.
+- `evals/` — golden-diff skill evals (`python evals/run_evals.py`, with
+  `--repeat N` for pass rates and `--adapter` for non-Claude agents): fixtures
+  with planted defects (or `plants: []` clean-diff fixtures for false
+  positives), scored against a real agent; manual (paid API). CI runs no agent:
+  it validates fixture structure (keywords must describe the defect, never
+  echo the planted code) and each fixture's `SAMPLE_REPORTS` in
+  `tests/test_eval_fixtures.py`, and unit-tests the scorer
+  (`tests/test_eval_scoring.py`). See `evals/README.md`. New/changed skills
+  should be run through them.
 - `docs/` — `authoring-skills.md`, `adapters.md`, `releasing.md`
 - `.claude-plugin/marketplace.json` + `claude-plugin/` — the Claude Code plugin
   marketplace tree, **generated** by `scripts/build_plugin.py` from the
@@ -65,7 +71,8 @@ Skilldeck is a collection of skills for coding assistants to use mostly for secu
 - New skills follow the structural template (enforced by
   `tests/test_skill_structure.py`), ground their checklists in **fetched**
   authoritative sources (OWASP/CIS/vendor docs) cited in the skill body, and
-  land with a golden-diff eval fixture under `evals/fixtures/`.
+  land with a golden-diff eval fixture under `evals/fixtures/` (ideally also a
+  `-clean` one).
 
 ## Shipping
 - PRs squash-merge to main: `gh pr merge <n> --squash --delete-branch` after CI

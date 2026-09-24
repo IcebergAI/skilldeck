@@ -1,9 +1,12 @@
 # Clean diff: the change gives a scheduled, idempotent GET a connect/read
-# timeout and a bounded retry (3 retries, exponential backoff with jitter,
-# gateway errors only). The caller already degrades to the cached rates on
-# failure, and the worst case (~1 min) fits well inside the 10-minute refresh
-# interval. Retries look risky, but these are correct; a correct report says
-# the change is clean.
+# timeout and a bounded retry (3 retries, exponential backoff with jitter
+# capped at 10s, gateway errors only). Retry-After is ignored on purpose:
+# urllib3 2.2.3 sleeps for the header's full value (Retry.sleep_for_retry has
+# no cap), so honoring it would let a 503 stall the refresh for hours. The
+# caller already degrades to the cached rates on failure, and the worst case
+# (4 attempts of up to 3s connect + 10s read, plus a few seconds of backoff:
+# about a minute) fits well inside the 10-minute refresh interval. Retries
+# look risky, but these are correct; a correct report says the change is clean.
 skill: resilience-review
 plants: []
 # tolerate a single hygiene nit; more is manufactured noise

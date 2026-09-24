@@ -1,8 +1,21 @@
 skill: ci-workflow-review
 plants:
   # attacker-controlled PR title expanded into a shell step of a
-  # fork-triggerable, privileged workflow
+  # fork-triggerable, privileged workflow (script injection). The CICD-SEC-4
+  # classifier is not a keyword: the head checkout below is CICD-SEC-4 too.
   - file: .github/workflows/greet.yml
-    keywords: [injection, untrusted, attacker-controlled, CICD-SEC-4]
+    keywords: [injection, PR title, pull request title]
+    min-severity: high
+  # pull_request_target checks out the fork's head commit and runs its
+  # scripts/welcome.sh with the base repository's token and secrets
+  - file: .github/workflows/greet.yml
+    keywords:
+      - head checkout
+      - PR head
+      - pull request head
+      - fork's code
+      - fork code
+      - untrusted code
+      - pwn request
     min-severity: high
 max-findings: 5
