@@ -445,20 +445,19 @@ SAMPLE_REPORTS = {
         [
             _finding(
                 "high",
-                "V5 File Handling",
-                "app/orders.py:26",
-                "the `name` query parameter is joined onto the documents path "
-                "unchecked, so `../` segments or an absolute path let a "
-                "signed-in user read any file the app can (path traversal).",
-                "serve the file with `send_from_directory`, or look the "
-                "document up by ID.",
+                "V15 Secure Coding and Architecture",
+                "app/orders.py:22",
+                "`update_order` passes the whole JSON body to `db.update_order`, "
+                "so a customer can set any column on their order, such as its "
+                "status, total or owner (mass assignment).",
+                "copy only an allow-list of editable fields from the body.",
             )
         ],
         [
             _finding(
                 "low",
                 "V16 Security Logging and Error Handling",
-                "app/orders.py:22",
+                "app/orders.py:18",
                 "an anonymous request raises KeyError on `session['user_id']` "
                 "and returns a 500.",
                 "check for a signed-in user and return 401.",

@@ -328,8 +328,8 @@ All notable changes to this project are documented here. The format is based on
   (backward-incompatible change, not a non-concurrent index);
   `resilience-review` an immediate, unbacked-off retry loop around a
   shipment-creating POST with no idempotency key (two plants, not a missing
-  timeout); `security-review` an owner-scoped document download that joins a
-  query parameter onto the path (path traversal, not IDOR); and
+  timeout); `security-review` an owner-scoped PATCH route that passes the whole
+  request body to the update as columns (mass assignment, not IDOR); and
   `ci-workflow-review` a `workflow_run` job that writes the PR run's artifact
   into `$GITHUB_ENV` (artifact poisoning, replacing both the PR-title echo and
   the `pull_request_target` head checkout) plus a third-party action pinned by

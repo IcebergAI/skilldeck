@@ -1,22 +1,24 @@
 skill: security-review
 plants:
-  # The document route is owner-scoped (so not the IDOR of the skill's worked
-  # example), but it joins the `name` query parameter onto the order's
-  # directory unchecked: `../../..` segments, or an absolute path (which
-  # os.path.join lets replace the whole prefix), read any file the app can,
-  # its config and secrets included. Path traversal, ASVS 5.3.2. The rubric
-  # rates a flaw an authenticated user can exploit for bulk data high; one step
-  # below catches it buried as low without failing on a high/medium split. The
-  # V5 classifier is not a keyword: a download-filename finding is V5 too.
+  # The new PATCH route is owner-scoped (so not the IDOR of the skill's worked
+  # example), but it passes the whole request body to `db.update_order` as
+  # column updates: a customer can set any order column, e.g. mark it paid,
+  # zero its total, or move it to another account. Mass assignment, ASVS 5.0
+  # 15.3.3. An authenticated user tampering with their own order's financial
+  # state is high under the rubric; one step below still catches it buried as
+  # medium. The V15 classifier is not a keyword: other V15 findings exist.
   - file: app/orders.py
     keywords:
-      - traversal
-      - path traversal
-      - directory traversal
-      - arbitrary file
-      - arbitrary files
-      - any file
-      - file inclusion
-      - LFI
+      - mass assignment
+      - mass-assignment
+      - over-posting
+      - overposting
+      - allow-list
+      - allowlist
+      - any column
+      - any field
+      - arbitrary fields
+      - arbitrary columns
+      - privileged fields
     min-severity: medium
 max-findings: 5
