@@ -117,8 +117,9 @@ skilldeck install --all --agent codex --scope global
 # Remove a skill
 skilldeck uninstall security-review --agent claude
 
-# See what's installed and whether it's current
+# See what's installed and whether it's current (repeat --agent, or use 'all')
 skilldeck status --agent claude
+skilldeck status --agent all
 
 # Refresh installed skills after upgrading skilldeck
 skilldeck update --agent claude
@@ -130,8 +131,22 @@ skilldeck provenance --json
 
 Installed files carry a `skilldeck` stamp recording the skill version, so
 `status` can tell current, stale, and locally modified installs apart. Files you
-have edited (or that skilldeck didn't write) are never overwritten unless you
-pass `--force`.
+have edited, or that skilldeck didn't write, are never overwritten or deleted
+unless you pass `--force` to `install` or `uninstall`. `update --force` also
+refreshes edited installs, but it never touches files that skilldeck didn't
+write. skilldeck never writes through a symlink at an install path.
+`uninstall --force` removes the link itself and leaves its target alone. See
+[docs/adapters.md](docs/adapters.md#stamps-what-skilldeck-will-overwrite-or-delete)
+for the details.
+
+Upgrading from skilldeck 0.3.0 or earlier: those versions didn't stamp what
+they installed, so skilldeck now treats those files as ones it didn't write.
+Run `install --force` once to replace them with stamped copies, after which
+`update` and `uninstall` work without `--force`, or remove them with
+`uninstall --force`.
+
+`--agent all` means every agent that supports the chosen `--scope`. With
+`--scope global`, the project-only agents (Copilot and Cursor) are skipped.
 
 `--scope project` (default) writes into the current directory; `--scope global`
 writes into your home directory. Where exactly each agent looks is documented in
