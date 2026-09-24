@@ -8,28 +8,39 @@ when changing a skill's wording.
 
 ## Running
 
-Requires the [Claude Code CLI](https://claude.com/claude-code) (or another
-agent CLI, see `--adapter`) and an API key; **it calls a real agent and costs
-real money**, which is why it is manual and not part of CI.
+Requires an agent CLI — [Claude Code](https://claude.com/claude-code) by
+default, or the OpenAI Codex CLI, or any other through `--agent-cmd` — and its
+credentials; **it calls a real agent and costs real money**, which is why it is
+manual and not part of CI. Check the plan first with `--dry-run`, which invokes
+no agent.
 
 ```bash
-python evals/run_evals.py                     # all fixtures
+python evals/run_evals.py --dry-run           # validate fixtures, print the plan
+python evals/run_evals.py                     # all fixtures, Claude Code
 python evals/run_evals.py --skill logging     # one skill's fixtures
 python evals/run_evals.py --skill authentication-review-saml   # one fixture
-python evals/run_evals.py --repeat 5          # run each fixture 5 times
-python evals/run_evals.py --agent-cmd 'claude -p {prompt}'   # default
-python evals/run_evals.py --adapter codex --agent-cmd 'codex exec {prompt}'
-python evals/run_evals.py --keep              # keep temp repos + reports
+python evals/run_evals.py --repeat 5 --skill logging   # pass rate per fixture
+python evals/run_evals.py --harness codex     # Codex CLI + the codex adapter
+python evals/run_evals.py --model sonnet      # request a model from the harness
+python evals/run_evals.py --agent-cmd 'my-agent --print {prompt}'   # any CLI
+python evals/run_evals.py --replay path/to/run-record.json   # same config again
+python evals/run_evals.py --keep              # keep the review repos
 ```
 
 | Option | Meaning |
 | --- | --- |
 | `--skill NAME` | Run only the fixtures that exercise skill `NAME`, or the one fixture whose directory is `NAME`. |
-| `--agent-cmd CMD` | Agent command line; `{prompt}` is replaced by the review prompt. Default `claude -p {prompt}`. |
-| `--adapter NAME` | Which skilldeck adapter installs the skill into the temp repo (`claude`, `codex`, `copilot`, `cursor`, `kiro`; default `claude`). The prompt names the installed file's path, so pair it with that agent's `--agent-cmd`. |
+| `--harness NAME` | Agent CLI preset: `claude` (default), `codex`, or `custom` (see [Harnesses](#harnesses)). A preset sets the command and the adapter that matches it. |
+| `--agent-cmd CMD` | Agent command line, overriding the preset's; `{prompt}` is replaced by the review prompt and `{model}` by `--model`. Without `--harness`, it makes a `custom` harness. |
+| `--adapter NAME` | Which skilldeck adapter installs the skill into the temp repo (`claude`, `codex`, `copilot`, `cursor`, `kiro`). Defaults to the harness's (`claude` for `custom`). The prompt names the installed file's path, so it must be the adapter the agent reads. |
+| `--model NAME` | Model to request, substituted for `{model}` (the presets pass it as `--model NAME`) and recorded. Without it the harness's own default is used, and not recorded. |
 | `--repeat N` | Run each fixture `N` times (fresh repo each time) and print its pass rate — agents are nondeterministic, so one run says little about a borderline fixture. |
 | `--timeout S` | Per-run agent timeout in seconds (default 600). |
-| `--keep` | Keep the temp repos even when every run passes. |
+| `--max-runs N` | Refuse to start if more than `N` runs (fixtures × repeats) are planned (default 50). |
+| `--dry-run` | Validate the fixtures and print the planned runs; no agent (or anything else) is run. Exits 2 on an invalid fixture or a plan over `--max-runs`. |
+| `--replay RECORD` | Re-run a [run record](#run-records)'s exact configuration; see [Replaying](#replaying). |
+| `--include-reports` | Also copy each run's raw stdout and stderr into the run record. |
+| `--keep` | Keep the review repos even when every run passes. |
 
 For each fixture (and each repeat) the runner:
 
@@ -42,9 +53,86 @@ For each fixture (and each repeat) the runner:
 4. scores the agent's **stdout** (see [Scoring](#scoring)).
 
 A run fails outright — without scoring — if the agent exits non-zero or times
-out. Failing runs print the agent's stderr and keep their temp directory; each
-repo contains the raw `report.txt` (stdout) and `stderr.txt`. The process exits
-non-zero if any run failed.
+out; failing runs print the agent's stderr. Runs are **sequential** (concurrency
+1): one agent at a time, so `--max-runs` bounds the spend and the wall-clock
+time together.
+
+Everything lands in a temp work dir, printed at the start:
+
+```
+skilldeck-evals-XXXX/
+├── run-record.json                        # the run record (below)
+├── artifacts/run-<N>/<fixture>/report.txt # raw stdout, the scored report
+├── artifacts/run-<N>/<fixture>/stderr.txt
+└── repos/run-<N>/<fixture>/               # the review repos
+```
+
+The review repos are deleted when every run passes (unless `--keep`); the
+record and the raw output are always kept. The process exits 0 when every run
+passed, 1 when any failed, 2 when the evals could not run (invalid fixture,
+budget, changed digests on replay, agent command not found) and 130 when
+interrupted — the record is written in every case that started running.
+
+## Harnesses
+
+| Harness | Command | Adapter | Version probe |
+| --- | --- | --- | --- |
+| `claude` | `claude -p {prompt}`; with a model `claude --model {model} -p {prompt}` | `claude` | `claude --version` |
+| `codex` | `codex exec {prompt}`; with a model `codex exec --model {model} {prompt}` | `codex` | `codex --version` |
+| `custom` | `--agent-cmd`, verbatim | `--adapter` (default `claude`) | none |
+
+Both presets run the agent's documented non-interactive mode with no other
+flags: Claude Code's print mode, and `codex exec`, which prints the final
+message on stdout (progress goes to stderr, which is not scored) and runs in a
+read-only sandbox by default. The Codex preset is best-effort — it has not yet
+been exercised in a recorded run. `--agent-cmd` overrides a preset's command
+but keeps its name, adapter and version probe (the command's own executable
+with `--version`); add flags there, such as an approval or sandbox mode. A
+harness that reports token usage or cost would fill the record's `usage` and
+`cost_usd`; no preset parses them yet, so both are `null`.
+
+## Run records
+
+Every run writes `run-record.json`, a provider-neutral, schema-versioned record
+([`run-record.schema.json`](run-record.schema.json), JSON Schema 2020-12) with
+sorted keys and LF newlines, so equal records are equal bytes on every
+platform:
+
+- **what ran**: the skilldeck version, the checkout's git commit and whether
+  it had uncommitted changes (`null` outside a checkout), and the digest of
+  `run_evals.py` itself (the scorer and the prompt);
+- **against what**: per fixture, a digest of every file in its directory
+  (newlines normalised, so a Windows checkout agrees), the skill's name,
+  version, canonical digest (the one in `src/skilldeck/_content_manifest.json`)
+  and the digest of the file the adapter installed, plus the exact prompt;
+- **how**: the harness name, the exact command template, the model (if
+  requested), the harness version (the probe's first line, `null` if it
+  failed), the adapter, and the repeat, timeout and budget;
+- **every planned run**: its status — `passed`, `failed` (scored and
+  missed), `agent_failed` (non-zero exit), `timed_out`, `error` (the repo
+  could not be built, or the agent could not start) or `not_run` (the
+  invocation stopped early) — with start and end timestamps, duration, exit
+  code, parsed finding count, the scorer's reasons, and the paths of its raw
+  output, relative to the record;
+- a **summary**: planned, attempted, passed, failed and not-run counts.
+
+The record never contains the raw reports or stderr unless you pass
+`--include-reports`, so it can be shared as-is; the raw files stay in the work
+dir beside it.
+
+## Replaying
+
+`--replay RECORD` re-runs the recorded fixtures with the recorded harness,
+command, model, adapter, repeat count and timeout (so it takes no other
+configuration options; `--max-runs`, `--dry-run`, `--keep` and
+`--include-reports` still apply). Before anything runs it recomputes every
+fixture digest and skill digest and **refuses** (exit 2) if any fixture, skill
+or installed skill file changed since the record — a changed eval is a
+different experiment. A different harness version or a changed runner is
+printed as a note, not refused. The new record's `config.replay_of` holds the
+digest of the record it replayed; comparing the two records' runs is the
+variance check. `--replay RECORD --dry-run` verifies the digests without
+running anything.
 
 ## Scoring
 
@@ -122,7 +210,9 @@ calls. Each planted fixture also has sample reports there
 (`SAMPLE_REPORTS`): a correct report must pass, and a finding about a
 different real defect in the same file must satisfy no plant, which catches
 keywords that are too narrow to match or generic enough to match the wrong
-finding. The scorer itself is unit-tested in `tests/test_eval_scoring.py`.
+finding. The scorer itself is unit-tested in `tests/test_eval_scoring.py`, and
+the run records, harness presets, budgets, dry runs and replay, with stand-in
+agents, in `tests/test_eval_runs.py`.
 
 A skill may have more than one fixture: name the directory for the skill, or
 add a `-<variant>` suffix (e.g. `ci-workflow-review-gitlab`) and set the

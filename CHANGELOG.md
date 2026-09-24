@@ -618,6 +618,24 @@ All notable changes to this project are documented here. The format is based on
   positives. A structural test rejects plant keywords that appear verbatim in
   the planted file, and per-fixture sample reports check that a correct report
   passes and a finding about a neighbouring defect satisfies no plant.
+- Reproducible eval runs (#74): every `evals/run_evals.py` invocation writes
+  a provider-neutral, schema-versioned `run-record.json`
+  (`evals/run-record.schema.json`, sorted keys) to its work dir. It holds the
+  skilldeck version and git commit, each fixture's content digest, each
+  skill's version, canonical digest and installed-file digest, the harness,
+  exact command template, version and model, and one entry per planned run
+  (passed, failed, agent failure, timeout, error, or not run) with timing,
+  exit code, finding count and the scorer's reasons. Raw reports and stderr
+  stay in separate files it points to (`--include-reports` embeds them).
+  `--harness claude|codex|custom` presets pair each agent CLI's
+  non-interactive command with its adapter, and `--model` passes a model
+  through `{model}`. `--dry-run` validates the fixtures and prints the plan
+  without running anything; `--max-runs N` (default 50) refuses an oversized
+  plan before it starts; runs stay sequential. `--replay RECORD` re-runs a
+  record's configuration and refuses if any fixture or skill changed since.
+  A missing agent command is now recorded, and stops the remaining runs,
+  instead of aborting without a record; a passing run keeps its record and
+  raw output (only the review repos are deleted).
 - `skilldeck provenance --verify` re-hashes each installed skill's `meta.yaml`
   and `skill.md` and exits 1, naming the skill, when one no longer matches its
   recorded canonical digest, is missing, or has unexpected files beside it.

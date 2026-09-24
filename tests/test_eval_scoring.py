@@ -591,8 +591,24 @@ def test_stderr_is_not_scored():
 
 def test_missing_agent_command_is_a_clean_error(monkeypatch, tmp_path):
     _fake_subprocess_run(monkeypatch, raises=FileNotFoundError())
-    with pytest.raises(SystemExit, match="agent command not found"):
+    with pytest.raises(run_evals.AgentStartError, match="agent command not found"):
         run_evals.run_agent("no-such-agent {prompt}", "p", tmp_path, 5)
+
+
+def test_an_agent_that_cannot_start_is_a_clean_error(monkeypatch, tmp_path):
+    _fake_subprocess_run(monkeypatch, raises=PermissionError("not executable"))
+    with pytest.raises(run_evals.AgentStartError, match="could not start"):
+        run_evals.run_agent("./agent {prompt}", "p", tmp_path, 5)
+
+
+def test_run_agent_substitutes_the_model_and_prompt_in_one_pass(monkeypatch, tmp_path):
+    calls = _fake_subprocess_run(
+        monkeypatch, subprocess.CompletedProcess([], 0, stdout="", stderr="")
+    )
+    run_evals.run_agent("agent -m {model} {prompt}", "{model}?", tmp_path, 5, "m1")
+    assert calls[0][0] == ["agent", "-m", "m1", "{model}?"]
+    run_evals.run_agent("agent -m {model} {prompt}", "p", tmp_path, 5, "{prompt}")
+    assert calls[1][0] == ["agent", "-m", "{prompt}", "p"]
 
 
 # -- adapters, prompts, and fixture selection ----------------------------------
@@ -661,7 +677,11 @@ def test_main_repeats_each_fixture_and_reports_the_pass_rate(
     assert status == 0, out
     assert "PASS  logging #1" in out and "PASS  logging #2" in out
     assert "2/2 (100%)  logging" in out
-    assert not workdir.exists()  # cleaned up when every run passes
+    # the review repos are cleaned up when every run passes; the run record
+    # and the raw reports stay
+    assert not (workdir / "repos").exists()
+    assert (workdir / run_evals.RECORD_NAME).is_file()
+    assert (workdir / "artifacts" / "run-2" / "logging" / "report.txt").is_file()
 
 
 def test_main_reports_a_failing_agent_with_its_stderr(monkeypatch, tmp_path, capsys):
@@ -682,9 +702,11 @@ def test_main_reports_a_failing_agent_with_its_stderr(monkeypatch, tmp_path, cap
     assert "FAIL  logging" in out
     assert "agent exited with status 3" in out
     assert "upstream overloaded" in out
-    report = workdir / "logging" / "report.txt"
+    artifacts = workdir / "artifacts" / "run-1" / "logging"
+    report = artifacts / "report.txt"
     assert report.read_text(encoding="utf-8") == "partial output\n"
-    assert (workdir / "logging" / "stderr.txt").is_file()
+    assert (artifacts / "stderr.txt").is_file()
+    assert (workdir / "repos" / "run-1" / "logging" / ".git").is_dir()
 
 
 def test_main_rejects_an_unknown_fixture(capsys):
