@@ -35,7 +35,7 @@ export function mountHelpWidget(container: HTMLElement): () => void {
     if (event.data?.type !== "navigate") return;
     const target = inAppUrl(event.data.url);
     if (target) {
-      window.location.assign(target.pathname + target.search + target.hash);
+      window.location.assign(target.href);
     }
   };
   window.addEventListener("message", onMessage);

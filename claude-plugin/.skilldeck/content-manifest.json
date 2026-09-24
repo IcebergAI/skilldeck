@@ -35,9 +35,9 @@
       "version": "0.4.0"
     },
     {
-      "body_sha256": "sha256:755aa4dd00608a4131380b20fa9e2b910e442fefb7d2c10c70c4d5f754d543cd",
-      "canonical_sha256": "sha256:23c54704999fb1216eef0bf58a9ad3a6ebf288f12e2e6a95ea19acdcfb4907e9",
-      "claude_rendered_sha256": "sha256:5f33659492728fef4a77c332c4f6f2622ce012c92280aead1a6bcb3d6c940e05",
+      "body_sha256": "sha256:94ab468a0837179a8fa7470be404884cfc475f05f8be2314bff6e409ecffc5e5",
+      "canonical_sha256": "sha256:c3c2bde57bbb2c220da2f44c775e1d2bb71956915572094acd0fcf8a1c411186",
+      "claude_rendered_sha256": "sha256:11d8bdbf3419cb7c4040bc02e19b502d5b64ba77e65aa2190e1cd51dc826d76a",
       "meta_sha256": "sha256:6337828e91940730210bd7fea7690573610f9413d484d40a2596772c387b94fb",
       "name": "frontend-security-review",
       "version": "0.1.0"
@@ -83,9 +83,9 @@
       "version": "0.3.0"
     },
     {
-      "body_sha256": "sha256:56f907e6049b1a6eb23bab027b230730a57bb4f064a4fd533c1ce90c79c9ba98",
-      "canonical_sha256": "sha256:eaa1a3bd83c6cbda8c143bb3fab2e9be8716dc72975f31a76bd5940c3a859ba9",
-      "claude_rendered_sha256": "sha256:18c7369b0e95e991f25df94881e6a4f2daf015f7d1fa3aa44a6760148b0eb85c",
+      "body_sha256": "sha256:3b406def04876bd8c23cdca58cf7d9c5165d1ea9a89a591b0aa8bf7b384124de",
+      "canonical_sha256": "sha256:5dc16651e05cae1449cf37bc956614269402c680cb35cafbc49a615121a59786",
+      "claude_rendered_sha256": "sha256:dcff1e4e2ebd7e18734f8370b4e294a391e58d06ce13383afb5523a7c2b4fa30",
       "meta_sha256": "sha256:60a12438cf365b8d31db1c15a22bec93acf3b9067b791933405ff038a54ef447",
       "name": "security-review",
       "version": "0.5.1"

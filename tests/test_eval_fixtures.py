@@ -292,7 +292,7 @@ SAMPLE_REPORTS = {
                 "the message names, including `javascript:` URLs and other hosts, "
                 "so the widget can send members off to a phishing page (open "
                 "redirect).",
-                "navigate only to in-app paths that resolve to the app's own host.",
+                "navigate only to same-origin paths.",
             ),
         ],
     ),

@@ -147,6 +147,7 @@ type has one owner:
 | CI config: actions, reusable workflows, CI `include:`s and components, job and service images | `ci-workflow-review` | `CICD-SEC-3 Dependency Chain Abuse` |
 | IaC: Dockerfile `FROM`, compose and Kubernetes/Helm images, Terraform/OpenTofu module sources | `iac-review` | `Mutable pin` |
 | Package manifests and lockfiles | `dependency-review` | `Mutable pin` |
+| Page `<script>` and `<link>` tags loading CDN code without SRI | `frontend-security-review` | `V3 Web Frontend Security` |
 
 ## Which skill owns what
 
@@ -158,7 +159,7 @@ one area and own it:
 | Authentication depth — ASVS V6, V7, V9, V10 (passwords, MFA, sessions and cookies, tokens, OAuth/OIDC, SAML and LDAP sign-in) | `authentication-review` | `security-review` |
 | Security logging — ASVS V16 (events logged, secrets or PII in logs, log injection) | `logging` | `security-review`, `authentication-review` |
 | LLM and agent integrations — prompts, model output reaching sinks, tools and agent loops, MCP servers and config, RAG retrieval, model loading | `llm-integration-review` | `security-review` |
-| Browser-side security — ASVS V3 in front-end code and page headers (framework escape hatches and DOM XSS sinks, CSP and framing, `postMessage`, browser storage, secrets in client bundles, SRI, client-side redirects); server-side CORS and CSRF checks stay with `security-review`, cookies with `authentication-review` | `frontend-security-review` | `security-review` |
+| Browser-side security — ASVS V3 in front-end code and page headers (framework escape hatches and DOM XSS sinks, CSP and framing, `postMessage`, browser storage, secrets in client bundles, SRI, client-side redirects); server-side CORS and CSRF checks stay with `security-review`; cookies, and session and OAuth tokens in browser storage, with `authentication-review` | `frontend-security-review` | `security-review` |
 | Pipeline config — workflows, CI includes, job images, runners, CI variables and tokens | `ci-workflow-review` | `security-review`, `dependency-review` |
 | Supply chain — package manifests and lockfiles (advisories, provenance, malicious or unmaintained packages) | `dependency-review` | `security-review` (15.2.1, 15.2.4) |
 | Infrastructure config — Terraform/CloudFormation/Pulumi, Kubernetes/Helm, Dockerfiles, compose | `iac-review` | `security-review`, `dependency-review` |

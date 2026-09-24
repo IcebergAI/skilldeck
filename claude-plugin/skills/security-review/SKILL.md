@@ -35,8 +35,9 @@ Unless told otherwise, review to **L2**.
    V10; `logging` V16; `ci-workflow-review` pipeline config; `dependency-review`
    package manifests; `iac-review` infrastructure config;
    `llm-integration-review` LLM and agent integrations;
-   `frontend-security-review` V3 in browser-side code and page headers (CORS
-   and CSRF checks stay here). If the owner runs in
+   `frontend-security-review` browser-side code and page headers (V3, and the
+   XSS sinks, browser storage, and client-bundle secrets there; CORS and CSRF
+   checks stay here). If the owner runs in
    the same review, leave its area to it; in a combined report, give each
    defect once, under the owner's classifier.
 

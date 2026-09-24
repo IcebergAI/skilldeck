@@ -34,11 +34,18 @@ plants:
   # the message listener never checks who sent the message, so any page that
   # opens or frames the app can make it navigate (to a javascript: URL, too);
   # only terms for the missing sender check, not for the URL it navigates to,
-  # which is the file's other defect
+  # which is the file's other defect (so no bare "origin": a Fix saying
+  # "same-origin paths" must not satisfy this plant)
   - file: src/embed/helpWidget.ts
     keywords:
-      - origin
-      - origins
+      - event.origin
+      - origin check
+      - check the origin
+      - checks the origin
+      - checking the origin
+      - unchecked origin
+      - any origin
+      - untrusted origin
       - sender
       - senders
       - any window

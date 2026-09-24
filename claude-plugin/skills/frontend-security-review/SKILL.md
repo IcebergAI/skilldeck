@@ -28,7 +28,8 @@ cheat sheets, and the security guidance of
 ([CSP](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP),
 [`postMessage`](https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage)).
 This skill owns the browser side; `security-review` owns the server side,
-including CORS and CSRF checks, and `authentication-review` owns cookies.
+including CORS and CSRF checks, and `authentication-review` owns cookies and
+session or OAuth tokens in browser storage.
 
 Framework auto-escaping is the defense: judge each change by where it steps
 outside it, and by what reaches that point.
@@ -42,7 +43,7 @@ outside it, and by what reaches that point.
    already on the base branch, review the uncommitted changes instead.
 2. Look for components and templates, DOM code, `message` listeners, browser
    storage calls, `<script>` tags, `.env*` files and bundler config, and CSP or
-   header config (framework config, `<meta>` tags, server or CDN header files).
+   header config (framework, `<meta>`, server, or CDN).
 3. Trace each value that reaches a sink back to its source — the URL (query,
    fragment), another user's stored content, a message, an API response — and
    read the whole component: a sanitizer or check may sit outside the hunk.
@@ -62,20 +63,23 @@ chapter.
   (3.2.2); HTML meant to render needs a maintained sanitizer such as DOMPurify,
   applied last (1.3.1).
 - Angular `bypassSecurityTrust*` on a value an attacker can influence; untrusted
-  input used as a template (a Vue `template` string, string-built templates).
+  input compiled as a template (e.g. a Vue `template` string).
 - Strings run as code: `eval`, `new Function`, `setTimeout`/`setInterval` with a
   string (1.3.2).
-- Untrusted URLs in `href`, `src`, or a `location` assignment without a scheme
-  allow-list: `javascript:` and `data:` URLs run script, and framework escaping
-  doesn't check the scheme (1.2.2).
+- Untrusted URLs without a scheme allow-list (1.2.2): a `javascript:` URL runs
+  script. Vue `:href` bindings and React before 19 pass it through; React 19
+  blocks it
+  ([changelog](https://github.com/facebook/react/blob/main/CHANGELOG.md));
+  Angular sanitizes URL bindings unless `bypassSecurityTrustUrl` is used. Raw
+  DOM attributes, `location` assignments, and `window.open` never check.
 
 ### CSP and framing headers (V3 3.4)
 
 - A CSP added or weakened (3.4.3): `'unsafe-inline'` or `'unsafe-eval'` in
   `script-src`; script sources that admit any host (`*`, `https:`, `data:`); no
-  `object-src 'none'` or `base-uri 'none'`; a fixed or reused nonce instead of
-  one per response; or only `Content-Security-Policy-Report-Only`, which
-  enforces nothing. Prefer a nonce- or hash-based strict policy.
+  `object-src 'none'` or `base-uri 'none'`; a fixed or reused nonce; or only
+  `Content-Security-Policy-Report-Only`, which enforces nothing. Prefer a
+  nonce- or hash-based strict policy.
 - No `frame-ancestors`, or one allowing any site, on pages with state-changing
   clicks (3.4.6); `X-Frame-Options` alone is obsolete, and `frame-ancestors` in
   a `<meta>` CSP is ignored.
@@ -84,26 +88,27 @@ chapter.
 ### Cross-window messaging (V3 3.5.5)
 
 - A `message` listener that acts without checking `event.origin` against exact
-  expected origins (not a substring test such as `indexOf`) and validating the
+  expected origins (not a substring test) and validating the
   message's shape — any window can post to it; message data sent to an HTML
   sink, `eval`, or navigation.
 - `postMessage(data, "*")` carrying anything sensitive: name the target origin.
 
 ### Browser storage and client bundles (V14 14.3.1, 14.3.3; V13 13.3.1)
 
-- Session identifiers, refresh tokens, or sensitive data in `localStorage`,
-  `sessionStorage`, or IndexedDB — one XSS reads all of it; prefer an `HttpOnly`
-  cookie. Authenticated data left there after logout (14.3.1).
+- Sensitive data in `localStorage`, `sessionStorage`, or IndexedDB (14.3.3) —
+  one XSS reads all of it; authenticated data left there after logout
+  (14.3.1). Session and OAuth tokens there are `authentication-review`'s.
 - Secrets in client code: `NEXT_PUBLIC_*` and `VITE_*` variables are inlined
   into the bundle anyone downloads
   ([Next.js](https://nextjs.org/docs/app/guides/environment-variables),
-  [Vite](https://vite.dev/guide/env-and-mode)). Publishable keys meant for
-  browsers are not findings.
+  [Vite](https://vite.dev/guide/env-and-mode)). Publishable browser keys are
+  not findings.
 
 ### Third-party code and navigation (V3 3.6.1, 3.7.2)
 
-- CDN scripts or styles without `integrity` (SRI) and `crossorigin`, or from a
-  mutable URL (3.6.1).
+- CDN scripts or styles without `integrity` (SRI) and `crossorigin` (3.6.1);
+  without SRI, a mutable URL (`@latest`, a version range, no version) is a
+  mutable pin.
 - Client-side redirects to a URL from the query or fragment (`?next=`,
   `returnTo`) not limited to same-app paths or an allow-list (3.7.2).
 
@@ -132,8 +137,9 @@ where others view it, **high** when planting it takes an account or the victim
 must open an attacker's link or page (reflected, DOM, or message-borne XSS). A
 live secret in client code is always **critical**, and its Fix must also revoke
 and rotate it. A weakened CSP, missing `frame-ancestors` on state-changing
-pages, a session token moved into web storage, or an open redirect is
-**medium**; missing SRI, `nosniff`, or `Referrer-Policy` is **low**. The
+pages, a CDN tag at a mutable URL without SRI (the shared mutable-pin rule),
+or an open redirect is **medium**; a versioned CDN URL missing only SRI, or a
+missing `nosniff` or `Referrer-Policy`, is **low**. The
 classifier is the ASVS 5.0 chapter, e.g. `V3 Web Frontend Security`;
 `V1 Encoding and Sanitization` for sanitizers, URL schemes, and `eval`;
 `V14 Data Protection` for storage; `V13 Configuration` for secrets. Order

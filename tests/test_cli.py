@@ -24,7 +24,9 @@ def test_list_groups_by_category():
     # category headers are emitted, and each skill is listed under its header
     assert "security:" in result.output
     assert "review:" in result.output
-    assert result.output.index("security:") < result.output.index("security-review")
+    assert result.output.index("security:") < result.output.index(
+        "\n  security-review "
+    )
 
 
 def test_install_writes_file(tmp_path, monkeypatch):
