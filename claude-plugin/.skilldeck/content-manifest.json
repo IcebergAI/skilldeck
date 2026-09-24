@@ -11,9 +11,9 @@
       "version": "0.1.1"
     },
     {
-      "body_sha256": "sha256:61af8ac74cc4a045c97ca928847f06464abef54b6e2ce368e042f5b36dc4bed8",
-      "canonical_sha256": "sha256:fca14187ce7b12c1e89b2256642facef81600b6a20d488ea036c3e7257aace1b",
-      "claude_rendered_sha256": "sha256:64d97613f80982c931ee6d69e5f0f1e98bd1aa77f40c0f43a5fbaadee4e5e764",
+      "body_sha256": "sha256:7ef33a06e4bf544d4b5bb88fd5057194b626ce6d67779fff59633172d0e718e4",
+      "canonical_sha256": "sha256:66e1b11a86e954c97b6d57aafdc7afc70d5e869b66b13fda67cd0f352fb9479d",
+      "claude_rendered_sha256": "sha256:dcec8f843fdba88b1ea03db5ff2d2b10e4a76c17ad70c6907ff16effdbb31bcd",
       "meta_sha256": "sha256:1aa0866bd107481ac13414ff98333b4de966c924b3d9c1ad8de342367bc8fc90",
       "name": "ci-workflow-review",
       "version": "0.2.1"
@@ -67,9 +67,9 @@
       "version": "0.2.1"
     },
     {
-      "body_sha256": "sha256:f32a9f2cad842fe0fdd6e903beaf52dfb67c8ce36162679e374b8306230c4af1",
-      "canonical_sha256": "sha256:3f16f83d5da3a1b5abaf63c8c8f90c77c4116f8058f1676f83f1e5267642134d",
-      "claude_rendered_sha256": "sha256:8cabfadb5a0b200b4453630acb3c86633d3988d39edb415bb15c44eb3e701a71",
+      "body_sha256": "sha256:a9da8f248861aecca5dad8ae1b47a48de116e316b7c839afd08b1129510a288a",
+      "canonical_sha256": "sha256:30ee39e9be8a4ba1ca5c315472f4fbc1475001d47bc6af793e86f61217614f7e",
+      "claude_rendered_sha256": "sha256:dc2621e7ab2965f63ff5ac4748d7d2e420c7e4b913332a9a7a2ddb5c7ffa0641",
       "meta_sha256": "sha256:c825b8050c522183aba587217a41c0175d6f6bbe4754166085dc0e11975cc68a",
       "name": "security-review",
       "version": "0.3.3"

@@ -28,7 +28,8 @@ Unless told otherwise, review to **L2**.
 
 Numbers in parentheses are ASVS 5.0 requirement IDs
 (`<chapter>.<section>.<requirement>`), for orientation — classify findings by
-chapter.
+chapter. `L3` marks requirements only Level 3 asks for: under an L2 review,
+report those only when the change gives them a concrete exploit path.
 
 - **V1 Encoding & Sanitization** — output encoding for the right context to
   prevent XSS (HTML, URL, JavaScript/JSON; 1.2.1–1.2.3); parameterized
@@ -49,19 +50,19 @@ chapter.
   `nosniff`, clickjacking protection via `frame-ancestors`, and CORS origin
   handling (3.4); CSRF and other cross-origin request protections (3.5); open
   redirects (3.7.2).
-- **V4 API & Web Service** — correct response `Content-Type` and only
-  intended HTTP methods (4.1.1, 4.1.4); headers set by a proxy (e.g.
+- **V4 API & Web Service** — correct response `Content-Type` (4.1.1) and
+  only intended HTTP methods (4.1.4, L3); headers set by a proxy (e.g.
   `X-Forwarded-For`) not overridable by clients (4.1.3); request smuggling
-  and header injection (4.2); GraphQL depth/cost limits and introspection off
-  in production (4.3); WebSocket origin checks (4.4.2). Per-endpoint access
-  control is V8.
+  (4.2.1) and header injection (4.2.3, 4.2.4, L3); GraphQL depth/cost
+  limits and introspection off in production (4.3); WebSocket origin checks
+  (4.4.2). Per-endpoint access control is V8.
 - **V5 File Handling** — upload size, extension, and content validation
-  (5.2.1, 5.2.2); archive size, file-count, and symlink limits (5.2.3,
-  5.2.5); uploads never executed as server-side code (5.3.1); **path
+  (5.2.1, 5.2.2); archive size and file-count limits (5.2.3) and symlinks
+  (5.2.5, L3); uploads never executed as server-side code (5.3.1); **path
   traversal** — file paths built from internal or trusted data, not
   user-submitted filenames, which also blocks LFI/RFI and SSRF through file
-  paths (5.3.2); zip slip (5.3.3); download filenames validated and encoded
-  (5.4.1, 5.4.2).
+  paths (5.3.2); zip slip (5.3.3, L3); download filenames validated and
+  encoded (5.4.1, 5.4.2).
 - **V6 Authentication** — credential handling, brute-force and
   credential-stuffing defenses (6.3.1), MFA, secure recovery; no auth bypass.
   (See the `authentication-review` skill for depth on V6, V7, V9, and V10,
@@ -90,15 +91,15 @@ chapter.
   destinations allow-listed (13.2.4); secrets from a secrets manager, not
   source or config files (13.3.1); no debug modes, exposed `.git`, directory
   listings, or unintended docs/monitoring endpoints in production (13.4).
-- **V14 Data Protection** — sensitive data minimized in responses (14.2.6),
-  kept out of URLs (14.2.1) and caches (14.2.2, 14.3.2), not sent to
-  untrusted third parties (14.2.3), and protected at rest per its
+- **V14 Data Protection** — sensitive data minimized in responses
+  (14.2.6, L3), kept out of URLs (14.2.1) and caches (14.2.2, 14.3.2), not
+  sent to untrusted third parties (14.2.3), and protected at rest per its
   classification.
-- **V15 Secure Coding & Architecture** — risky or outdated components and
-  dependency confusion (15.2.1, 15.2.4; see `dependency-review`); whole
+- **V15 Secure Coding & Architecture** — risky or outdated components (15.2.1)
+  and dependency confusion (15.2.4, L3; see `dependency-review`); whole
   objects returned instead of the needed fields (15.3.1) and mass assignment
   (15.3.3); type juggling, prototype pollution, and HTTP parameter pollution
-  (15.3.5–15.3.7); race conditions and TOCTOU (15.4).
+  (15.3.5–15.3.7); race conditions and TOCTOU (15.4, L3).
 - **V16 Security Logging & Error Handling** — security events logged, no secrets
   or sensitive data in logs, no stack traces or internal detail leaked to users.
   (See the `logging` skill for depth.)

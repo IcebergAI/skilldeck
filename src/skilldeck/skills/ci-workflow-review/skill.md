@@ -61,30 +61,39 @@ the syntax differs).
   - GitLab: CI/CD variables reach the job as environment variables, and the
     shell expands them in `script:`
     ([where variables can be used](https://docs.gitlab.com/ci/variables/where_variables_can_be_used/))
-    once — command substitution inside the value is not run, so a quoted
-    `"$CI_MERGE_REQUEST_TITLE"` in an ordinary command is data, not an
-    injection. The sinks are **re-evaluation** — `eval`, `sh -c "… $VAR"`,
-    `bash -c`, or an `ssh` command line, each of which parses the value again
-    as shell; **unquoted `$VAR`** — word splitting and globbing turn it into
-    several arguments, and a leading `-` is read as an option
-    ([SC2086](https://github.com/koalaman/shellcheck/wiki/SC2086),
-    [SC2035](https://github.com/koalaman/shellcheck/wiki/SC2035)); and
+    once — command substitution inside the value is not run, and a quoted
+    `"$CI_MERGE_REQUEST_TITLE"` is not split or globbed. The sinks are
+    **re-evaluation** — any command that parses its argument as code:
+    `eval`, `sh -c "… $VAR"`, `bash -c`, an `ssh` command line, interpreter
+    one-liners (`python -c`, `node -e`, `perl -e`, `ruby -e`, `awk` program
+    text), or SQL for `psql -c`/`mysql -e`; quoting for the outer shell does
+    not stop the inner parser from running the value; **argument
+    injection** — a value that starts with `-` is read as an option even when
+    quoted, and an unquoted `$VAR` is also split and globbed into several
+    arguments
+    ([OWASP command injection defense](https://cheatsheetseries.owasp.org/cheatsheets/OS_Command_Injection_Defense_Cheat_Sheet.html),
+    [SC2086](https://github.com/koalaman/shellcheck/wiki/SC2086)); and
     **generated files** — the value written into a script that is later
-    sourced or run, or into a `dotenv` report, where a newline starts another
-    `KEY=value` entry and dotenv entries override job `variables:` in later
-    jobs. Untrusted sources are the MR title, description, and source branch
-    (`$CI_MERGE_REQUEST_*`, `$CI_COMMIT_REF_NAME`) and commit text
-    (`$CI_COMMIT_MESSAGE`, `_TITLE`, `_AUTHOR`); the default
-    [merge and squash commit templates](https://docs.gitlab.com/user/project/merge_requests/commit_templates/)
-    copy the MR title into the commit message, so a protected-branch
-    pipeline after a merge carries an outside contributor's text next to
-    protected variables. Fix (the GitHub `env:` indirection does not apply —
-    the value is already an environment variable): quote every expansion,
-    put it after `--` where the tool supports that, drop the `eval`/`sh -c`
-    or pass the value as a positional parameter
-    (`sh -c 'notify "$1"' _ "$CI_COMMIT_TITLE"`), and use
-    `$CI_COMMIT_REF_SLUG` or an allow-list check where only an identifier is
-    needed.
+    sourced or run, or into a
+    [`dotenv` report](https://docs.gitlab.com/ci/variables/dotenv_variables/),
+    where a newline starts another `KEY=value` entry and dotenv entries
+    override job `variables:` in later jobs. Untrusted sources are the MR
+    title, description, and source branch (`$CI_MERGE_REQUEST_*`,
+    `$CI_COMMIT_REF_NAME`) and commit text (`$CI_COMMIT_MESSAGE`, `_TITLE`,
+    `_AUTHOR`). A merge carries them onto protected branches: the default
+    [merge commit template](https://docs.gitlab.com/user/project/merge_requests/commit_templates/)
+    titles the commit `Merge branch '<source branch>' into '<target>'` and
+    copies the MR title into its message, and the default squash commit
+    message is the MR title — so a protected-branch pipeline after a merge
+    carries an outside contributor's text next to protected variables. Fix (the
+    GitHub `env:` indirection does not apply — the value is already an
+    environment variable): quote every expansion and put it after `--` or
+    attach it to its option (`--title="$VAR"`) so it cannot become an
+    option; drop the `eval`/`sh -c` or pass the value as a positional
+    parameter (`sh -c 'notify "$1"' _ "$CI_COMMIT_TITLE"`); have an inner
+    interpreter read the value as data (`os.environ`, `process.env`, stdin)
+    instead of splicing it into program text; and use `$CI_COMMIT_REF_SLUG`
+    or an allow-list check where only an identifier is needed.
 - **Privileged trigger + untrusted code** — GitHub: `pull_request_target`
   with a checkout of the PR head
   (`ref: ${{ github.event.pull_request.head.sha }}`, `refs/pull/<n>/merge`,

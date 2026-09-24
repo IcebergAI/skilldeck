@@ -189,19 +189,24 @@ All notable changes to this project are documented here. The format is based on
 - `ci-workflow-review` (0.2.1) no longer applies GitHub's `${{ }}` threat model
   to GitLab (#101). GitLab CI/CD variables reach the job as environment
   variables and the shell expands them once, so a quoted
-  `"$CI_MERGE_REQUEST_TITLE"` is safe; the skill now flags the real GitLab
-  sinks (re-evaluation via `eval`/`sh -c`/`bash -c`/`ssh`, unquoted expansion
-  and option injection, values written into sourced scripts or `dotenv`
-  reports), notes that merge and squash commits carry the MR title into
-  protected-branch pipelines, and gives GitLab-native fixes instead of the
-  GitHub-only `env:`. Fork-MR exposure now matches GitLab's docs (fork
-  pipelines run in the fork by default; the risk is a parent-project pipeline
-  for a fork MR reaching non-protected variables and runners), and
+  `"$CI_MERGE_REQUEST_TITLE"` is not re-parsed as shell; the skill now flags
+  the real GitLab sinks (re-evaluation by anything that parses its argument as
+  code — `eval`, `sh -c`, `bash -c`, `ssh`, `python -c`/`node -e`-style
+  one-liners, SQL for `psql -c`; option injection, which quoting does not
+  stop; unquoted expansion; values written into sourced scripts or `dotenv`
+  reports), notes that merge commit titles carry the source branch name and
+  merge and squash commit messages carry the MR title into protected-branch
+  pipelines, and gives GitLab-native fixes instead of the GitHub-only `env:`.
+  Fork-MR exposure now matches GitLab's docs (fork pipelines run in the fork
+  by default; the risk is a parent-project pipeline for a fork MR reaching
+  non-protected variables and runners), and
   `workflow_run` checkouts name `github.event.workflow_run.head_sha` /
   `head_branch` rather than the `pull_request` fields. GitHub and GitLab doc
   links point at their current canonical URLs. The GitLab eval fixture now
   plants a genuine `sh -c` re-evaluation of `$CI_COMMIT_TITLE` in a
-  default-branch job, and neither plant's keywords appear in the planted code.
+  default-branch job; neither plant's keywords appear in the planted code or
+  in a finding about the other plant, and a test runs the planted line with
+  attacker-style variable values to prove it executes them.
 - Skill citations corrected against the current standards (#102):
   `dependency-review` (0.2.3) cites OWASP Top 10:2025 A03 Software Supply
   Chain Failures instead of the retired A06:2021 and follows its wider framing
@@ -209,10 +214,12 @@ All notable changes to this project are documented here. The format is based on
   (0.3.3) files each checklist item under its ASVS 5.0 chapter with
   requirement IDs (SSRF and safe deserialization in V1, path traversal in V5,
   mass assignment in V15, cookie attributes in V3, password hashing in V11,
-  and V4 limited to its actual API/HTTP scope); `authentication-review`
-  (0.1.1) files LDAP sign-in under V6.3; and `test-review` (0.2.2) now cites
-  Google's code-review guide and *Software Engineering at Google*, preferring
-  DAMP test setup and state over interaction checks to match them.
+  V4 limited to its actual API/HTTP scope, and L3-only requirements marked so
+  an L2 review does not report them without a concrete exploit path);
+  `authentication-review` (0.1.1) files LDAP sign-in under V6.3; and
+  `test-review` (0.2.2) now cites Google's code-review guide and *Software
+  Engineering at Google*, preferring DAMP test setup and state over
+  interaction checks to match them.
 
 ### Removed
 
