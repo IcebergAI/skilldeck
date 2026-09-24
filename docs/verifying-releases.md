@@ -99,6 +99,12 @@ steps above) before installing it.
 A source checkout honestly reports the tag and commit as unavailable instead
 of inventing a release identity.
 
+`skilldeck catalog --json` reports the same distribution identity and canonical
+digests together with each skill's metadata and deprecation state, and, like
+`--verify`, recomputes every digest from the installed files and fails on a
+mismatch. Releases do not attach the catalog separately; generate it from the
+verified wheel. See [the skill catalog](catalog.md).
+
 The Claude plugin contains the same generated content manifest at
 `claude-plugin/.skilldeck/content-manifest.json`. Release CI recomputes the
 canonical metadata, skill bodies, and rendered Claude files from the wheel,

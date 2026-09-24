@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import stat
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
 from itertools import groupby
 from pathlib import Path
 
@@ -18,7 +17,8 @@ from .adapters import (
     InstallState,
     LegacyAdapter,
 )
-from .provenance import distribution_provenance, verify_bundled_skills
+from .catalog import CatalogError, build_catalog, catalog_schema_text, filter_catalog
+from .provenance import canonical_json, distribution_provenance, verify_bundled_skills
 from .registry import Skill, SkillError, discover_skills
 from .stamp import read as read_stamp
 from .targets import Scope
@@ -246,7 +246,137 @@ def list_cmd() -> None:
         click.echo(f"\n{category}:")
         for skill in group:
             agents = ", ".join(skill.supported_agents)
-            click.echo(f"  {skill.name:<{width}}  {skill.description}  [{agents}]")
+            line = f"  {skill.name:<{width}}  {skill.description}  [{agents}]"
+            if skill.deprecated is not None:
+                note = _deprecation_note(
+                    skill.deprecated.since, skill.deprecated.replacement
+                )
+                line += f"  ({note})"
+            click.echo(line)
+
+
+def _deprecation_note(since: str, replacement: str | None) -> str:
+    note = f"deprecated since {since}"
+    if replacement:
+        note += f"; use {replacement}"
+    return note
+
+
+def _warn_deprecated(skills: Iterable[Skill]) -> None:
+    """Warn on stderr about each deprecated skill in ``skills``, once, by name."""
+    for skill in sorted(set(skills), key=lambda skill: skill.name):
+        if skill.deprecated is None:
+            continue
+        note = _deprecation_note(skill.deprecated.since, skill.deprecated.replacement)
+        click.echo(
+            f"warning: {skill.name} is {note} ({skill.deprecated.reason})", err=True
+        )
+
+
+def _echo_json(data: object) -> None:
+    """Print ``data`` as canonical JSON, as UTF-8 bytes with ``\\n`` newlines.
+
+    ``click.echo`` writes bytes to the binary stream, so the output is the
+    same bytes on every platform (a text stream on Windows would turn each
+    newline into CRLF).
+    """
+    click.echo(canonical_json(data).encode("utf-8"), nl=False)
+
+
+@cli.command()
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Emit the deterministic, schema-versioned catalog as JSON.",
+)
+@click.option(
+    "--category",
+    "categories",
+    multiple=True,
+    help="Only skills in this category; repeat to allow several.",
+)
+@click.option(
+    "--agent",
+    "agents",
+    multiple=True,
+    type=click.Choice(sorted(ADAPTERS)),
+    help="Only skills that support this agent; repeat to require several.",
+)
+@click.option(
+    "--schema",
+    is_flag=True,
+    help="Print the JSON Schema of the --json output and exit.",
+)
+def catalog(
+    as_json: bool, categories: tuple[str, ...], agents: tuple[str, ...], schema: bool
+) -> None:
+    """Describe every bundled skill for tools: identity, version, category,
+    supported agents, canonical digest, source and deprecation state.
+
+    Each digest is recomputed from the installed skill files and must match
+    the content manifest recorded when the package was built, the same check
+    as provenance --verify; the command fails if any does not.
+    """
+    if schema:
+        if as_json or categories or agents:
+            raise click.UsageError("--schema takes no other options")
+        try:
+            text = catalog_schema_text()
+        except OSError as exc:
+            raise click.ClickException(
+                f"cannot read the catalog schema: {exc}"
+            ) from exc
+        click.echo(text if text.endswith("\n") else text + "\n", nl=False)
+        return
+    try:
+        # the full provenance --verify check first: it also catches files the
+        # manifest doesn't list, which the skills themselves can't show
+        problems = verify_bundled_skills()
+        data = None if problems else build_catalog(_all_skills())
+    except CatalogError as exc:
+        problems, data = exc.problems, None
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if problems:
+        for problem in problems:
+            click.echo(f"error: {problem}", err=True)
+        click.echo(
+            "error: the installed skills do not match the content manifest "
+            "recorded when this package was built",
+            err=True,
+        )
+        raise SystemExit(1)
+    assert data is not None
+    known = {skill["category"] for skill in data["skills"]}
+    unknown = sorted(set(categories) - known)
+    if unknown:
+        click.echo(
+            f"warning: no skill has category {', '.join(unknown)}; the categories "
+            f"are {', '.join(sorted(known))}",
+            err=True,
+        )
+    data = filter_catalog(data, set(categories), set(agents))
+    if as_json:
+        _echo_json(data)
+        return
+
+    if not data["skills"]:
+        click.echo("No matching skills.")
+        return
+    name_width = max(len(skill["name"]) for skill in data["skills"])
+    version_width = max(len(skill["version"]) for skill in data["skills"])
+    category_width = max(len(skill["category"]) for skill in data["skills"])
+    for skill in data["skills"]:
+        line = (
+            f"{skill['name']:<{name_width}}  {skill['version']:<{version_width}}  "
+            f"{skill['category']:<{category_width}}  {skill['canonical_sha256']}"
+        )
+        deprecated = skill["deprecated"]
+        if deprecated is not None:
+            note = _deprecation_note(deprecated["since"], deprecated["replacement"])
+            line += f"  ({note})"
+        click.echo(line)
 
 
 @cli.command()
@@ -270,6 +400,7 @@ def install(
     scope_enum = Scope(scope)
     skills = _resolve_skills(names, install_all)
     adapters, failed = _resolve_adapters(agents, scope_enum)
+    installed: set[Skill] = set()
     for adapter in adapters:
         for skill in skills:
             if not adapter.supports(skill):
@@ -284,6 +415,8 @@ def install(
                 failed = True
                 continue
             click.echo(f"installed {skill.name} -> {dest}")
+            installed.add(skill)
+    _warn_deprecated(installed)
     if failed:
         raise SystemExit(1)
 
@@ -384,7 +517,7 @@ def provenance(as_json: bool, verify: bool) -> None:
         )
         raise SystemExit(1)
     if as_json:
-        click.echo(json.dumps(data, indent=2, sort_keys=True))
+        _echo_json(data)
         return
 
     package = data["distribution"]
@@ -478,6 +611,7 @@ def update(agents: tuple[str, ...], scope: str, force: bool) -> None:
     adapters, failed = _resolve_adapters(agents, scope_enum)
     multi = len(adapters) > 1
     indent = "  " if multi else ""
+    refreshed: set[Skill] = set()
     for index, adapter in enumerate(adapters):
         if multi:
             if index:
@@ -498,6 +632,7 @@ def update(agents: tuple[str, ...], scope: str, force: bool) -> None:
                         f"{indent}updated {skill.name} ({old} -> {skill.version})"
                     )
                     updated += 1
+                    refreshed.add(skill)
                 elif state is InstallState.MODIFIED:
                     click.echo(
                         f"{indent}skip {skill.name}: locally modified (use --force)",
@@ -516,6 +651,7 @@ def update(agents: tuple[str, ...], scope: str, force: bool) -> None:
         hint = _legacy_hint(adapter, skills, scope_enum)
         if hint:
             click.echo(f"{indent}{hint}")
+    _warn_deprecated(refreshed)
     if failed:
         raise SystemExit(1)
 
