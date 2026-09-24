@@ -19,18 +19,24 @@ import yaml
 
 from ..registry import Skill, SkillError
 from ..stamp import Stamp, parse, stamp
-from ..targets import Scope, base_dir
+from ..targets import Scope, UserDir, project_base
 
 
-def yaml_frontmatter(fields: dict[str, object]) -> str:
+def yaml_frontmatter(fields: dict[str, object], *, wrap: bool = True) -> str:
     """Serialize ``fields`` into a YAML frontmatter block.
 
     Serialized rather than interpolated, so a value containing newlines or YAML
     metacharacters is quoted and cannot inject extra frontmatter keys or corrupt
-    the document.
+    the document. Long values are folded onto continuation lines, as YAML
+    allows; pass ``wrap=False`` for a reader that takes each ``key: value``
+    from a single line.
     """
     text = yaml.safe_dump(
-        fields, sort_keys=False, default_flow_style=False, allow_unicode=True
+        fields,
+        sort_keys=False,
+        default_flow_style=False,
+        allow_unicode=True,
+        width=None if wrap else float("inf"),
     )
     return f"---\n{text}---\n"
 
@@ -102,25 +108,31 @@ class InstallState(Enum):
 
 
 class Adapter(ABC):
-    #: agent identifier, matched against a skill's ``supported-agents``
+    #: adapter identifier, the ``--agent`` value that selects it; for a native
+    #: adapter also the agent name matched against a skill's ``supported-agents``
     name: str = ""
 
-    #: True if ``relative_path`` places each skill in its own directory (e.g.
-    #: Claude's ``.claude/skills/<name>/``); uninstall reclaims that directory
-    #: once empty. Leave False for adapters that write into a shared directory.
+    #: True if ``entry`` places each skill in its own directory (e.g.
+    #: ``<name>/SKILL.md``); uninstall reclaims that directory once empty.
+    #: Leave False for adapters that write into a shared directory.
     creates_skill_dir: bool = False
 
-    #: glob (relative to the scope base dir) matching every file this adapter
-    #: installs; lets ``status`` find orphans of skills no longer bundled
+    #: where the agent reads this adapter's files at project scope, relative to
+    #: the project root; empty if it has no project-scope location
+    project_dir: str = ""
+
+    #: where the agent reads them at global scope; None if it has no stable
+    #: user-level location on the filesystem
+    global_dir: UserDir | None = None
+
+    #: glob (relative to the install root, see :meth:`root`) matching every
+    #: file this adapter installs; lets ``status`` find orphans of skills no
+    #: longer bundled
     installed_glob: str = ""
 
-    #: scopes this adapter can install into; agents without a stable
-    #: filesystem location for user-level config are project-only
-    scopes: tuple[Scope, ...] = (Scope.PROJECT, Scope.GLOBAL)
-
     @abstractmethod
-    def relative_path(self, skill: Skill) -> Path:
-        """Install location for ``skill``, relative to the scope base dir."""
+    def entry(self, skill: Skill) -> Path:
+        """Install location for ``skill``, relative to the install root."""
 
     @abstractmethod
     def render(self, skill: Skill) -> str:
@@ -128,6 +140,16 @@ class Adapter(ABC):
 
     def supports(self, skill: Skill) -> bool:
         return self.name in skill.supported_agents
+
+    @property
+    def scopes(self) -> tuple[Scope, ...]:
+        """The scopes this adapter has a location for."""
+        found = []
+        if self.project_dir:
+            found.append(Scope.PROJECT)
+        if self.global_dir is not None:
+            found.append(Scope.GLOBAL)
+        return tuple(found)
 
     def check_scope(self, scope: Scope) -> None:
         """Raise :class:`SkillError` if this agent cannot install at ``scope``."""
@@ -137,11 +159,27 @@ class Adapter(ABC):
                 "stable file location for that scope"
             )
 
+    def root(self, scope: Scope, project_root: Path | None = None) -> Path:
+        """The directory this adapter installs into at ``scope``.
+
+        Raises :class:`SkillError` if the adapter has no location at ``scope``,
+        or if an environment variable that moves it is unusable (see
+        :meth:`UserDir.home`).
+        """
+        self.check_scope(scope)
+        if scope == Scope.GLOBAL and self.global_dir is not None:
+            return self.global_dir.resolve()
+        return project_base(project_root) / self.project_dir
+
+    def relative_path(self, skill: Skill) -> Path:
+        """Where ``skill`` goes at project scope, relative to the project root."""
+        self.check_scope(Scope.PROJECT)
+        return Path(self.project_dir) / self.entry(skill)
+
     def destination(
         self, skill: Skill, scope: Scope, project_root: Path | None = None
     ) -> Path:
-        self.check_scope(scope)
-        return base_dir(scope, project_root) / self.relative_path(skill)
+        return self.root(scope, project_root) / self.entry(skill)
 
     def _stamped(self, skill: Skill) -> str:
         return stamp(self.render(skill), skill.name, skill.version)
@@ -225,8 +263,8 @@ class Adapter(ABC):
     def installed_files(
         self, scope: Scope, project_root: Path | None = None
     ) -> list[Path]:
-        """Every file under the scope base dir this adapter may have written."""
-        return sorted(base_dir(scope, project_root).glob(self.installed_glob))
+        """Every file under the install root this adapter may have written."""
+        return sorted(self.root(scope, project_root).glob(self.installed_glob))
 
     def uninstall(
         self,
@@ -274,9 +312,9 @@ class Adapter(ABC):
             raise SkillError(
                 f"cannot uninstall {skill.name} from {dest}: {exc}"
             ) from exc
-        # Remove the per-skill directory this adapter created (e.g. Claude's
+        # Remove the per-skill directory this adapter created (e.g.
         # ``.claude/skills/<name>/``) once empty. Adapters that write into a
-        # shared directory (``.codex/prompts``, ``.kiro/steering``) never set
+        # shared directory (``.github/prompts``, ``.kiro/steering``) never set
         # ``creates_skill_dir``, so those directories are never touched — even
         # for a skill that happens to be named after one of them. Best effort:
         # the skill file is already gone, so a directory that can't be removed

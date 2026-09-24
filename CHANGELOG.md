@@ -69,7 +69,9 @@ All notable changes to this project are documented here. The format is based on
   with `/<name>` in chat. Both are project-scope only — neither tool has a
   stable filesystem location for user-level config — enforced by a new
   per-adapter `scopes` attribute. All skills add the two agents to
-  `supported-agents` (patch version bumps).
+  `supported-agents` (patch version bumps). These formats are now the
+  `cursor-rule` and `copilot-prompt` legacy adapters; `cursor` and `copilot`
+  install `SKILL.md` folders at both scopes (see Changed, #100).
 - `install`/`uninstall` accept `--agent` multiple times, or `--agent all`, to
   target several agents in one command; `skilldeck show <name>` prints a
   skill's body (or, with `--agent`, the rendered per-agent output) before
@@ -93,14 +95,45 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Breaking:** the `codex`, `copilot`, `cursor` and `kiro` adapters now
+  install [Agent Skills](https://agentskills.io/specification) folders, the
+  format every supported agent reads today, instead of prompt, rule and
+  steering files (#100, #99). Each writes the same `SKILL.md` as the `claude`
+  adapter (whose output is unchanged) into the agent's own skills folder:
+  `.agents/skills/<name>/` for Codex (`~/.agents/skills/` globally),
+  `.github/skills/` for Copilot (`~/.copilot/skills/`), `.cursor/skills/` for
+  Cursor (`~/.cursor/skills/`) and `.kiro/skills/` for Kiro
+  (`~/.kiro/skills/`). Copilot and Cursor now support `--scope global`.
+  Codex needs 0.95.0 or later and Copilot in VS Code 1.109 or later; for
+  older agents, the previous Copilot, Cursor and Kiro formats remain as
+  opt-in legacy adapters (see Added). Existing installs in the old locations
+  are left alone: move them with `skilldeck migrate`. The shared rendering
+  lives in a new `SkillMdAdapter` base; an adapter now declares a project
+  folder and a `UserDir` for its global folder instead of one path relative
+  to `$HOME` or the project, and `targets.base_dir` is replaced by
+  `project_base` and `UserDir`. `docs/adapters.md` gives each agent's
+  locations, minimum versions and vendor sources, which folders each agent
+  also reads, and a recommended setup that avoids duplicate skills.
+- Global installs follow the variable that moves an agent's config directory
+  (#98): `CLAUDE_CONFIG_DIR` (Claude Code then reads personal skills only from
+  `$CLAUDE_CONFIG_DIR/skills`), `COPILOT_HOME` (Copilot CLI) and `KIRO_HOME`
+  (Kiro CLI; it also moves `kiro-steering`). `CODEX_HOME` does not move
+  `~/.agents/skills`, so the Codex adapter ignores it. An empty
+  `CLAUDE_CONFIG_DIR` is refused with an error, because Claude Code resolves
+  it against its working directory rather than falling back to `~/.claude`;
+  empty `COPILOT_HOME` and `KIRO_HOME` count as unset, and a relative value of
+  any of them is refused. The error is reported for that agent only.
 - `status` and `update` accept `--agent` more than once, or `--agent all`, like
   `install` and `uninstall`. When more than one agent is selected, each
   agent's results appear under a header (#98).
-- `--agent all` now means every agent that supports the chosen `--scope`. With
-  `--scope global`, the project-only agents (Copilot, Cursor) are skipped with
-  a note, where `install` used to report an error for each skill. Naming a
-  project-only agent explicitly with `--scope global` is still an error, even
-  alongside `all` (#98).
+- `--agent all` now means every agent that supports the chosen `--scope`. An
+  agent without a location at that scope is skipped with a note, where
+  `install` used to report an error for each skill. Naming such an agent
+  explicitly is still an error, even alongside `all` (#98). Every native
+  adapter now supports both scopes. `all` selects only the five native
+  adapters; a legacy adapter (the project-only `copilot-prompt` and
+  `cursor-rule`, and `kiro-steering`) runs only when named, even alongside
+  `all`.
 - Installs are atomic. The file is written to a temporary file in the same
   directory and then renamed into place with `os.replace`, so an interrupted
   install can't leave a half-written skill behind. The temporary file is
@@ -111,9 +144,7 @@ All notable changes to this project are documented here. The format is based on
 - Passing skill names together with `--all` to `install` or `uninstall` is now
   a usage error. Previously the names were silently ignored (#98).
 - `docs/adapters.md` now says that symlinked parent directories of an install
-  path are followed on purpose, and that `CODEX_HOME` and `CLAUDE_CONFIG_DIR`
-  are not read yet. Support for those two variables is deferred to the adapter
-  updates (#98).
+  path are followed on purpose (#98).
 - `dependency-review` (0.2.1): advisory-ID guard rephrased to lead with the
   shared "Verify before reporting" instruction so the structural lint can
   assert it uniformly.
@@ -133,10 +164,22 @@ All notable changes to this project are documented here. The format is based on
   regression-test-must-fail-without-the-fix verification (`test-review` 0.2.0).
 - Kiro adapter now renders skills with `inclusion: manual` frontmatter: Kiro
   steering documents are included in every interaction by default, which is
-  wrong for on-demand review prompts.
+  wrong for on-demand review prompts. (Steering files are now the
+  `kiro-steering` legacy adapter; `kiro` installs skills.)
 
 ### Fixed
 
+- Codex skills now install where Codex reads them (#99). The Codex adapter
+  wrote custom prompts to `.codex/prompts/<name>.md`, but Codex only ever read
+  custom prompts from `$CODEX_HOME/prompts`, never from a project, and removed
+  them in 0.118.0: project installs never reached Codex, and global ones
+  stopped working with 0.118.0.
+  It now writes `.agents/skills/<name>/SKILL.md` (`~/.agents/skills` globally);
+  the custom-prompt format is dropped rather than kept as a legacy adapter.
+- Cursor rules keep their whole description. Cursor reads `.mdc` frontmatter
+  one line at a time rather than as YAML, so a long description folded onto a
+  second line reached Cursor cut short (7 of the 10 bundled skills). The
+  `cursor-rule` adapter writes it on one line.
 - `uninstall` no longer deletes files that skilldeck didn't write or that have
   local edits. Like `install`, it refuses unless the new `uninstall --force` is
   given. It also reports per-skill errors, carries on, and exits 1 at the end.
@@ -228,6 +271,23 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `skilldeck migrate --agent <agent>|all [--scope ...] [--force]` moves skills
+  installed in an agent's old format (Codex custom prompts, Copilot prompt
+  files, Cursor rules, Kiro steering files) to its `SKILL.md` folder: it
+  installs the native skill, then removes the old file. The #95 rules apply:
+  an old file with local edits, without a stamp (such as an install from
+  skilldeck 0.3.0 or earlier) or that is a symlink is left in place and
+  reported unless `--force` is given, a directory is never removed, and a
+  modified or unmanaged file at the new location stops the move. Running it
+  again is a no-op. `status` and `update` print a one-line hint for each
+  agent with files at the old locations (#100).
+- Legacy adapters for agent versions without skills support, selected by
+  name and applied to every skill that supports their agent, so no
+  `meta.yaml` changes: `copilot-prompt` (`.github/prompts/<name>.prompt.md`,
+  project only, now with `agent: agent` so the prompt runs in agent mode and
+  can use tools), `cursor-rule` (`.cursor/rules/<name>.mdc`, project only) and
+  `kiro-steering` (`.kiro/steering/<name>.md`, both scopes). `supported-agents`
+  still accepts only the five agent names (#100).
 - Release trust chain (#76): exact tag/commit metadata in wheel and source
   distribution, a shared canonical content manifest for Python and the Claude
   plugin, `skilldeck provenance`, archive-safe cross-distribution verification,

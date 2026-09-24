@@ -4,18 +4,21 @@ from __future__ import annotations
 
 import json
 import stat
+from collections.abc import Collection
 from itertools import groupby
+from pathlib import Path
 
 import click
 
-from .adapters import ADAPTERS, Adapter, InstallState
+from .adapters import ADAPTERS, ALL_ADAPTERS, MIGRATIONS, Adapter, InstallState
 from .provenance import distribution_provenance
 from .registry import Skill, SkillError, discover_skills
 from .stamp import read as read_stamp
 from .targets import Scope
 
-AGENT_CHOICE = click.Choice(sorted(ADAPTERS))
-AGENTS_CHOICE = click.Choice([*sorted(ADAPTERS), "all"])
+AGENT_CHOICE = click.Choice(sorted(ALL_ADAPTERS))
+AGENTS_CHOICE = click.Choice([*sorted(ALL_ADAPTERS), "all"])
+MIGRATE_CHOICE = click.Choice([*sorted(MIGRATIONS), "all"])
 SCOPE_CHOICE = click.Choice([s.value for s in Scope])
 
 AGENT_OPTION = click.option(
@@ -24,7 +27,8 @@ AGENT_OPTION = click.option(
     required=True,
     multiple=True,
     type=AGENTS_CHOICE,
-    help="Target agent; repeat for several, or use 'all'.",
+    help="Target agent; repeat for several, or use 'all' for every agent's "
+    "native skills folder (not the legacy formats).",
 )
 SCOPE_OPTION = click.option(
     "--scope", type=SCOPE_CHOICE, default=Scope.PROJECT.value, show_default=True
@@ -51,22 +55,29 @@ def _resolve_skills(names: tuple[str, ...], select_all: bool) -> list[Skill]:
 
 
 def _resolve_adapters(
-    agents: tuple[str, ...], scope: Scope
+    agents: tuple[str, ...], scope: Scope, everything: Collection[str] = ADAPTERS
 ) -> tuple[list[Adapter], bool]:
     """Turn ``--agent`` values into the adapters to run, deduped in order.
 
-    ``all`` means every agent that can install at ``scope``; the rest are
-    skipped with a note. An agent named explicitly that can't is reported as an
-    error instead, even alongside ``all``. Returns the adapters and whether an
-    error was reported.
+    ``all`` means every agent in ``everything`` (by default the native
+    adapters) that can install at ``scope``; the rest are skipped with a note.
+    An agent named explicitly that can't is reported as an error instead, even
+    alongside ``all``. So is an agent whose location at ``scope`` can't be
+    resolved, such as a relative ``CLAUDE_CONFIG_DIR``. Returns the adapters
+    and whether an error was reported.
     """
-    # dict.fromkeys dedupes explicit names, keeping their order
-    names = sorted(ADAPTERS) if "all" in agents else list(dict.fromkeys(agents))
+    # dict.fromkeys dedupes, keeping order; a legacy adapter named alongside
+    # ``all`` is not in ``everything`` but still runs
+    names = [name for name in agents if name != "all"]
+    if "all" in agents:
+        names = [*sorted(everything), *names]
+    names = list(dict.fromkeys(names))
     selected: list[Adapter] = []
     failed = False
     for name in names:
+        adapter = ALL_ADAPTERS[name]
         try:
-            ADAPTERS[name].check_scope(scope)
+            adapter.check_scope(scope)
         except SkillError as exc:
             if name in agents:  # named explicitly
                 click.echo(f"error: {exc}", err=True)
@@ -74,8 +85,29 @@ def _resolve_adapters(
             else:
                 click.echo(f"skip {name}: no --scope {scope.value} support", err=True)
             continue
-        selected.append(ADAPTERS[name])
+        try:
+            adapter.root(scope)
+        except SkillError as exc:
+            click.echo(f"error: {name}: {exc}", err=True)
+            failed = True
+            continue
+        selected.append(adapter)
     return selected, failed
+
+
+def _entry_kind(path: Path) -> str:
+    """What is at ``path`` (not following a symlink), for messages."""
+    try:
+        mode = path.lstat().st_mode
+    except OSError:
+        return "file"  # gone since it was inspected; nothing better to say
+    if stat.S_ISLNK(mode):
+        return "symlink"
+    if stat.S_ISDIR(mode):
+        return "directory"
+    if not stat.S_ISREG(mode):
+        return "special file"
+    return "file"
 
 
 def _unmanaged_detail(adapter: Adapter, skill: Skill, scope: Scope) -> str:
@@ -84,17 +116,56 @@ def _unmanaged_detail(adapter: Adapter, skill: Skill, scope: Scope) -> str:
     ``install --force`` adopts only a regular file; it never replaces a symlink,
     a directory or other special file, so those aren't offered it.
     """
-    try:
-        mode = adapter.destination(skill, scope).lstat().st_mode
-    except OSError:
-        mode = stat.S_IFREG  # gone since inspect(); nothing better to say
-    if stat.S_ISLNK(mode):
-        return "symlink, not managed by skilldeck"
-    if stat.S_ISDIR(mode):
-        return "directory, not managed by skilldeck"
-    if not stat.S_ISREG(mode):
-        return "special file, not managed by skilldeck"
+    kind = _entry_kind(adapter.destination(skill, scope))
+    if kind != "file":
+        return f"{kind}, not managed by skilldeck"
     return "no skilldeck stamp (adopt with: install --force)"
+
+
+def _legacy_hint(adapter: Adapter, skills: list[Skill], scope: Scope) -> str | None:
+    """Point at ``migrate`` if ``adapter``'s agent has skills installed in an
+    older format at ``scope``; None if it has none.
+
+    Counts the bundled skills' old-format paths that hold a stamped install,
+    and also regular files there without a stamp: skilldeck 0.3.0 and earlier
+    wrote those, so they are likely installs too, but ``migrate`` takes them
+    (like locally modified ones) only with ``--force``.
+    """
+    found = needs_force = 0
+    roots: list[str] = []
+    for source in MIGRATIONS.get(adapter.name, ()):
+        if scope not in source.scopes:
+            continue
+        before = found
+        for skill in skills:
+            if not source.supports(skill):
+                continue
+            try:
+                state, _ = source.inspect(skill, scope)
+                dest = source.destination(skill, scope)
+            except SkillError:
+                continue  # unreadable; migrate will report it
+            if state is InstallState.NOT_INSTALLED:
+                continue
+            if state is InstallState.UNMANAGED and _entry_kind(dest) != "file":
+                continue  # a symlink or directory is not an old install
+            found += 1
+            if state in (InstallState.UNMANAGED, InstallState.MODIFIED):
+                needs_force += 1
+        if found > before:
+            roots.append(str(source.root(scope)))
+    if not found:
+        return None
+    command = f"skilldeck migrate --agent {adapter.name}"
+    if scope is not Scope.PROJECT:
+        command += f" --scope {scope.value}"
+    hint = (
+        f"hint: {found} {adapter.name} skill(s) in an older format in "
+        f"{', '.join(roots)}; convert them with: {command}"
+    )
+    if needs_force:
+        hint += f" ({needs_force} unstamped or modified: add --force)"
+    return hint
 
 
 @click.group()
@@ -213,7 +284,7 @@ def show(name: str, agent: str | None) -> None:
     if agent is None:
         text = skill.body
     else:
-        adapter = ADAPTERS[agent]
+        adapter = ALL_ADAPTERS[agent]
         if not adapter.supports(skill):
             raise SkillError(f"{name} does not support {agent}")
         text = adapter.render(skill)
@@ -302,6 +373,9 @@ def status(agents: tuple[str, ...], scope: str) -> None:
             if orphan.modified:
                 label += ", modified locally"
             click.echo(f"{indent}orphan: {path} ({label})")
+        hint = _legacy_hint(adapter, skills, scope_enum)
+        if hint:
+            click.echo(f"{indent}{hint}")
     if failed:
         raise SystemExit(1)
 
@@ -352,8 +426,110 @@ def update(agents: tuple[str, ...], scope: str, force: bool) -> None:
             failed = True
         elif not updated:
             click.echo(f"{indent}nothing to update")
+        hint = _legacy_hint(adapter, skills, scope_enum)
+        if hint:
+            click.echo(f"{indent}{hint}")
     if failed:
         raise SystemExit(1)
+
+
+@cli.command()
+@click.option(
+    "--agent",
+    "agents",
+    required=True,
+    multiple=True,
+    type=MIGRATE_CHOICE,
+    help="Agent whose older-format installs to migrate; repeat for several, or "
+    "use 'all'.",
+)
+@SCOPE_OPTION
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Also migrate old files that are locally modified or have no "
+    "skilldeck stamp (the bundled skill replaces them), and overwrite a "
+    "modified or unmanaged file at the new location.",
+)
+def migrate(agents: tuple[str, ...], scope: str, force: bool) -> None:
+    """Move skills installed in an older format to the native skills folder.
+
+    For each bundled skill installed in the agent's old format (Codex custom
+    prompts, Copilot prompt files, Cursor rules, Kiro steering files), install
+    the SKILL.md version, then remove the old file.
+    """
+    scope_enum = Scope(scope)
+    skills = _all_skills()
+    adapters, failed = _resolve_adapters(agents, scope_enum, MIGRATIONS)
+    multi = len(adapters) > 1
+    indent = "  " if multi else ""
+    for index, adapter in enumerate(adapters):
+        if multi:
+            if index:
+                click.echo()
+            click.echo(f"{adapter.name}:")
+        migrated = skipped = errors = 0
+        for source in MIGRATIONS[adapter.name]:
+            if scope_enum not in source.scopes:
+                continue
+            for skill in skills:
+                if not adapter.supports(skill):
+                    continue
+                try:
+                    state, _ = source.inspect(skill, scope_enum)
+                    if state is InstallState.NOT_INSTALLED:
+                        continue
+                    old = source.destination(skill, scope_enum)
+                    reason = _migrate_blocker(old, state, force)
+                    if reason:
+                        click.echo(f"{indent}skip {skill.name}: {reason}", err=True)
+                        skipped += 1
+                        continue
+                    new = adapter.install(skill, scope_enum, force=force)
+                    source.uninstall(skill, scope_enum, force=force)
+                except SkillError as exc:
+                    click.echo(f"{indent}error: {exc}", err=True)
+                    errors += 1
+                    continue
+                click.echo(f"{indent}migrated {skill.name}: {old} -> {new}")
+                migrated += 1
+        if errors:
+            failed = True
+        elif not (migrated or skipped):
+            click.echo(f"{indent}nothing to migrate")
+    if failed:
+        raise SystemExit(1)
+
+
+def _migrate_blocker(old: Path, state: InstallState, force: bool) -> str | None:
+    """Why the old-format file at ``old`` is left in place; None to migrate it.
+
+    The same rules as ``uninstall``: an unedited, stamped install is moved;
+    one with local edits, no stamp, or a symlink needs ``--force``; a
+    directory or other special file is never removed.
+    """
+    kind = _entry_kind(old)
+    if kind in ("directory", "special file"):
+        return f"{old} is a {kind}, which skilldeck never removes"
+    if force:
+        return None
+    if kind == "symlink":
+        return (
+            f"{old} is a symlink skilldeck did not create; left in place "
+            "(--force migrates it, removing the link but not its target)"
+        )
+    if state is InstallState.UNMANAGED:
+        return (
+            f"{old} has no skilldeck stamp (hand-written, from another tool, "
+            "or installed by skilldeck 0.3.0 or earlier); left in place "
+            "(--force migrates it)"
+        )
+    if state is InstallState.MODIFIED:
+        return (
+            f"{old} has local modifications; left in place (--force replaces "
+            "it with the bundled skill)"
+        )
+    return None
 
 
 def main() -> None:

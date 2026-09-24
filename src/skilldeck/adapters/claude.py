@@ -1,29 +1,22 @@
 """Claude adapter.
 
 Claude Code loads skills from ``.claude/skills/<name>/SKILL.md`` (project) or
-``~/.claude/skills/<name>/SKILL.md`` (global), with YAML frontmatter carrying the
-name and description.
+``~/.claude/skills/<name>/SKILL.md`` (global). ``CLAUDE_CONFIG_DIR`` moves the
+whole ``~/.claude`` directory, and Claude Code then reads personal skills only
+from ``$CLAUDE_CONFIG_DIR/skills``. An empty ``CLAUDE_CONFIG_DIR`` is not
+treated as unset (Claude Code resolves it against its working directory), so a
+global install refuses it rather than guess.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from ..registry import Skill
-from .base import Adapter, yaml_frontmatter
+from ..targets import UserDir
+from .skill_md import SkillMdAdapter
 
 
-class ClaudeAdapter(Adapter):
+class ClaudeAdapter(SkillMdAdapter):
     name = "claude"
-    creates_skill_dir = True
-    installed_glob = ".claude/skills/*/SKILL.md"
-
-    def relative_path(self, skill: Skill) -> Path:
-        return Path(".claude/skills") / skill.name / "SKILL.md"
-
-    def render(self, skill: Skill) -> str:
-        fields: dict[str, object] = {
-            "name": skill.name,
-            "description": skill.description,
-        }
-        return f"{yaml_frontmatter(fields)}\n{skill.body}"
+    project_dir = ".claude/skills"
+    global_dir = UserDir(
+        ".claude", "skills", env="CLAUDE_CONFIG_DIR", empty_is_unset=False
+    )
