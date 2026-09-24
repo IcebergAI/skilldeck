@@ -21,12 +21,11 @@ plants:
     min-severity: high
   # actions/checkout (v4) without persist-credentials: false leaves the job
   # token in .git/config for every later step; the workflow never pushes.
-  # Defense in depth, so no severity floor.
+  # Defense in depth, so no severity floor. Not "persists": an env-injection
+  # finding says the injected variable persists into later steps.
   - file: .github/workflows/preview.yml
     keywords:
       - persist-credentials
-      - persisted
-      - persists
       - credentials on disk
       - token on disk
       - git config

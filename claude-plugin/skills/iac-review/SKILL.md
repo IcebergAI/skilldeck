@@ -64,14 +64,16 @@ where behavior differs (AWS/GCP/Azure defaults are not the same).
 - Cross-account/public sharing of images, snapshots, or key material.
 - CI OIDC trust wider than one repo and ref ([GitHub](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws)):
   an AWS role trusting `token.actions.githubusercontent.com` with no `:sub`
-  condition (any GitHub repository), a `repo:org/repo:*` wildcard (any
-  branch, PR ref, or environment), or a `ForAllValues:` operator, true when
-  the claim is absent ([AWS](https://github.com/aws-actions/configure-aws-credentials#claims-and-scoping-permissions));
+  condition (an `:aud` check alone admits any repository, since a workflow
+  [picks its audience](https://docs.github.com/en/actions/reference/security/oidc#customizing-the-audience-value)),
+  a `repo:org/repo:*` wildcard (any branch, PR ref, or environment), or a
+  `ForAllValues:` operator, true when the claim is absent ([AWS](https://github.com/aws-actions/configure-aws-credentials#claims-and-scoping-permissions));
   a GCP pool with no [attribute condition](https://github.com/google-github-actions/auth#preferred-direct-workload-identity-federation);
   an over-broad Azure [flexible credential](https://learn.microsoft.com/en-us/entra/workload-id/workload-identities-flexible-federated-identity-credentials) `matches`.
 - EC2 instances or launch templates without `http_tokens = "required"`
   ([IMDSv2](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/instance);
-  templates default to `optional`), so an SSRF can read the role's credentials
+  [templates](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/launch_template)
+  default to `optional`), so an SSRF can read the role's credentials
   ([OWASP SSRF](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html#imdsv2-in-aws)).
 
 ### Secrets & state

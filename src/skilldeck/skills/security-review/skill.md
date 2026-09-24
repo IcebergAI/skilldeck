@@ -27,7 +27,8 @@ Unless told otherwise, review to **L2**.
    downgrade or drop the finding.
 5. Companion skills own some areas: `authentication-review` V6, V7, V9, and
    V10; `logging` V16; `ci-workflow-review` pipeline config; `dependency-review`
-   package manifests; `iac-review` infrastructure config. If the owner runs in
+   package manifests; `iac-review` infrastructure config;
+   `llm-integration-review` LLM and agent integrations. If the owner runs in
    the same review, leave its area to it; in a combined report, give each
    defect once, under the owner's classifier.
 
@@ -55,8 +56,8 @@ report those only when the change gives them a concrete exploit path.
   and all-or-nothing transactions enforced server-side (2.3.1–2.3.3);
   **races** — a check-then-act on balances, stock, coupons, or bookings that
   concurrent requests can pass twice, without a lock or atomic conditional
-  update (2.3.4); anti-automation and rate limiting of abusable functions
-  (2.4.1).
+  update (2.3.4); multi-user approval of high-value flows (2.3.5, L3);
+  anti-automation and rate limiting of abusable functions (2.4.1).
 - **V3 Web Frontend Security** — untrusted text rendered with safe DOM APIs,
   not as markup (DOM XSS: `textContent`, not `innerHTML`; 3.2.2); cookie
   `Secure`, `HttpOnly`, `SameSite`, and `__Host-` prefix (3.3); CSP, HSTS,
@@ -113,7 +114,7 @@ report those only when the change gives them a concrete exploit path.
   (15.3.3); type juggling (15.3.5); **prototype pollution** — attacker-chosen
   keys (`__proto__`, `constructor.prototype`) merged into plain objects
   (15.3.6); HTTP parameter pollution (15.3.7); thread-safety and TOCTOU on
-  shared resources such as files (15.4.1, 15.4.2, L3).
+  shared resources such as files, deadlocks, and starvation (15.4, L3).
 - **V16 Security Logging & Error Handling** — security events logged, no secrets
   or sensitive data in logs, no stack traces or internal detail leaked to users.
 - **V17 WebRTC** — only if the change touches WebRTC: TURN/STUN server abuse,

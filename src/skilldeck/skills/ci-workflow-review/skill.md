@@ -47,10 +47,9 @@ the syntax differs).
    branch/tag (so protected variables and runners are in reach) or in a merge
    request pipeline — which for a fork MR runs in the fork project unless a
    parent-project member starts it in the parent.
-5. If the project runs [zizmor](https://docs.zizmor.sh/audits/) or
-   [actionlint](https://github.com/rhysd/actionlint/blob/main/docs/checks.md),
-   don't re-flag what it reports; focus on who can trigger a job and what
-   it reaches.
+5. If a blocking CI job already runs [zizmor](https://docs.zizmor.sh/audits/)
+   or actionlint, don't re-flag what it enforces; focus on who can trigger a
+   job and what it reaches.
 6. This skill owns pipeline config, including its secrets and pins; the
    packages a build installs belong to `dependency-review` and the
    infrastructure it applies to `iac-review`. If the owner runs in the same
@@ -127,16 +126,15 @@ the syntax differs).
   variables and runners. Flag secrets stored as non-protected variables and
   privileged or deploy-capable runners not limited to protected refs:
   whoever gets such a pipeline started can reach them.
-- **Environment-file writes** — `$GITHUB_ENV`, `$GITHUB_OUTPUT`, and
-  `$GITHUB_PATH` take [newline-separated entries](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#environment-files),
-  so an untrusted value written there (PR text, a `workflow_run` artifact)
-  can add entries, e.g. an `LD_PRELOAD` or `PATH` one that runs code later
-  ([zizmor](https://docs.zizmor.sh/audits/#github-env)). Write only
-  validated values, never an arbitrary one via `NAME<<DELIMITER`.
+- **Environment-file writes** — `$GITHUB_ENV`/`$GITHUB_OUTPUT`/`$GITHUB_PATH`
+  take [newline-separated entries](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#environment-files),
+  so an untrusted value (PR text, a `workflow_run` artifact) can add one, e.g.
+  `LD_PRELOAD` or `PATH`, that runs code later ([zizmor](https://docs.zizmor.sh/audits/#github-env)).
+  Write only validated values, never an arbitrary one via `NAME<<DELIMITER`.
 - **Approval gate, mutable checkout** — a `labeled`, `issue_comment`, or
   environment-approval gate that checks out the PR branch runs whatever was
   pushed after approval ([TOCTOU](https://github.com/AdnaneKhan/ActionsTOCTOU));
-  check out the approved SHA (`issue_comment` has none: the approver names it).
+  check out the approved SHA (`issue_comment` carries none; fix one at approval).
 - Executing files an outside contributor can modify (build scripts, Makefiles,
   `package.json` lifecycle hooks) inside a privileged job.
 - Deploy or release jobs newly reachable without a required review,
@@ -159,11 +157,10 @@ the syntax differs).
   pipeline for a fork MR.
 - Secrets or privileged runners newly exposed to jobs that fork MRs/PRs can
   trigger; [`secrets: inherit`](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idsecretsinherit),
-  which hands a reusable workflow every secret, not just those it needs;
-  `actions/checkout` without `persist-credentials: false`, which leaves the
-  token on disk for later steps and, before v6, in `.git/config` for a
-  workspace artifact to publish
-  ([artipacked](https://docs.zizmor.sh/audits/#artipacked)).
+  (every secret, not just those needed); `actions/checkout` without
+  `persist-credentials: false`, leaving the token on disk for later steps
+  (before v6 in `.git/config`, which a workspace artifact can publish:
+  [artipacked](https://docs.zizmor.sh/audits/#artipacked)).
 - Long-lived cloud keys stored as secrets where short-lived OIDC federation
   (GitHub OIDC, GitLab ID tokens) is available.
 

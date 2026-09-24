@@ -160,7 +160,15 @@ SAMPLE_REPORTS = {
                 "any fork PR that passes CI is published to the preview site "
                 "with no environment protection rule or maintainer approval.",
                 "add an `environment:` with required reviewers.",
-            )
+            ),
+            _finding(
+                "medium",
+                "CICD-SEC-6 Insufficient Credential Hygiene",
+                ".github/workflows/preview.yml:31",
+                "the deploy token is a repository-wide secret, so it persists "
+                "into every `workflow_run` of any fork PR that passes CI.",
+                "scope it to a `preview` environment secret.",
+            ),
         ],
     ),
     "ci-workflow-review-gitlab": (

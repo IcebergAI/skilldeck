@@ -50,7 +50,7 @@ behavior differs (Postgres / MySQL / SQLite lock and rewrite differently).
 - **Dropping or renaming** a column or table the currently deployed code still
   reads or writes — breaks the moment the migration lands, before new code is out.
   Split into expand → backfill → deploy → contract across releases. Rails
-  caches a table's columns at boot, so a drop breaks even code that never
+  caches a table's columns at runtime, so a drop breaks even code that never
   reads the column unless an earlier deploy listed it in `ignored_columns`
   ([strong_migrations](https://github.com/ankane/strong_migrations#removing-a-column)).
 - Renaming in a single step (no engine makes a rename transparent to running code).
@@ -80,7 +80,7 @@ behavior differs (Postgres / MySQL / SQLite lock and rewrite differently).
   queues behind and then blocks all traffic on the table. MySQL/MariaDB DDL
   waits for the metadata lock of every open transaction on the table
   ([metadata locking](https://github.com/mariadb-corporation/mariadb-docs/blob/main/server/reference/sql-statements/transactions/metadata-locking.md)),
-  and `lock_wait_timeout` defaults to a year in MySQL 8.0 — set a short one;
+  and `lock_wait_timeout` defaults to a year in both — set a short one;
   rebuild large tables online with [gh-ost](https://github.com/github/gh-ost)
   or [pt-online-schema-change](https://github.com/percona/percona-toolkit).
 

@@ -11,9 +11,9 @@
       "version": "0.2.0"
     },
     {
-      "body_sha256": "sha256:7f277763da91824452e7fd4ff6e5353a7a0e428a660320610fcfbc619f813f3c",
-      "canonical_sha256": "sha256:cdf9a8cdc5ece0eb17f7ae4d7b77d26740559b2efe5c4d3d1996cc6d71bb9477",
-      "claude_rendered_sha256": "sha256:b555f64c1f7a5de4c26da7efe4cb22fc0d542f35e480334351e899829b508ae7",
+      "body_sha256": "sha256:e80a382e92dd367d577a3bf2251be01713f7ffc9405008857609bcfdd5f387c9",
+      "canonical_sha256": "sha256:fb28b8bc8aeae01b9983f2b91f1019767416e8ef4c56feb91cb7ad418fd64e34",
+      "claude_rendered_sha256": "sha256:e7f770e9e6f9b552bb0474364bc132887920c880fbbe3b2bba659b3448b6adc7",
       "meta_sha256": "sha256:121aef136ba48413dd05dac91934798580ea762b99f01d349898469918a625a8",
       "name": "ci-workflow-review",
       "version": "0.4.0"
@@ -27,17 +27,17 @@
       "version": "0.3.0"
     },
     {
-      "body_sha256": "sha256:4505b15e9df0db5fe86b3010830fbd021c7caf5383918d366ef4f741aef2c5f1",
-      "canonical_sha256": "sha256:7b95323705432ada36c716603383ef67dc3ba3ebffd619e24ae944fbf11126da",
-      "claude_rendered_sha256": "sha256:70759d5ee1ae1a76da79e06a15a9d1aab44ad71de514e6650e73505fd7f6b166",
+      "body_sha256": "sha256:d7081d47124427a0bf25ae6eb56c527efe63063b17781da4ee34fc3a118be2b7",
+      "canonical_sha256": "sha256:b9fa88c17d1211310ef19ce8b938c33de0b2741a61631a3779f52742208f39eb",
+      "claude_rendered_sha256": "sha256:0f1f0e421c1ca3297cd865a003f9fd0c52b3f6cfaabbdf1f41ba11bd6ec9c878",
       "meta_sha256": "sha256:4e4b70672db9b6046462f3fb880ea2ce14ffd6ff36703a848ce881141a5fb539",
       "name": "dependency-review",
       "version": "0.4.0"
     },
     {
-      "body_sha256": "sha256:b0f44ac72d47e908ebb1c06d7356a343cb8592f77259fe50753b890f3c8e3ed4",
-      "canonical_sha256": "sha256:323d6bc8027159b6033866cb56d345cb1465009502e893f0fd8b3af2f3ebb4a6",
-      "claude_rendered_sha256": "sha256:af350658330dcc75532a5d2b62cbd2c2171b01100a559a6b6c6344f276361407",
+      "body_sha256": "sha256:5503c0d7457247cfa17b81e7485e4ea2d8bdcc00c244f77e32d9df5ffc24b67b",
+      "canonical_sha256": "sha256:d3b1a7aedb82eb14724253a447c1b67d9d3e8f5928f9b3555c7c17a9975bf529",
+      "claude_rendered_sha256": "sha256:0e2496faefe746b3e1db50e470c509f1eaea8cb29c4e273f958088cdbd2589a7",
       "meta_sha256": "sha256:8888d07def4742b7c284f44392a5b4cbdb3bf551736e4a3b93e71cc36cf76913",
       "name": "iac-review",
       "version": "0.3.0"
@@ -59,9 +59,9 @@
       "version": "0.3.0"
     },
     {
-      "body_sha256": "sha256:e586025d42df5fcbe42c30776c8e222896a55462717a58e2b41d44c306aa7a7f",
-      "canonical_sha256": "sha256:fdc78338e66e5ba4718375fafd243bb3601ee26e469f1c6d1d2ed417a0d4146f",
-      "claude_rendered_sha256": "sha256:d91490ad6c74bf4ba75cadc5c434e28913bedb12d719007e7f9928e48677567a",
+      "body_sha256": "sha256:3e869f7883e118db18e8c8002f049d8ecf2895e49aa7c76f1d7a39a6ee842c8b",
+      "canonical_sha256": "sha256:2a90dcac4e099baf9018049929e4cd803b236afb4219da70f9e84ddc501d2189",
+      "claude_rendered_sha256": "sha256:4dfff856963c37785deb71d8385783df137a6bfe7bc692877d71a9bb5d3bc6f9",
       "meta_sha256": "sha256:006759e87ea326c310ad454d4da8f1459c909a0ac25905a38c37edb8d8b743db",
       "name": "migration-review",
       "version": "0.4.0"
@@ -75,9 +75,9 @@
       "version": "0.3.0"
     },
     {
-      "body_sha256": "sha256:f2b17ed86dd57fcff92fbad2338a9181798f01914e2bfb3fb57632e01bd0c791",
-      "canonical_sha256": "sha256:109ae20de00ddfc2a329489837124686094e4efd835ba6a42f4ce04422303917",
-      "claude_rendered_sha256": "sha256:e472b9d8935b056490e2455e9b2feb73d6b2c86eec8096b657fc147ee233740e",
+      "body_sha256": "sha256:9ece959ebf18e604f8409f559153ad401dce432945b6d7dddece33ecfa7cdb5d",
+      "canonical_sha256": "sha256:c41ced78db00af3b3ddd2b511628ecee5254fca66ee84db66dd1d1d644577dc9",
+      "claude_rendered_sha256": "sha256:1058a488350795b3905910057ac77b8b4265a23792bf3441e9a07f9d8b2ab7c9",
       "meta_sha256": "sha256:d9071165a64f4c4952be8e23cfa69c9846cced1f9131170eaf8e0ce8e7101a64",
       "name": "security-review",
       "version": "0.5.0"

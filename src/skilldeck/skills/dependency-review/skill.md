@@ -59,9 +59,10 @@ rest of the application surface.
     or attestation checks dropped.
   - **Malware signals** — install/postinstall scripts newly introduced (the
     entry point of the 2025 Shai-Hulud npm worm); a brand-new package or a
-    version published hours ago; a release with less trust evidence than
-    earlier ones (not from the usual trusted publisher, or no provenance);
-    obfuscated code ([pnpm](https://pnpm.io/supply-chain-security),
+    version published hours ago; a release from a new maintainer or owner
+    (event-stream's [handover](https://github.com/cncf/tag-security/blob/main/community/catalog/compromises/2018/event_stream.md));
+    a release with less trust evidence than earlier ones (not from the usual
+    trusted publisher, or no provenance); obfuscated code ([pnpm](https://pnpm.io/supply-chain-security),
     [OpenSSF](https://github.com/ossf/wg-best-practices-os-developers/blob/main/docs/Concise-Guide-for-Evaluating-Open-Source-Software.md)).
   - **Trust footprint** — a new direct dependency that pulls a large transitive
     tree, or a tiny utility added for trivial functionality.
