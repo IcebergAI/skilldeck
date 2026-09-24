@@ -7,8 +7,8 @@ plants:
   #    struggles, every caller fires five back-to-back attempts, multiplying
   #    the load on a dependency that is trying to recover (a retry storm). The
   #    skill rates a failure that cascades from a routine dependency failure
-  #    high and degraded behavior medium; no min-severity, since one step below
-  #    medium is already the floor.
+  #    high, so the floor is one step below: medium. Bare "immediately" is not
+  #    a keyword: it also fits a finding that a 5xx is raised, not retried.
   - file: services/client.py
     keywords:
       - backoff
@@ -17,13 +17,15 @@ plants:
       - jitter
       - retry storm
       - thundering herd
-      - immediately
       - hammer
       - hammers
+    min-severity: medium
   # 2. It retries a POST that creates a shipment, with no idempotency key: a
   #    read timeout after the service has created the shipment sends the same
   #    request again, so one order ships twice. The skill rates duplicated side
-  #    effects under failure medium; no min-severity, for the same reason.
+  #    effects under failure medium; no min-severity, since one step below
+  #    medium is already the floor. Bare "twice" and "double" are not keywords:
+  #    they also fit a backoff finding ("double the delay").
   - file: services/client.py
     keywords:
       - idempotent
@@ -32,6 +34,10 @@ plants:
       - duplicate
       - duplicated
       - duplicates
-      - twice
-      - double
+      - ships twice
+      - shipped twice
+      - created twice
+      - double shipment
+      - double shipments
+      - at-least-once
 max-findings: 5

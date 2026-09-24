@@ -106,11 +106,10 @@ SAMPLE_REPORTS = {
                 "critical",
                 "CICD-SEC-4 Poisoned Pipeline Execution",
                 ".github/workflows/coverage-report.yml:26",
-                "the `workflow_run` job writes files from the PR run's artifact "
-                "to `$GITHUB_ENV` unchecked; a fork controls that run, and a "
-                "newline in `pr-number` sets arbitrary environment variables "
-                "(`BASH_ENV` pointing at a script in the artifact) for the next "
-                "step, which then runs the fork's code with a write token.",
+                "the `workflow_run` job appends files from the PR run's artifact "
+                "to `$GITHUB_ENV` unchecked (GITHUB_ENV injection); a fork "
+                "controls that run, so it can set environment variables for the "
+                "later steps and run its code with the write token.",
                 "validate the PR number as an integer and pass values through "
                 "step outputs, never the environment file.",
             ),
@@ -132,7 +131,16 @@ SAMPLE_REPORTS = {
                 "the PR number comes from the fork's artifact, so a fork can "
                 "make the bot label and comment on someone else's pull request.",
                 "check the number against `github.event.workflow_run.head_sha`.",
-            )
+            ),
+            _finding(
+                "high",
+                "CICD-SEC-9 Improper Artifact Integrity Validation",
+                ".github/workflows/coverage-report.yml:33",
+                "artifact poisoning: `pr-number` comes from the artifact the "
+                "fork's CI run uploaded, so a fork can make the bot label and "
+                "comment on any other pull request.",
+                "look the pull request up from the triggering run's head SHA.",
+            ),
         ],
     ),
     "ci-workflow-review-gitlab": (
@@ -312,7 +320,16 @@ SAMPLE_REPORTS = {
                 "five attempts of up to 13s each can hold the caller for over a "
                 "minute, longer than the request that triggered it will wait.",
                 "pass the caller's remaining deadline down and stop when it runs out.",
-            )
+            ),
+            _finding(
+                "low",
+                "Retrying the wrong errors",
+                "services/client.py:25",
+                "a 502 or 503 from the shipping service is raised immediately "
+                "after the loop, although a gateway error is the transient "
+                "failure the retry exists for.",
+                "treat 502, 503 and 504 responses as retryable as well.",
+            ),
         ],
     ),
     "security-review": (

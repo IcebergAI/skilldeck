@@ -253,8 +253,9 @@ All notable changes to this project are documented here. The format is based on
   category or fix that also fits a neighbouring defect (the SAML `unverified`,
   resilience `hang`, code-smells `Extract`, dependency `public index`, and
   CI `CICD-SEC-4` keywords are gone; the GitLab fixture's stems become whole
-  words), and plants with a clear rubric level (all but `code-smells` and the
-  GitLab variant) set a `min-severity` one step below it (#106).
+  words), and plants the rubric clearly rates above medium (all but the
+  GitLab variant's) set a `min-severity` one step below that level; the rest,
+  where one step below is already the floor, need none (#106).
 - Eval fixtures no longer plant their skill's own worked example (#107), so
   they test the checklist rather than recall of the example. Each of the seven
   fixtures that did now plants a different checklist item of the same skill,

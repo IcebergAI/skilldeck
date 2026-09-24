@@ -10,24 +10,32 @@ plants:
   # workspace) runs it in the next bash step, with GH_TOKEN in its environment.
   # Not the PR-title interpolation of the skill's worked example. The skill
   # rates an outside contributor running code with a write token critical; one
-  # step below still catches it buried as medium or low. Bare "injection" and
-  # "untrusted artifact" are not keywords: they also fit a finding that the
-  # artifact's PR number or coverage text is trusted.
+  # step below still catches it buried as medium or low. Bare "injection",
+  # "untrusted artifact" and "artifact poisoning" are not keywords: they also
+  # fit a finding that the artifact's PR number or coverage text is trusted.
+  # The keywords name the environment-file sink instead ("GITHUB_ENV
+  # injection" is a phrase the planted code never contains).
   - file: .github/workflows/coverage-report.yml
     keywords:
       - environment file
       - environment injection
       - environment variable injection
       - env injection
+      - env var injection
+      - variable injection
+      - GITHUB_ENV injection
       - arbitrary environment variables
       - arbitrary environment variable
+      - arbitrary env vars
       - arbitrary variables
+      - set environment variables
+      - set env vars
+      - inject environment variables
+      - inject env vars
       - BASH_ENV
       - LD_PRELOAD
       - newline
       - newlines
-      - artifact poisoning
-      - poisoned artifact
     min-severity: high
   # A third-party action referenced by a mutable tag, running in a job that
   # holds a pull-requests write token; its publisher (or whoever compromises
