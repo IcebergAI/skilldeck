@@ -9,7 +9,7 @@ from itertools import groupby
 import click
 
 from .adapters import ADAPTERS, Adapter, InstallState
-from .provenance import distribution_provenance
+from .provenance import distribution_provenance, verify_bundled_skills
 from .registry import Skill, SkillError, discover_skills
 from .stamp import read as read_stamp
 from .targets import Scope
@@ -227,9 +227,32 @@ def show(name: str, agent: str | None) -> None:
     is_flag=True,
     help="Emit deterministic machine-readable provenance metadata.",
 )
-def provenance(as_json: bool) -> None:
-    """Show the package source and bundled skill identities."""
-    data = distribution_provenance()
+@click.option(
+    "--verify",
+    is_flag=True,
+    help="Re-hash the installed skill files and fail unless every one matches "
+    "its recorded canonical digest.",
+)
+def provenance(as_json: bool, verify: bool) -> None:
+    """Show the package source and bundled skill identities.
+
+    Without --verify this reports the identities recorded when the package was
+    built; it does not re-read the installed skill files.
+    """
+    try:
+        data = distribution_provenance()
+        problems = verify_bundled_skills() if verify else []
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if problems:
+        for problem in problems:
+            click.echo(f"error: {problem}", err=True)
+        click.echo(
+            "error: the installed skills do not match the content manifest "
+            "recorded when this package was built",
+            err=True,
+        )
+        raise SystemExit(1)
     if as_json:
         click.echo(json.dumps(data, indent=2, sort_keys=True))
         return
@@ -247,6 +270,11 @@ def provenance(as_json: bool) -> None:
         click.echo(
             f"  {skill['name']:<{width}}  {skill['version']}  "
             f"{skill['canonical_sha256']}"
+        )
+    if verify:
+        click.echo(
+            f"verified: {len(data['skills'])} installed skill(s) match their "
+            "recorded canonical digests"
         )
 
 

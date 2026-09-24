@@ -112,6 +112,26 @@ All notable changes to this project are documented here. The format is based on
   7 days (`cooldown`) before proposing a new release of an action or
   dependency.
 
+- Release verification steps now fail for the right reasons (#109). The build
+  job passes the SHA-256 of every bundle file to later jobs as a job output
+  (`write_checksums.py --digests`), and the attest, PyPI, GitHub-release, and
+  readback jobs check their download against it (`--expect`) instead of
+  against the `SHA256SUMS` carried inside the same artifact. A new
+  `verify-pypi` job downloads what PyPI serves (`scripts/verify_pypi_release.py`
+  via PyPI's JSON API), compares the bytes with the build digests and checks
+  PyPI's attestations before the GitHub release is created. The tamper check
+  now passes only when `gh attestation verify` rejects the modified wheel
+  with "no attestations found", so a network or auth error fails it; the
+  checksum half of that check, which only showed that SHA-256 notices
+  appended bytes, is gone. `verify_distribution_identity.py` compares the
+  distributions with the tagged commit (`git archive HEAD`): the sdist must
+  be exactly the committed files plus `PKG-INFO`, and the wheel exactly the
+  committed `src/skilldeck` files plus its `.dist-info`, with every file
+  correctly hashed in `RECORD` and `METADATA` requirements, `entry_points.txt`,
+  and the `WHEEL` tag matching `pyproject.toml`, so an extra module or `.pth`
+  file, changed code, or an added dependency fails. Its suffix matching is
+  anchored at `/` path boundaries.
+
 ### Changed
 
 - `status` and `update` accept `--agent` more than once, or `--agent all`, like
@@ -305,6 +325,18 @@ All notable changes to this project are documented here. The format is based on
   newer: PyYAML 6.0 ships wheels only up to 3.11 and its source distribution
   no longer builds. The floor is now `pyyaml>=6.0.1` (#112).
 
+- Claude Code plugin users now receive skill changes merged between releases
+  (#111). Claude Code updates an installed plugin only when `plugin.json`'s
+  `version` string changes, but that version only moved at release time. The
+  version is now derived from the plugin content: exactly the project version
+  for the content recorded in the new `claude-plugin/.skilldeck/release.json`
+  when the version was bumped (by `prepare_release.py`), and
+  `X.Y.(Z+1)-dev.sha256-<12 hex digits of the content digest>` for any other
+  content, so every change on `main` reaches existing installs. The release
+  workflow refuses a tag whose plugin is a development snapshot
+  (`verify_distribution_identity.py --release-plugin`), and
+  `build_plugin.py` refuses a project version older than the record.
+
 ### Removed
 
 - Dead `skilldeck.registry.get_skill` helper (unused, and it skipped
@@ -340,6 +372,12 @@ All notable changes to this project are documented here. The format is based on
   positives. A structural test rejects plant keywords that appear verbatim in
   the planted file, and per-fixture sample reports check that a correct report
   passes and a finding about a neighbouring defect satisfies no plant.
+- `skilldeck provenance --verify` re-hashes each installed skill's `meta.yaml`
+  and `skill.md` and exits 1, naming the skill, when one no longer matches its
+  recorded canonical digest, is missing, or has unexpected files beside it.
+  Plain `provenance` reports only the identities embedded at build time; the
+  docs now say so. CI and the release workflow run the installed wheel and
+  sdist with `--verify` (#109).
 
 ## [0.3.0] - 2026-06-27
 
