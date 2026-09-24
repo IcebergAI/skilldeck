@@ -94,6 +94,11 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
   authoritative sources (OWASP/CIS/vendor docs) cited in the skill body, and
   land with a golden-diff eval fixture under `evals/fixtures/` (ideally also a
   `-clean` one).
+- Review skills report in the shared shape of `docs/finding-output.md` and
+  inline its one-paragraph severity rubric word for word in `## Output`
+  (`tests/test_skill_structure.py` compares them); change the rubric in the doc
+  and every skill together. Respect its "Which skill owns what" table: a
+  defect is reported once, by its owning skill.
 
 ## Shipping
 - PRs squash-merge to main: `gh pr merge <n> --squash --delete-branch` after CI
