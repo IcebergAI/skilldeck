@@ -133,17 +133,28 @@ Report each finding as a single list item:
   **Issue:** the defect and how untrusted content exploits it.
   **Fix:** the concrete change that resolves it.
 
-`severity` reflects who controls the content and what the output reaches:
-**critical** — content an outside attacker controls reaches code execution,
-SQL, or an irreversible or external action with no deterministic gate; a live
-credential hard-coded in a prompt or tool description, or written to logs (the
-Fix must also revoke and rotate it); **high** — such a path behind a common
+Rate `severity` on the shared severity rubric, impact × likelihood:
+**critical** — high impact (code execution, auth bypass, stolen credentials or
+bulk data, data loss, an outage), readily triggered (by anyone who can reach
+it, or in routine operation); **high** — high impact behind a common
+precondition (an authenticated user, a collaborator, a routine failure), or
+medium impact (limited exposure, degraded service) readily triggered;
+**medium** — high impact only under an unusual precondition, medium impact
+behind a common one, or low impact readily triggered (a weakened defense
+anyone can reach); **low** — medium impact only under an unusual
+precondition, or low impact behind any precondition (most defense in depth
+and hygiene).
+Here, attacker-controlled content (a user message, a retrieved document, a tool
+result) that reaches code execution, SQL, or an irreversible or external action
+with no deterministic gate is **critical**; the same path behind a common
 precondition (an authenticated user, a semi-trusted source), cross-tenant
-retrieval, a credential or authorization rule held only in hidden context,
+retrieval, a credential or authorization rule held only in the system prompt,
 sensitive PII in logged prompts or completions, a side-effecting tool without
-approval, token passthrough, unpinned `trust_remote_code` or pickle loading;
-**medium** — missing token, step, or cost limits; **low** — hardening
-(invisible-character stripping, returned similarity scores). The classifier
+approval, token passthrough, or unpinned `trust_remote_code` or pickle loading is **high**; missing token,
+step, or cost limits are **medium**; hardening (invisible-character stripping,
+returned similarity scores) is **low**. A live credential in a prompt, tool
+description, or logged completion is always **critical**, and its Fix must
+also revoke and rotate it. The classifier
 is the 2026 entry from the headings above, e.g.
 `LLM10:2026 Improper Output Handling` — the 2025 edition numbered them
 differently. Order findings by severity, highest first, and keep one issue per

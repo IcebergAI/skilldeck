@@ -43,9 +43,9 @@
       "version": "0.2.0"
     },
     {
-      "body_sha256": "sha256:01d886be59d7ca956aceb989cda8098f94ed2beba2947354e77ed2f8973d3840",
-      "canonical_sha256": "sha256:0f837bb48d8482177ce7268d1c0e706aef5493c2a62692b29c48661beacd0820",
-      "claude_rendered_sha256": "sha256:dd01d7501fd5ee3baed2dbc2f4a2c891b3594cec3ca3e8c1e4e92816c5acd57d",
+      "body_sha256": "sha256:14be89e51271a75e43d0fcf7104bf18ca9d7516cf6da63d063e3af7cb4fa8b4f",
+      "canonical_sha256": "sha256:cbf0af07dc478897b976c9ecb15f708f4f94de73dd2999b9433a7d2a374f80df",
+      "claude_rendered_sha256": "sha256:e1f93c5321cd7bdb6eeff97c5f8888a67d27294e2abbfe491fac260db0e7ea60",
       "meta_sha256": "sha256:a90e3c80901dc33337063e09d9cfcd2d39d25e0266acf0a6988fe5a941ad4e08",
       "name": "llm-integration-review",
       "version": "0.1.0"
