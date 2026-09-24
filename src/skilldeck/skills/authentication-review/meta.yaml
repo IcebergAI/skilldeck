@@ -1,7 +1,7 @@
 name: authentication-review
 description: Review authentication changes — passwords, MFA, sessions, tokens, OAuth/OIDC, SAML, and LDAP sign-in — for login-bypass and account-takeover defects, aligned to OWASP ASVS 5.0.
 category: security
-version: 0.1.0
+version: 0.1.1
 supported-agents:
   - claude
   - codex

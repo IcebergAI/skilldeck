@@ -6,15 +6,18 @@ skill name, the skill version, and a hash of the content above it:
     <!-- skilldeck name=security-review version=0.3.0 hash=<sha256> -->
 
 ``status``/``update`` compare the stamp against the bundled skill to detect
-stale installs; ``install`` compares the hash to detect local edits so it never
-silently clobbers them. Markdown renderers and agents ignore the comment.
+stale installs; ``install`` and ``uninstall`` compare the hash to detect local
+edits so they never silently clobber or delete them. Markdown renderers and
+agents ignore the comment.
 """
 
 from __future__ import annotations
 
 import hashlib
 import re
+import stat
 from dataclasses import dataclass
+from pathlib import Path
 
 _STAMP_RE = re.compile(
     r"<!-- skilldeck name=(?P<name>\S+) version=(?P<version>\S+) "
@@ -62,3 +65,19 @@ def parse(text: str) -> Stamp | None:
         version=match.group("version"),
         modified=modified,
     )
+
+
+def read(path: Path) -> Stamp | None:
+    """Read the stamp off the file at ``path``; None if it carries none.
+
+    Install directories such as ``.github/prompts`` or ``.cursor/rules`` are
+    shared with the user's own files, so anything skilldeck cannot have written
+    -- a symlink (never followed), a directory or other non-regular file,
+    unreadable or non-UTF-8 content -- reads as unstamped instead of raising.
+    """
+    try:
+        if not stat.S_ISREG(path.lstat().st_mode):
+            return None
+        return parse(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
+        return None
