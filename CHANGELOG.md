@@ -89,6 +89,22 @@ All notable changes to this project are documented here. The format is based on
   bundled skill body carries the standardized elements: a Scope section with
   the uncommitted-changes fallback, severity anchors, a worked example, the
   verify-before-reporting instruction, and the one-line report header (#33).
+- The release workflow now gates publication (#108): a `verify` job fails
+  unless the tagged commit is reachable from `main` (branch protection does not
+  cover tags) and runs lint, type-check, and the test suite on it before
+  anything is built. Releases are serialized by a `concurrency` group that
+  never cancels a running release. `docs/releasing.md` documents the repository
+  settings that cannot live in code: a `v*` tag ruleset restricting
+  creation/update/deletion, and a `pypi` environment limited to `v*` tags with
+  required reviewers.
+- Release builds are locked (#110): hatchling is pinned to `>=1.27,<2` in
+  `[build-system]`, every `uv run`/`uv sync` in CI and the release workflow
+  passes `--locked` (a stale `uv.lock` now fails instead of re-resolving), and
+  the SBOM venv is built from `uv export` of `uv.lock` installed with
+  `--require-hashes` (the wheel with `--no-deps`), so the attested SBOM
+  describes the locked runtime rather than a fresh resolve. Dependabot waits
+  7 days (`cooldown`) before proposing a new release of an action or
+  dependency.
 
 ### Changed
 
@@ -112,6 +128,14 @@ All notable changes to this project are documented here. The format is based on
 - Kiro adapter now renders skills with `inclusion: manual` frontmatter: Kiro
   steering documents are included in every interaction by default, which is
   wrong for on-demand review prompts.
+- Release scripts and CI read the package version through one shared helper,
+  `scripts/_pyproject.py` (#114), which only looks at the `[project]` table
+  (`tomllib` on Python 3.11+, a `[project]`-scoped scan on 3.10).
+  `prepare_release.py` validates everything (version format, newer than the
+  current version, non-empty `[Unreleased]`, no existing section) before it
+  writes any file, restores `pyproject.toml` and `CHANGELOG.md` and exits
+  non-zero when `uv lock` fails, and its "Next:" hint, `docs/releasing.md`,
+  `CONTRIBUTING.md`, and the PR template now use `uv run --extra dev`.
 
 ### Fixed
 
@@ -127,6 +151,19 @@ All notable changes to this project are documented here. The format is based on
 - `scripts/check_release_consistency.py` now selects the highest dated
   CHANGELOG version (compared numerically) rather than assuming the newest
   section appears first in the file.
+- `build_plugin.py`, `prepare_release.py`, `stamp_build_metadata.py`, and the
+  CI build matched the first `version = "..."` line anywhere in
+  `pyproject.toml`, so a `version` key in another table could be taken for the
+  package version (#114).
+- `check_release_consistency.py --tag` accepted any ref ending in the version
+  (`refs/tags/x/v0.3.0` normalised to `0.3.0`); it now accepts only `vX.Y.Z`
+  or `refs/tags/vX.Y.Z` and rejects everything else with a clear error (#114).
+- The release build wrote `skilldeck provenance --json` to a file nobody read;
+  the new `scripts/verify_provenance.py` now asserts that the installed wheel
+  reports the expected version, tag ref, commit, and skills (#114).
+- Tests now read and write skill files as UTF-8 explicitly (Windows defaults to
+  the locale code page) and skip, with the reason, symlink tests where the
+  platform or account cannot create symlinks (#112).
 
 ### Removed
 
@@ -146,6 +183,12 @@ All notable changes to this project are documented here. The format is based on
   `pyproject` version, the newest dated CHANGELOG section, and (on a tag push) the
   release tag all agree. Wired into CI (`lint` job and `pytest`) and the release
   workflow (before publish), so version/CHANGELOG/tag drift fails fast.
+- CI coverage (#112): tests also run on Windows and macOS (Python 3.14) and
+  against the lowest dependency versions the declared ranges allow
+  (`uv run --resolution lowest-direct`, Python 3.10); a pinned zizmor audits
+  `.github/` (workflows and Dependabot config); and the CI build installs the
+  built sdist into a clean venv and smoke-tests `skilldeck list` and
+  `skilldeck provenance --json` against it.
 
 ## [0.3.0] - 2026-06-27
 

@@ -1,6 +1,7 @@
-"""Tests for the pure file-editing parts of scripts/prepare_release.py."""
+"""Tests for scripts/prepare_release.py."""
 
 import importlib.util
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -28,26 +29,35 @@ CHANGELOG = """\
 - older things
 """
 
+PYPROJECT = """\
+[project]
+name = "demo"
+version = "0.3.0"
 
-def test_set_pyproject_version(tmp_path):
-    (tmp_path / "pyproject.toml").write_text(
-        '[project]\nname = "demo"\nversion = "0.3.0"\n'
-    )
-    old = prep.set_pyproject_version("0.4.0", root=tmp_path)
+[tool.decoy]
+version = "0.3.0"
+"""
+
+
+def test_bump_pyproject_rewrites_only_the_project_version():
+    text, old = prep.bump_pyproject(PYPROJECT, "0.4.0")
     assert old == "0.3.0"
-    assert 'version = "0.4.0"' in (tmp_path / "pyproject.toml").read_text()
+    assert text == PYPROJECT.replace('version = "0.3.0"', 'version = "0.4.0"', 1)
+    assert text.endswith('[tool.decoy]\nversion = "0.3.0"\n')
 
 
-def test_set_pyproject_version_rejects_same_version(tmp_path):
-    (tmp_path / "pyproject.toml").write_text('version = "0.3.0"\n')
+def test_bump_pyproject_rejects_same_version():
     with pytest.raises(SystemExit, match="already at"):
-        prep.set_pyproject_version("0.3.0", root=tmp_path)
+        prep.bump_pyproject(PYPROJECT, "0.3.0")
 
 
-def test_cut_changelog_dates_the_unreleased_section(tmp_path):
-    (tmp_path / "CHANGELOG.md").write_text(CHANGELOG)
-    prep.cut_changelog("0.4.0", "2026-07-04", root=tmp_path)
-    text = (tmp_path / "CHANGELOG.md").read_text()
+def test_bump_pyproject_rejects_older_version():
+    with pytest.raises(SystemExit, match="older than"):
+        prep.bump_pyproject(PYPROJECT, "0.2.9")
+
+
+def test_cut_changelog_dates_the_unreleased_section():
+    text = prep.cut_changelog(CHANGELOG, "0.4.0", "2026-07-04")
     # fresh empty [Unreleased] above the new dated section, entries below it
     unreleased = text.index("## [Unreleased]")
     dated = text.index("## [0.4.0] - 2026-07-04")
@@ -57,15 +67,105 @@ def test_cut_changelog_dates_the_unreleased_section(tmp_path):
     assert not text[unreleased:dated].replace("## [Unreleased]", "").strip()
 
 
-def test_cut_changelog_refuses_empty_unreleased(tmp_path):
-    (tmp_path / "CHANGELOG.md").write_text(
-        "# Changelog\n\n## [Unreleased]\n\n## [0.3.0] - 2026-06-27\n\n- old\n"
-    )
+def test_cut_changelog_refuses_empty_unreleased():
+    empty = "# Changelog\n\n## [Unreleased]\n\n## [0.3.0] - 2026-06-27\n\n- old\n"
     with pytest.raises(SystemExit, match="nothing to release"):
-        prep.cut_changelog("0.4.0", "2026-07-04", root=tmp_path)
+        prep.cut_changelog(empty, "0.4.0", "2026-07-04")
 
 
-def test_cut_changelog_refuses_duplicate_version(tmp_path):
-    (tmp_path / "CHANGELOG.md").write_text(CHANGELOG)
+def test_cut_changelog_refuses_duplicate_version():
     with pytest.raises(SystemExit, match="already has"):
-        prep.cut_changelog("0.3.0", "2026-07-04", root=tmp_path)
+        prep.cut_changelog(CHANGELOG, "0.3.0", "2026-07-04")
+
+
+@pytest.fixture
+def tree(tmp_path, monkeypatch):
+    """A fake repo root; main() runs against it with uv and the plugin stubbed."""
+    (tmp_path / "pyproject.toml").write_text(PYPROJECT, encoding="utf-8")
+    (tmp_path / "CHANGELOG.md").write_text(CHANGELOG, encoding="utf-8")
+    monkeypatch.setattr(prep, "ROOT", tmp_path)
+    monkeypatch.setattr(prep.build_plugin, "generate", lambda: {})
+    monkeypatch.setattr(prep.build_plugin, "write", lambda files: None)
+    return tmp_path
+
+
+def _snapshot(root):
+    return {
+        name: (root / name).read_text(encoding="utf-8")
+        for name in ("pyproject.toml", "CHANGELOG.md")
+    }
+
+
+def _fake_run(uv_lock_returncode):
+    calls = []
+
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        code = uv_lock_returncode if cmd == ["uv", "lock"] else 0
+        return subprocess.CompletedProcess(cmd, code)
+
+    return run, calls
+
+
+@pytest.mark.parametrize(
+    "version, message",
+    [
+        ("0.3.0", "already at"),  # pyproject rejects it after the CHANGELOG is ok
+        ("0.4", "not a MAJOR.MINOR.PATCH"),
+        ("0.2.0", "older than"),
+    ],
+)
+def test_main_validates_everything_before_writing(tree, monkeypatch, version, message):
+    run, calls = _fake_run(0)
+    monkeypatch.setattr(prep.subprocess, "run", run)
+    before = _snapshot(tree)
+    with pytest.raises(SystemExit, match=message):
+        prep.main([version])
+    assert _snapshot(tree) == before
+    assert calls == []
+
+
+def test_main_refuses_existing_changelog_section_without_bumping(tree, monkeypatch):
+    run, _ = _fake_run(0)
+    monkeypatch.setattr(prep.subprocess, "run", run)
+    (tree / "CHANGELOG.md").write_text(
+        CHANGELOG + "\n## [0.4.0] - 2026-01-01\n\n- misplaced\n", encoding="utf-8"
+    )
+    before = _snapshot(tree)
+    with pytest.raises(SystemExit, match="already has a 0.4.0 section"):
+        prep.main(["0.4.0"])
+    assert _snapshot(tree) == before
+
+
+def test_main_rolls_back_and_fails_when_uv_lock_fails(tree, monkeypatch, capsys):
+    run, calls = _fake_run(1)
+    monkeypatch.setattr(prep.subprocess, "run", run)
+    before = _snapshot(tree)
+    assert prep.main(["0.4.0"]) == 1
+    assert _snapshot(tree) == before
+    assert calls == [["uv", "lock"]]
+    assert "`uv lock` failed" in capsys.readouterr().err
+
+
+def test_main_rolls_back_when_uv_is_missing(tree, monkeypatch):
+    def missing(cmd, **kwargs):
+        raise FileNotFoundError("uv")
+
+    monkeypatch.setattr(prep.subprocess, "run", missing)
+    before = _snapshot(tree)
+    assert prep.main(["0.4.0"]) == 1
+    assert _snapshot(tree) == before
+
+
+def test_main_prepares_the_release(tree, monkeypatch, capsys):
+    run, calls = _fake_run(0)
+    monkeypatch.setattr(prep.subprocess, "run", run)
+    assert prep.main(["v0.4.0"]) == 0
+    after = _snapshot(tree)
+    assert 'version = "0.4.0"' in after["pyproject.toml"]
+    assert "## [0.4.0] - " in after["CHANGELOG.md"]
+    assert calls[0] == ["uv", "lock"]
+    out = capsys.readouterr().out
+    # the hint must keep the dev tools installed (bare `uv run` drops extras)
+    assert "uv run --extra dev pytest" in out
+    assert "uv run ruff" not in out

@@ -201,13 +201,13 @@ def test_install_reports_unwritable_destination_cleanly(skill, tmp_path):
         ADAPTERS["claude"].install(skill, Scope.PROJECT, project_root=tmp_path)
 
 
-def test_install_refuses_to_write_through_symlink(skill, tmp_path):
+def test_install_refuses_to_write_through_symlink(skill, tmp_path, symlink):
     adapter = ADAPTERS["claude"]
     dest = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path)
     dest.parent.mkdir(parents=True)
     target = tmp_path / "outside.txt"
     target.write_text("original")
-    dest.symlink_to(target)
+    symlink(dest, target)
 
     with pytest.raises(SkillError, match="symlink"):
         adapter.install(skill, Scope.PROJECT, project_root=tmp_path)

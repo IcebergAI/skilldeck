@@ -6,18 +6,20 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import _pyproject  # noqa: E402
 
 REPOSITORY_URL = "https://github.com/IcebergAI/skilldeck"
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
-_VERSION_RE = re.compile(r'^version\s*=\s*"([^"]+)"', re.MULTILINE)
 
 
 def project_version(root: Path) -> str:
-    match = _VERSION_RE.search((root / "pyproject.toml").read_text(encoding="utf-8"))
-    if not match:
-        raise ValueError("pyproject.toml has no project version")
-    return match.group(1)
+    """``[project].version`` of ``root``; raises ``ValueError`` if unreadable."""
+    return _pyproject.project_version(root)
 
 
 def expected_metadata(

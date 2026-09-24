@@ -175,18 +175,18 @@ def test_install_over_modified_file_fails_without_force(tmp_path, monkeypatch):
     runner = CliRunner()
     runner.invoke(cli, ["install", "security-review", "--agent", "claude"])
     dest = tmp_path / ".claude/skills/security-review/SKILL.md"
-    dest.write_text(dest.read_text() + "my tweak\n")
+    dest.write_text(dest.read_text(encoding="utf-8") + "my tweak\n", encoding="utf-8")
 
     result = runner.invoke(cli, ["install", "security-review", "--agent", "claude"])
     assert result.exit_code == 1
     assert "local modifications" in result.output
-    assert "my tweak" in dest.read_text()
+    assert "my tweak" in dest.read_text(encoding="utf-8")
 
     result = runner.invoke(
         cli, ["install", "security-review", "--agent", "claude", "--force"]
     )
     assert result.exit_code == 0, result.output
-    assert "my tweak" not in dest.read_text()
+    assert "my tweak" not in dest.read_text(encoding="utf-8")
 
 
 def test_status_reports_each_state(tmp_path, monkeypatch):
@@ -196,7 +196,7 @@ def test_status_reports_each_state(tmp_path, monkeypatch):
         cli, ["install", "security-review", "test-review", "--agent", "claude"]
     )
     dest = tmp_path / ".claude/skills/test-review/SKILL.md"
-    dest.write_text(dest.read_text() + "my tweak\n")
+    dest.write_text(dest.read_text(encoding="utf-8") + "my tweak\n", encoding="utf-8")
 
     result = runner.invoke(cli, ["status", "--agent", "claude"])
     assert result.exit_code == 0, result.output
@@ -212,7 +212,7 @@ def test_status_reports_orphans(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     orphan = tmp_path / ".claude/skills/retired-skill/SKILL.md"
     orphan.parent.mkdir(parents=True)
-    orphan.write_text("left behind\n")
+    orphan.write_text("left behind\n", encoding="utf-8")
     result = CliRunner().invoke(cli, ["status", "--agent", "claude"])
     assert result.exit_code == 0
     assert "orphan:" in result.output
@@ -229,21 +229,23 @@ def test_update_refreshes_stale_and_skips_modified(tmp_path, monkeypatch):
     # simulate an install from an older skilldeck: rewrite with an old stamp
     from skilldeck.stamp import stamp
 
-    stale.write_text(stamp("old body\n", "security-review", "0.0.1"))
+    stale.write_text(stamp("old body\n", "security-review", "0.0.1"), encoding="utf-8")
     modified = tmp_path / ".claude/skills/test-review/SKILL.md"
-    modified.write_text(modified.read_text() + "my tweak\n")
+    modified.write_text(
+        modified.read_text(encoding="utf-8") + "my tweak\n", encoding="utf-8"
+    )
 
     result = runner.invoke(cli, ["update", "--agent", "claude"])
     assert result.exit_code == 0, result.output
     assert "updated security-review (0.0.1 ->" in result.output
     assert "skip test-review: locally modified" in result.output
-    assert "old body" not in stale.read_text()
-    assert "my tweak" in modified.read_text()
+    assert "old body" not in stale.read_text(encoding="utf-8")
+    assert "my tweak" in modified.read_text(encoding="utf-8")
 
     # --force also refreshes the modified install
     result = runner.invoke(cli, ["update", "--agent", "claude", "--force"])
     assert result.exit_code == 0, result.output
-    assert "my tweak" not in modified.read_text()
+    assert "my tweak" not in modified.read_text(encoding="utf-8")
 
 
 def test_update_with_nothing_installed_is_a_noop(tmp_path, monkeypatch):
