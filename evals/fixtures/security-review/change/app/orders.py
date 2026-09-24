@@ -1,4 +1,4 @@
-from flask import Flask, abort, jsonify, session
+from flask import Flask, abort, jsonify, request, session
 
 import db
 
@@ -13,9 +13,11 @@ def get_order(order_id):
     return jsonify(order.as_dict())
 
 
-@app.get("/orders/<int:order_id>/invoice")
-def get_invoice(order_id):
-    order = db.get_order(order_id)
+@app.patch("/orders/<int:order_id>")
+def update_order(order_id):
+    order = db.get_order(order_id, user_id=session["user_id"])
     if order is None:
         abort(404)
-    return jsonify(order.invoice())
+    changes = request.get_json()
+    order = db.update_order(order.id, **changes)
+    return jsonify(order.as_dict())

@@ -1,9 +1,24 @@
 skill: security-review
 plants:
-  # the invoice route loads any order by ID without scoping it to the caller
+  # The new PATCH route is owner-scoped (so not the IDOR of the skill's worked
+  # example), but it passes the whole request body to `db.update_order` as
+  # column updates: a customer can set any order column, e.g. mark it paid,
+  # zero its total, or move it to another account. Mass assignment, ASVS 5.0
+  # 15.3.3. An authenticated user tampering with their own order's financial
+  # state is high under the rubric; one step below still catches it buried as
+  # medium. The V15 classifier is not a keyword: other V15 findings exist.
   - file: app/orders.py
-    keywords: [IDOR, authorization, V8]
-    # the rubric rates a flaw an authenticated user can exploit high; one step
-    # below catches it buried as low without failing on a high/medium split
+    keywords:
+      - mass assignment
+      - mass-assignment
+      - over-posting
+      - overposting
+      - allow-list
+      - allowlist
+      - any column
+      - any field
+      - arbitrary fields
+      - arbitrary columns
+      - privileged fields
     min-severity: medium
 max-findings: 5

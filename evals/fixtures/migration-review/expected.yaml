@@ -1,7 +1,26 @@
 skill: migration-review
 plants:
-  # non-concurrent index build on a large, write-hot PostgreSQL table
-  - file: db/migrate/20260704120000_add_index_to_events.rb
-    keywords: [concurrently, concurrent, lock, locks, locking, blocking, blocks]
+  # Renames a column in one step during a rolling deploy: the migration runs
+  # while the old release keeps serving traffic, and that release still writes
+  # `kind` on every API request, so each of its inserts fails until it is gone.
+  # A backward-incompatible change, not the non-concurrent index of the skill's
+  # worked example (a PostgreSQL rename is catalog-only, so lock duration is
+  # not the hazard). The skill rates breaking the deployed code critical; one
+  # step below still catches it buried as medium or low.
+  - file: db/migrate/20260704120000_rename_kind_to_event_type_on_events.rb
+    keywords:
+      - backward-incompatible
+      - backward incompatible
+      - backwards-incompatible
+      - backwards incompatible
+      - old code
+      - old release
+      - old version
+      - previous release
+      - currently deployed
+      - still deployed
+      - expand/contract
+      - expand-contract
+      - expand and contract
     min-severity: high
 max-findings: 4
