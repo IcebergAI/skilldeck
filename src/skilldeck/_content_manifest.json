@@ -75,6 +75,14 @@
       "version": "0.4.0"
     },
     {
+      "body_sha256": "sha256:063c8b0a474515dce78dac4196f49e2a0a25912e0d794a65c64387a9033448f5",
+      "canonical_sha256": "sha256:e499fd8757af810839c4421ee5affbfbb43bb72d9ff542fb40849583fb3e81c8",
+      "claude_rendered_sha256": "sha256:1f9838f8b4d1e7def32d9eb7f3d2a6f6b8a9bdabbc1572870dae68bc843d341c",
+      "meta_sha256": "sha256:d934b1fa74fcce6b2825c6e4c7744a4a57d1fbcd7d15577f864a4c72941d029c",
+      "name": "privacy-review",
+      "version": "0.1.0"
+    },
+    {
       "body_sha256": "sha256:3a063e1f8e93f442e622c6da68eeb0196c33d16d1a7b114b85ae18d48e4222bc",
       "canonical_sha256": "sha256:2c1e1682efcb2e62296711cd1e0a143a33228600498d70a6fee5a20fdb0f5a9c",
       "claude_rendered_sha256": "sha256:8df93b79fceab51ff41d49996253e07c3b9c50c0ea132487e32a233dc5bc770d",

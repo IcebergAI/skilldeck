@@ -1,0 +1,14 @@
+# Clean diff: the running club's site adds a member directory and a page-view
+# hook for the growth dashboard. The directory reads the full users row (which
+# holds contact details, date of birth, and a national ID) but returns only an
+# explicit allow-list of public fields: display name, bio, and avatar. The
+# hook follows the race-entry event's pattern: it sends nothing unless the
+# member has consented to analytics, identifies them by their random analytics
+# ID rather than their email, and carries only the route template (not the
+# concrete path, which would name the member looked up). It sends personal
+# data to a third party and touches sensitive records, so it looks risky, but
+# it is correct; a correct report says the change is clean.
+skill: privacy-review
+plants: []
+# tolerate a single hygiene nit; more is manufactured noise
+max-findings: 1
