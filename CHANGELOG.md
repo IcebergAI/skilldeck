@@ -12,6 +12,14 @@ All notable changes to this project are documented here. The format is based on
 - CI/release workflows pin all GitHub Actions to full commit SHAs (tag noted in
   a comment), and a Dependabot config keeps the pins and dev dependencies
   current (#34).
+- Every tool CI runs is now pinned where Dependabot can update it (#110).
+  zizmor and pypi-attestations are pinned in `.github/tools/requirements.txt`,
+  which a scoped Dependabot `pip` entry watches, and run with
+  `uvx -c .github/tools/requirements.txt`. The explicit `syft-version` is
+  gone: `anchore/sbom-action` pins its own Syft release, so Dependabot's
+  updates to that SHA-pinned action carry it. A test rejects inline tool pins
+  in workflows and keeps the documented pypi-attestations command in step
+  with the pin.
 
 - `authentication-review` skill (0.1.0) — reviews authentication changes in
   depth: password storage and policy, recovery/reset flows, MFA bypass and OTP
