@@ -1,5 +1,7 @@
 skill: logging
 plants:
+  # the bearer token is interpolated into a warning
   - file: auth/session.py
-    keywords: [secret, credential, sensitive]
+    keywords: [secret, secrets, credential, credentials, sensitive]
+    min-severity: high
 max-findings: 4

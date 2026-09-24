@@ -124,8 +124,7 @@ def test_plant_keywords_do_not_appear_in_the_planted_file(plant):
     ids=[p["keywords"][0] for p in EXPECTED["plants"]],
 )
 def test_a_report_of_the_other_plant_does_not_score_this_one(index):
-    # score() matches keywords anywhere in the report, so a keyword that a
-    # finding about the other plant (or ordinary prose) would contain lets a
+    # a keyword that a finding about the other plant would contain lets a
     # report that misses this plant pass
     fixture = run_evals.load_fixture(FIXTURE)
     plant = fixture.plants[index]

@@ -166,6 +166,20 @@ All notable changes to this project are documented here. The format is based on
   `CHANGELOG.md`, and `uv.lock` and exits non-zero. Its "Next:" hint,
   `docs/releasing.md`, `CONTRIBUTING.md`, and the PR template now use
   `uv run --extra dev`.
+- Eval fixtures are more realistic (#107): `dependency-review` now plants a
+  dependency-confusion setup (`--extra-index-url` for an internal `corp-*`
+  package, per pip's install docs) instead of an npm package in
+  `requirements.txt`; `migration-review` gains PostgreSQL/table-size context
+  (`config/database.yml`, `db/schema.rb`, a hot ~200M-row `events` table);
+  `authentication-review`'s email-keyed identity and `ci-workflow-review`'s
+  `pull_request_target` head checkout become intentional second plants, so a
+  report can't pass on the other defect alone. Every fixture's keywords now
+  describe the defect instead of echoing the planted code or naming a
+  category or fix that also fits a neighbouring defect (the SAML `unverified`,
+  resilience `hang`, code-smells `Extract`, dependency `public index`, and
+  CI `CICD-SEC-4` keywords are gone; the GitLab fixture's stems become whole
+  words), and plants with a clear rubric level (all but `code-smells` and the
+  GitLab variant) set a `min-severity` one step below it (#106).
 
 ### Fixed
 
@@ -218,6 +232,25 @@ All notable changes to this project are documented here. The format is based on
 - `scripts/check_release_consistency.py` now selects the highest dated
   CHANGELOG version (compared numerically) rather than assuming the newest
   section appears first in the file.
+- The eval scorer no longer passes wrong reports (#106): the report is parsed
+  into individual findings (`-`, `*`, and numbered bullets), and each plant
+  must be matched by its own finding naming the file and a keyword (whole
+  words, case-insensitive), so a clean mention of the file, a keyword
+  substring (`git` in `github`), or one finding covering two plants no longer
+  counts. Only stdout is scored; a non-zero agent exit or timeout fails the
+  fixture with a clear message (stderr is printed), and a fixture with plants
+  but zero parsed findings fails as `output format drift?` instead of silently
+  disabling the `max-findings` cap. `expected.yaml` is validated on load.
+  A finding ends where its markdown list item does (a heading, a `---` rule,
+  a sibling list item, or unindented text after a blank line), so a clean
+  verdict on the planted file after the last finding, or after the closing
+  fence of a ```` ```markdown ````-wrapped report, no longer counts; code
+  fences close only on a run at least as long as the opener; a severity-led
+  list item in another format fails even a clean-diff fixture as format drift
+  rather than escaping the `max-findings` cap; and phrase keywords match
+  across inline markdown (``no `assert` ``). The skill is installed in the
+  review repo's base commit, so it is no longer an untracked change the skill
+  would review.
 - `ci-workflow-review` (0.2.1) no longer applies GitHub's `${{ }}` threat model
   to GitLab (#101). GitLab CI/CD variables reach the job as environment
   variables and the shell expands them once, so a quoted
@@ -296,6 +329,17 @@ All notable changes to this project are documented here. The format is based on
   zizmor audits `.github/` (workflows and Dependabot config); and the CI
   build installs the built sdist into a clean venv and smoke-tests
   `skilldeck list` and `skilldeck provenance --json` against it.
+- Eval runner options and fields (#106, #107): `--repeat N` reports a pass rate
+  per fixture; `--adapter NAME` installs the skill through any skilldeck
+  adapter, and the prompt names the installed path instead of hard-coding
+  `.claude/skills`; per-plant `min-severity` and `locators`; `--skill` also
+  selects a skill's variant fixtures. Clean-diff fixtures (`plants: []`) are
+  now allowed, with `security-review-clean` (parameterized, owner-scoped query)
+  and `resilience-review-clean` (timeout plus bounded, jittered retry on an
+  idempotent GET that ignores an uncapped `Retry-After`) measuring false
+  positives. A structural test rejects plant keywords that appear verbatim in
+  the planted file, and per-fixture sample reports check that a correct report
+  passes and a finding about a neighbouring defect satisfies no plant.
 
 ## [0.3.0] - 2026-06-27
 

@@ -1,0 +1,8 @@
+# Clean diff: the change replaces a string-built SQL query with a parameterized
+# one and scopes it to the signed-in owner (a miss is a 404, so other users'
+# document IDs aren't confirmed). It touches SQL and authorization, so it looks
+# risky, but it only removes vulnerabilities; a correct report says it is clean.
+skill: security-review
+plants: []
+# tolerate a single hygiene nit; more is manufactured noise
+max-findings: 1

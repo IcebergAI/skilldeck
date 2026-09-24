@@ -1,5 +1,26 @@
 skill: dependency-review
 plants:
+  # Dependency confusion: pip checks --index-url and --extra-index-url with "no
+  # priority" and installs the best version match, so anyone who publishes
+  # corp-auth-client (say 2.99) on public PyPI replaces the internal package.
+  # Grounded in pip's install docs ("Finding Packages", and the warning that
+  # using --extra-index-url for private packages is unsafe):
+  # https://pip.pypa.io/en/stable/cli/pip_install/
+  # "public index"/"public PyPI" are not keywords: a finding that click and
+  # requests now bypass the corp mirror says them without naming this attack.
   - file: requirements.txt
-    keywords: [provenance, fork, git]
-max-findings: 4
+    keywords:
+      - confusion
+      - substitution
+      - squat
+      - squatted
+      - squatting
+      - same name
+      - higher version
+      - highest version
+    # dependency-review's location slot names the package (`package old→new`)
+    # rather than a file:line, so these place a finding at the plant too
+    locators: [corp-auth-client, index-url]
+    # the rubric rates a serious provenance concern high; one step below
+    min-severity: medium
+max-findings: 3
