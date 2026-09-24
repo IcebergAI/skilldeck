@@ -1,0 +1,15 @@
+# Clean diff: a new staff-only endpoint asks an LLM to suggest tags for a
+# customer-written ticket. The ticket goes in as JSON data in the user turn
+# (only subject and body, each length-capped, no contact fields); the only
+# tool is a strict schema whose values are an enum of the allowed tags, and it
+# is forced and never executed: the picks are re-validated against the
+# allow-list in code and returned as suggestions that a staff member applies
+# one at a time through the existing tag endpoint, which checks the allow-list
+# again. The call has an output-token cap, a timeout, a single retry and no
+# loop, and the route is rate-limited per staff member. Prompt injection can
+# at worst change which allowed tags are suggested to a human. It looks risky,
+# but it is correct; a correct report says the change is clean.
+skill: llm-integration-review
+plants: []
+# tolerate a single hygiene nit; more is manufactured noise
+max-findings: 1
