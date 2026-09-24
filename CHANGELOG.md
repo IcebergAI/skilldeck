@@ -141,6 +141,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Asking an adapter for a scope it doesn't support now tells you what works
+  instead (#79). For example, `--agent cursor-rule --scope global` names
+  `--scope project`, or `--agent cursor`, which supports `--scope global`.
 - Five review skills cover defect classes their checklists missed, each
   cited to a fetched source (#104):
   - `ci-workflow-review` 0.4.0: newline injection through writes to
@@ -498,6 +501,24 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Agent compatibility matrix, `docs/compatibility.md` (#79), linked from the
+  README and `docs/adapters.md`. It lists every adapter, including the
+  `copilot-prompt`, `cursor-rule` and `kiro-steering` legacy adapters, with:
+  - a status (tested, supported or experimental; the page defines each)
+  - project and global paths, and the environment variables that move them
+  - how you invoke the skill in that agent
+  - the minimum agent version
+  - the date, agent version and vendor sources it was checked against
+  Whatever couldn't be checked is marked unverified. The page also says how
+  skilldeck responds when a vendor deprecates or moves a skill location or
+  format. Adapter contract fixtures (`tests/fixtures/adapter-contracts/`,
+  contract `sha256:b3cbf84dafa6`) pin each adapter's exact rendered file,
+  stamp included, for one synthetic skill. They also pin its project and
+  global paths, and its behaviour with each config-directory variable set to
+  an absolute path, left empty, or set to a relative path. CI installs with
+  every adapter and compares the results byte for byte. A test fails when
+  the fixtures change unless the matrix's `adapter-contract` digest and this
+  changelog are updated too.
 - `frontend-security-review` skill (0.1.0) (#105) — reviews browser-side
   changes (React, Vue, Angular, Svelte, plain JavaScript and HTML templates,
   CSP and header config): framework escape hatches (`dangerouslySetInnerHTML`,

@@ -734,6 +734,15 @@ def test_check_scope(skill):
         LEGACY_ADAPTERS["cursor-rule"].check_scope(Scope.GLOBAL)
 
 
+def test_scope_error_without_an_alternative(monkeypatch):
+    # a project-only adapter whose agent has no global location either can
+    # only point at the scope it does have
+    monkeypatch.setattr(ADAPTERS["cursor"], "global_dir", None)
+    with pytest.raises(SkillError) as excinfo:
+        LEGACY_ADAPTERS["cursor-rule"].check_scope(Scope.GLOBAL)
+    assert str(excinfo.value).endswith("for that scope. Use --scope project")
+
+
 def test_write_atomic_writes_lf_on_every_platform(tmp_path):
     # installs must be byte-identical across operating systems; text mode on
     # Windows would otherwise translate each "\n" to "\r\n"

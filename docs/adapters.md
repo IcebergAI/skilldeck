@@ -11,6 +11,8 @@ adapter** (`ADAPTERS`, named after the agent) writes that format into the
 agent's own skills folder, and all five render byte-identical files; only the
 folders differ. The formats skilldeck used before remain available as opt-in
 [legacy adapters](#legacy-adapters) for agent versions that predate skills.
+The [compatibility matrix](compatibility.md) sums up each adapter's status,
+how it's invoked, and the agent versions it was checked against.
 
 ## Install locations
 
@@ -329,6 +331,8 @@ land wherever it points.
    should move installs out of it.
 3. Add the agent name to the `supported-agents` list of any skill it should
    apply to.
+4. Add the adapter's contract to `tests/fixtures/adapter-contracts/` and its
+   row to the [compatibility matrix](compatibility.md#contract-tests).
 
 The base class handles `install`/`uninstall` (including the stamp checks,
 symlink handling and atomic writes described above), directory creation, and

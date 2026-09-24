@@ -1,0 +1,126 @@
+{
+  "_about": [
+    "The adapter contract: what installing skill/contract-demo writes for each adapter, and where.",
+    "project: path under the project root. global: path under ~, or null if the adapter is project-only,",
+    "in which case global_error lists text the --scope global error must contain.",
+    "env: per variable, where a global install goes when it is set to an absolute path ($VAR is its value),",
+    "to an empty string, or to a relative path; \"error\" means skilldeck refuses.",
+    "frontmatter: the rendered file's frontmatter, parsed as YAML.",
+    "The expected file is <adapter>/<file name of project>, byte for byte, stamp included.",
+    "Changing anything here changes the digest in docs/compatibility.md; see that page."
+  ],
+  "skill": "contract-demo",
+  "adapters": {
+    "claude": {
+      "project": ".claude/skills/contract-demo/SKILL.md",
+      "global": "~/.claude/skills/contract-demo/SKILL.md",
+      "env": {
+        "CLAUDE_CONFIG_DIR": {
+          "absolute": "$CLAUDE_CONFIG_DIR/skills/contract-demo/SKILL.md",
+          "empty": "error",
+          "relative": "error"
+        }
+      },
+      "frontmatter": {
+        "name": "contract-demo",
+        "description": "Contract fixture: a synthetic review skill that pins every adapter's rendered bytes, long enough that YAML folds it onto a second line."
+      }
+    },
+    "codex": {
+      "project": ".agents/skills/contract-demo/SKILL.md",
+      "global": "~/.agents/skills/contract-demo/SKILL.md",
+      "env": {
+        "CODEX_HOME": {
+          "absolute": "~/.agents/skills/contract-demo/SKILL.md",
+          "empty": "~/.agents/skills/contract-demo/SKILL.md",
+          "relative": "~/.agents/skills/contract-demo/SKILL.md"
+        }
+      },
+      "frontmatter": {
+        "name": "contract-demo",
+        "description": "Contract fixture: a synthetic review skill that pins every adapter's rendered bytes, long enough that YAML folds it onto a second line."
+      }
+    },
+    "copilot": {
+      "project": ".github/skills/contract-demo/SKILL.md",
+      "global": "~/.copilot/skills/contract-demo/SKILL.md",
+      "env": {
+        "COPILOT_HOME": {
+          "absolute": "$COPILOT_HOME/skills/contract-demo/SKILL.md",
+          "empty": "~/.copilot/skills/contract-demo/SKILL.md",
+          "relative": "error"
+        }
+      },
+      "frontmatter": {
+        "name": "contract-demo",
+        "description": "Contract fixture: a synthetic review skill that pins every adapter's rendered bytes, long enough that YAML folds it onto a second line."
+      }
+    },
+    "cursor": {
+      "project": ".cursor/skills/contract-demo/SKILL.md",
+      "global": "~/.cursor/skills/contract-demo/SKILL.md",
+      "env": {},
+      "frontmatter": {
+        "name": "contract-demo",
+        "description": "Contract fixture: a synthetic review skill that pins every adapter's rendered bytes, long enough that YAML folds it onto a second line."
+      }
+    },
+    "kiro": {
+      "project": ".kiro/skills/contract-demo/SKILL.md",
+      "global": "~/.kiro/skills/contract-demo/SKILL.md",
+      "env": {
+        "KIRO_HOME": {
+          "absolute": "$KIRO_HOME/skills/contract-demo/SKILL.md",
+          "empty": "~/.kiro/skills/contract-demo/SKILL.md",
+          "relative": "error"
+        }
+      },
+      "frontmatter": {
+        "name": "contract-demo",
+        "description": "Contract fixture: a synthetic review skill that pins every adapter's rendered bytes, long enough that YAML folds it onto a second line."
+      }
+    },
+    "copilot-prompt": {
+      "project": ".github/prompts/contract-demo.prompt.md",
+      "global": null,
+      "global_error": [
+        "copilot-prompt does not support --scope global",
+        "--scope project",
+        "--agent copilot"
+      ],
+      "env": {},
+      "frontmatter": {
+        "description": "Contract fixture: a synthetic review skill that pins every adapter's rendered bytes, long enough that YAML folds it onto a second line.",
+        "agent": "agent"
+      }
+    },
+    "cursor-rule": {
+      "project": ".cursor/rules/contract-demo.mdc",
+      "global": null,
+      "global_error": [
+        "cursor-rule does not support --scope global",
+        "--scope project",
+        "--agent cursor"
+      ],
+      "env": {},
+      "frontmatter": {
+        "description": "Contract fixture: a synthetic review skill that pins every adapter's rendered bytes, long enough that YAML folds it onto a second line.",
+        "alwaysApply": false
+      }
+    },
+    "kiro-steering": {
+      "project": ".kiro/steering/contract-demo.md",
+      "global": "~/.kiro/steering/contract-demo.md",
+      "env": {
+        "KIRO_HOME": {
+          "absolute": "$KIRO_HOME/steering/contract-demo.md",
+          "empty": "~/.kiro/steering/contract-demo.md",
+          "relative": "error"
+        }
+      },
+      "frontmatter": {
+        "inclusion": "manual"
+      }
+    }
+  }
+}

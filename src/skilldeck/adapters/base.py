@@ -152,13 +152,28 @@ class Adapter(ABC):
             found.append(Scope.GLOBAL)
         return tuple(found)
 
+    def scope_alternative(self, scope: Scope) -> str | None:
+        """Another ``--agent`` that installs at ``scope`` when this one can't,
+        worded for :meth:`check_scope`'s error; None if there is none."""
+        return None
+
     def check_scope(self, scope: Scope) -> None:
-        """Raise :class:`SkillError` if this agent cannot install at ``scope``."""
-        if scope not in self.scopes:
-            raise SkillError(
-                f"{self.name} does not support --scope {scope.value}: it has no "
-                "stable file location for that scope"
-            )
+        """Raise :class:`SkillError` if this agent cannot install at ``scope``.
+
+        The message names what does work: this adapter's other scope, and
+        any other adapter for the same agent that has ``scope``.
+        """
+        if scope in self.scopes:
+            return
+        options = [f"--scope {other.value}" for other in self.scopes]
+        alternative = self.scope_alternative(scope)
+        if alternative:
+            options.append(alternative)
+        hint = f". Use {', or '.join(options)}" if options else ""
+        raise SkillError(
+            f"{self.name} does not support --scope {scope.value}: it has no "
+            f"stable file location for that scope{hint}"
+        )
 
     def root(self, scope: Scope, project_root: Path | None = None) -> Path:
         """The directory this adapter installs into at ``scope``.

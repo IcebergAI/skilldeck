@@ -71,7 +71,11 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
   `tests/test_eval_fixtures.py`, and unit-tests the scorer
   (`tests/test_eval_scoring.py`). See `evals/README.md`. New/changed skills
   should be run through them.
-- `docs/` — `authoring-skills.md`, `adapters.md`, `releasing.md`
+- `docs/` — `authoring-skills.md`, `adapters.md`, `compatibility.md` (the
+  public agent compatibility matrix), `releasing.md`
+- `tests/fixtures/adapter-contracts/` — each adapter's exact rendered file,
+  paths and env-override behaviour for one synthetic skill; checked byte for
+  byte by `tests/test_adapter_contracts.py`
 - `.claude-plugin/marketplace.json` + `claude-plugin/` — the Claude Code plugin
   marketplace tree, **generated** by `scripts/build_plugin.py` from the
   canonical skills; regenerate after changing skills or the project version (a
@@ -97,6 +101,11 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
   output.
 - A skill's `meta.yaml` `name` must match its directory name; all metadata fields
   are required and validated by the registry.
+- Any change to an adapter's output format, paths or env handling must update
+  its contract fixtures, the matrix rows and `adapter-contract` digest in
+  `docs/compatibility.md`, and CHANGELOG (the contract tests enforce all three;
+  see `docs/compatibility.md#contract-tests`). Only state vendor behaviour a
+  primary source confirms; mark the rest *unverified*.
 - New skills follow the structural template (enforced by
   `tests/test_skill_structure.py`), ground their checklists in **fetched**
   authoritative sources (OWASP/CIS/vendor docs) cited in the skill body, and

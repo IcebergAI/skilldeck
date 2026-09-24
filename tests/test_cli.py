@@ -470,6 +470,8 @@ def test_explicit_agent_without_the_scope_is_an_error(tmp_path, monkeypatch):
     )
     assert result.exit_code == 1
     assert "error: cursor-rule does not support --scope global" in result.output
+    # actionable: names the scope that works and the agent's native adapter
+    assert "Use --scope project, or --agent cursor (Agent Skills)" in result.output
     assert "security-review" in result.output  # codex still reported
 
 
