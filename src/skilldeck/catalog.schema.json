@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Skilldeck skill catalog, schema_version 1",
+  "description": "The output of `skilldeck catalog --json`. Consumers must ignore properties they do not recognise: additive changes do not bump schema_version (see docs/catalog.md).",
+  "type": "object",
+  "required": ["schema_version", "distribution", "skills"],
+  "properties": {
+    "schema_version": {
+      "description": "Bumped only for a breaking change to this schema.",
+      "const": 1
+    },
+    "distribution": {
+      "description": "The skilldeck package the catalog describes, as `skilldeck provenance --json` reports it.",
+      "type": "object",
+      "required": ["name", "version", "source_repository", "source_ref", "source_commit"],
+      "properties": {
+        "name": {"const": "skilldeck"},
+        "version": {"type": "string", "minLength": 1},
+        "source_repository": {"type": "string", "minLength": 1},
+        "source_ref": {
+          "description": "The release tag the package was built from; null for a development build.",
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "source_commit": {
+          "description": "The full commit the package was built from; null for a development build.",
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "skills": {
+      "description": "Every bundled skill exactly once, sorted by name.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/skill"}
+    }
+  },
+  "$defs": {
+    "skill_name": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "maxLength": 64
+    },
+    "skill_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "skill": {
+      "type": "object",
+      "required": [
+        "name",
+        "version",
+        "category",
+        "description",
+        "supported_agents",
+        "canonical_sha256",
+        "source",
+        "deprecated"
+      ],
+      "properties": {
+        "name": {"$ref": "#/$defs/skill_name"},
+        "version": {"$ref": "#/$defs/skill_version"},
+        "category": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "supported_agents": {
+          "description": "Agent names, sorted. New agents may appear without a schema_version bump.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "canonical_sha256": {
+          "description": "The skill's canonical content digest, as recorded in the packaged content manifest and checked by `skilldeck provenance --verify`.",
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "source": {
+          "type": "object",
+          "required": ["repository", "path"],
+          "properties": {
+            "repository": {"type": "string", "minLength": 1},
+            "path": {
+              "description": "The skill directory in the source repository, as a POSIX path.",
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "deprecated": {
+          "description": "null unless the skill is deprecated.",
+          "type": ["object", "null"],
+          "required": ["since", "replacement", "reason"],
+          "properties": {
+            "since": {
+              "description": "The skill version that first carried the deprecation.",
+              "$ref": "#/$defs/skill_version"
+            },
+            "replacement": {
+              "description": "The skill to use instead, or null.",
+              "type": ["string", "null"],
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+              "maxLength": 64
+            },
+            "reason": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    }
+  }
+}

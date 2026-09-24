@@ -18,7 +18,8 @@ from .adapters import (
     InstallState,
     LegacyAdapter,
 )
-from .provenance import distribution_provenance, verify_bundled_skills
+from .catalog import CatalogError, build_catalog, catalog_schema_text, filter_catalog
+from .provenance import canonical_json, distribution_provenance, verify_bundled_skills
 from .registry import Skill, SkillError, discover_skills
 from .stamp import read as read_stamp
 from .targets import Scope
@@ -246,7 +247,102 @@ def list_cmd() -> None:
         click.echo(f"\n{category}:")
         for skill in group:
             agents = ", ".join(skill.supported_agents)
-            click.echo(f"  {skill.name:<{width}}  {skill.description}  [{agents}]")
+            line = f"  {skill.name:<{width}}  {skill.description}  [{agents}]"
+            if skill.deprecated is not None:
+                note = _deprecation_note(
+                    skill.deprecated.since, skill.deprecated.replacement
+                )
+                line += f"  ({note})"
+            click.echo(line)
+
+
+def _deprecation_note(since: str, replacement: str | None) -> str:
+    note = f"deprecated since {since}"
+    if replacement:
+        note += f"; use {replacement}"
+    return note
+
+
+@cli.command()
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Emit the deterministic, schema-versioned catalog as JSON.",
+)
+@click.option(
+    "--category",
+    "categories",
+    multiple=True,
+    help="Only skills in this category; repeat to allow several.",
+)
+@click.option(
+    "--agent",
+    "agents",
+    multiple=True,
+    type=click.Choice(sorted(ADAPTERS)),
+    help="Only skills that support this agent; repeat to require several.",
+)
+@click.option(
+    "--schema",
+    is_flag=True,
+    help="Print the JSON Schema of the --json output and exit.",
+)
+def catalog(
+    as_json: bool, categories: tuple[str, ...], agents: tuple[str, ...], schema: bool
+) -> None:
+    """Describe every bundled skill for tools: identity, version, category,
+    supported agents, canonical digest, source and deprecation state.
+
+    Each digest is recomputed from the installed skill files and must match
+    the content manifest recorded when the package was built, the same check
+    as provenance --verify; the command fails if any does not.
+    """
+    if schema:
+        if as_json or categories or agents:
+            raise click.UsageError("--schema takes no other options")
+        try:
+            text = catalog_schema_text()
+        except OSError as exc:
+            raise click.ClickException(
+                f"cannot read the catalog schema: {exc}"
+            ) from exc
+        click.echo(text if text.endswith("\n") else text + "\n", nl=False)
+        return
+    try:
+        data = build_catalog(_all_skills())
+    except CatalogError as exc:
+        for problem in exc.problems:
+            click.echo(f"error: {problem}", err=True)
+        click.echo(
+            "error: the installed skills do not match the content manifest "
+            "recorded when this package was built",
+            err=True,
+        )
+        raise SystemExit(1) from exc
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    data = filter_catalog(data, set(categories), set(agents))
+    if as_json:
+        click.echo(canonical_json(data), nl=False)
+        return
+
+    if not data["skills"]:
+        click.echo("No matching skills.")
+        return
+    name_width = max(len(skill["name"]) for skill in data["skills"])
+    version_width = max(len(skill["version"]) for skill in data["skills"])
+    category_width = max(len(skill["category"]) for skill in data["skills"])
+    for skill in data["skills"]:
+        line = (
+            f"{skill['name']:<{name_width}}  {skill['version']:<{version_width}}  "
+            f"{skill['category']:<{category_width}}  {skill['canonical_sha256']}"
+        )
+        deprecated = skill["deprecated"]
+        if deprecated is not None:
+            note = _deprecation_note(deprecated["since"], deprecated["replacement"])
+            line += f"  ({note})"
+        click.echo(line)
 
 
 @cli.command()

@@ -498,6 +498,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `skilldeck catalog` (#77): a deterministic, schema-versioned JSON catalog
+  of the bundled skills for tools (`--json`), with each skill's name,
+  version, category, description, supported agents, canonical content digest
+  (the one `provenance --verify` checks, recomputed from the installed files),
+  source path and deprecation state. `--category` and `--agent` filter it
+  without parsing text; `--schema` prints the JSON Schema, which ships in the
+  package as `skilldeck/catalog.schema.json`. `docs/catalog.md` sets the
+  compatibility rules: additive changes keep `schema_version` 1, breaking ones
+  bump it. Releases do not attach the catalog as a separate asset; generate
+  it from the verified wheel.
+- Optional `deprecated` skill metadata (`since`, `reason`, optional
+  `replacement`), validated by the registry; `skilldeck list` marks
+  deprecated skills. No bundled skill is deprecated.
+
 - `frontend-security-review` skill (0.1.0) (#105) — reviews browser-side
   changes (React, Vue, Angular, Svelte, plain JavaScript and HTML templates,
   CSP and header config): framework escape hatches (`dangerouslySetInnerHTML`,
