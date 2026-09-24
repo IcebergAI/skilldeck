@@ -1,7 +1,7 @@
 name: migration-review
 description: Review database schema and data migrations for safety under a live, rolling deploy.
 category: review
-version: 0.3.0
+version: 0.4.0
 supported-agents:
   - claude
   - codex

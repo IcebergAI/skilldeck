@@ -49,7 +49,10 @@ behavior differs (Postgres / MySQL / SQLite lock and rewrite differently).
 
 - **Dropping or renaming** a column or table the currently deployed code still
   reads or writes — breaks the moment the migration lands, before new code is out.
-  Split into expand → backfill → deploy → contract across releases.
+  Split into expand → backfill → deploy → contract across releases. Rails
+  caches a table's columns at runtime, so a drop breaks even code that never
+  reads the column unless an earlier deploy listed it in `ignored_columns`
+  ([strong_migrations](https://github.com/ankane/strong_migrations#removing-a-column)).
 - Renaming in a single step (no engine makes a rename transparent to running code).
 - A new **`NOT NULL` column with no default** while old code still inserts rows
   that omit it; or narrowing a type / tightening a constraint old code can violate.
@@ -57,16 +60,29 @@ behavior differs (Postgres / MySQL / SQLite lock and rewrite differently).
 ### Locking & blocking operations
 
 - Building an index **non-concurrently** — blocks writes on the table for the
-  build's duration.
+  build's duration. A failed PostgreSQL `CREATE INDEX CONCURRENTLY` leaves an
+  `INVALID` index that still slows writes; drop and rebuild it, since an
+  `IF NOT EXISTS` retry keeps it
+  ([CREATE INDEX](https://www.postgresql.org/docs/18/sql-createindex.html#SQL-CREATEINDEX-CONCURRENTLY)).
 - Adding a column with a **volatile or computed default** that forces a full table
   rewrite under an exclusive lock (engine/version dependent).
-- `ALTER COLUMN` type changes that rewrite the table; `SET NOT NULL` on an existing
-  column (full scan under lock — prefer a `NOT VALID` check constraint then
-  `VALIDATE`, where supported).
+- `ALTER COLUMN` type changes that rewrite the table — including an `int` →
+  `bigint` primary key, best done ahead of overflow as a new column, sync
+  trigger, batched backfill, and swap
+  ([GitLab](https://docs.gitlab.com/development/database/avoiding_downtime_in_migrations/#migrating-integer-primary-keys-to-bigint));
+  `SET NOT NULL` on an existing column (full scan under lock — first add and
+  `VALIDATE` a `NOT VALID` `CHECK (col IS NOT NULL)`, or on PostgreSQL 18
+  add the not-null constraint itself `NOT VALID` and validate it
+  ([ALTER TABLE](https://www.postgresql.org/docs/18/sql-altertable.html))).
 - Adding a **foreign key** that validates existing rows synchronously and locks
   both tables.
 - No `lock_timeout` / `statement_timeout` — a migration that can't get its lock
-  queues behind and then blocks all traffic on the table.
+  queues behind and then blocks all traffic on the table. MySQL/MariaDB DDL
+  waits for the metadata lock of every open transaction on the table
+  ([metadata locking](https://github.com/mariadb-corporation/mariadb-docs/blob/main/server/reference/sql-statements/transactions/metadata-locking.md)),
+  and `lock_wait_timeout` defaults to a year in both — set a short one;
+  rebuild large tables online with [gh-ost](https://github.com/github/gh-ost)
+  or [pt-online-schema-change](https://github.com/percona/percona-toolkit).
 
 ### Backfills & data migrations
 
@@ -81,7 +97,8 @@ behavior differs (Postgres / MySQL / SQLite lock and rewrite differently).
 
 - Unique / check / FK constraints added without first validating existing data, or
   added in a way that locks; a constraint existing rows already violate (the
-  migration fails partway).
+  migration fails partway). On PostgreSQL, add CHECK/FK constraints
+  `NOT VALID`, then `VALIDATE CONSTRAINT`, which doesn't block writes.
 - Dropping an index or constraint a query or feature still depends on.
 
 ### Reversibility & data safety

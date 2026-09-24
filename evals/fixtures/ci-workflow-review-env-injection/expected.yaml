@@ -1,0 +1,34 @@
+skill: ci-workflow-review
+plants:
+  # workflow_run job writes a downloaded artifact's contents into $GITHUB_ENV.
+  # A fork PR's CI run (which runs the PR's own ci.yml) controls that
+  # artifact, so a newline in pr-meta/branch adds arbitrary variables
+  # (LD_PRELOAD, BASH_ENV) for later steps, including the one holding the
+  # preview deploy token. Grounded in GitHub's workflow-commands reference
+  # (environment files take newline-separated entries) and zizmor's
+  # github-env audit. The CICD-SEC-4 classifier is not a keyword.
+  - file: .github/workflows/preview.yml
+    keywords:
+      - environment injection
+      - env injection
+      - variable injection
+      - environment file
+      - newline
+      - newlines
+      - LD_PRELOAD
+      - BASH_ENV
+      - arbitrary environment variables
+    min-severity: high
+  # actions/checkout (v4) without persist-credentials: false leaves the job
+  # token in .git/config for every later step; the workflow never pushes.
+  # Defense in depth, so no severity floor. Not "persists": an env-injection
+  # finding says the injected variable persists into later steps.
+  - file: .github/workflows/preview.yml
+    keywords:
+      - persist-credentials
+      - credentials on disk
+      - token on disk
+      - git config
+      - .git/config
+      - artipacked
+max-findings: 4

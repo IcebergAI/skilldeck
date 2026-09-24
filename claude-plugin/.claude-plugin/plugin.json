@@ -1,6 +1,6 @@
 {
   "name": "skilldeck",
-  "version": "0.3.1-dev.sha256-02f752a412d1",
+  "version": "0.3.1-dev.sha256-9e0c92ecee6a",
   "description": "Security and code-review skills for Claude Code: authentication-review, ci-workflow-review, code-smells, dependency-review, iac-review, llm-integration-review, logging, migration-review, resilience-review, security-review, test-review",
   "author": {
     "name": "Richard Hope",
