@@ -260,6 +260,54 @@ SAMPLE_REPORTS = {
             )
         ],
     ),
+    "frontend-security-review": (
+        [
+            _finding(
+                "high",
+                "V1 Encoding and Sanitization",
+                "src/components/ProfileCard.tsx:9",
+                "the member-written `bioHtml` goes into `dangerouslySetInnerHTML` "
+                "as is, so any member can put `<img src=x onerror=...>` in their "
+                "bio and run script as every member who views the profile "
+                "(stored XSS).",
+                "sanitize it with DOMPurify and a small tag allow-list before "
+                "rendering.",
+            ),
+            _finding(
+                "high",
+                "V3 Web Frontend Security",
+                "src/embed/helpWidget.ts:18",
+                "the `message` listener never checks `event.origin` or "
+                "`event.source`, so any page that opens or frames the app can post "
+                "a `navigate` message with a `javascript:` URL and run script in "
+                "the member's session.",
+                "ignore messages unless `event.origin` is the widget's origin and "
+                "`event.source` is its iframe's `contentWindow`.",
+            ),
+        ],
+        [
+            _finding(
+                "low",
+                "V14 Data Protection",
+                "src/components/ProfileCard.tsx:6",
+                "the avatar loads from whatever URL the member entered, so a "
+                "member can point it at a server they control and log each "
+                "viewer's IP address and, through the Referer header, which "
+                "profile they viewed.",
+                "re-host avatars on the app's own image domain.",
+            ),
+            _finding(
+                "medium",
+                "V3 Web Frontend Security",
+                "src/embed/helpWidget.ts:20",
+                "`window.location.assign(event.data.url)` follows whatever URL "
+                "the message names, including `javascript:` URLs and other hosts, "
+                "so the widget can send members off to a phishing page (open "
+                "redirect).",
+                "navigate only to same-origin paths.",
+            ),
+        ],
+    ),
     "iac-review": (
         [
             _finding(
@@ -399,6 +447,68 @@ SAMPLE_REPORTS = {
                 "blocking every insert queued behind it.",
                 "set a short `lock_timeout` and retry the migration.",
             )
+        ],
+    ),
+    "privacy-review": (
+        [
+            _finding(
+                "high",
+                "Data minimisation",
+                "app/directory.py:17",
+                "`jsonify(member)` returns the full row, so any signed-in member "
+                "can read another member's national ID number, date of birth, "
+                "home address, and phone.",
+                "return only what the directory shows (display name, bio, avatar).",
+            ),
+            _finding(
+                "high",
+                "Third-party sharing",
+                "app/site.py:28",
+                "every page view sends the member's email and the phone's "
+                "precise location to Segment without checking consent, unlike "
+                "the race-entry event.",
+                "gate the call on `has_consent(..., 'analytics')`, key it on "
+                "`analytics_id`, and drop the email and coordinates.",
+            ),
+        ],
+        [
+            # the directory's other defects name the same sensitive fields:
+            # they must not pass for the over-returned record
+            _finding(
+                "medium",
+                "V8 Authorization",
+                "app/directory.py:14",
+                "member IDs are sequential and the route has no rate limit, so "
+                "a signed-in member can walk every ID through `get_user`'s "
+                "`SELECT * FROM users WHERE id = ?` and scrape the club's "
+                "national ID numbers and home addresses.",
+                "rate-limit the route per member.",
+            ),
+            _finding(
+                "low",
+                "Data subject rights",
+                "app/directory.py:12",
+                "members are listed in the directory by default with no way to "
+                "hide themselves from other members.",
+                "add a setting that removes a member from lookups.",
+            ),
+            _finding(
+                "medium",
+                "Resilience",
+                "app/site.py:27",
+                "`get_user` returns `None` for an account deleted while its "
+                "session lives on, so `user['email']` raises and every request "
+                "from that browser fails with a 500.",
+                "return early when the user no longer exists.",
+            ),
+            _finding(
+                "low",
+                "Performance",
+                "app/site.py:27",
+                "the hook loads the member's row from the database on every "
+                "request, adding a round trip to each API call.",
+                "load it once per request and reuse it in the views.",
+            ),
         ],
     ),
     "resilience-review": (

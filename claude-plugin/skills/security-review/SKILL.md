@@ -34,9 +34,13 @@ Unless told otherwise, review to **L2**.
 5. Companion skills own some areas: `authentication-review` V6, V7, V9, and
    V10; `logging` V16; `ci-workflow-review` pipeline config; `dependency-review`
    package manifests; `iac-review` infrastructure config;
-   `llm-integration-review` LLM and agent integrations. If the owner runs in
-   the same review, leave its area to it; in a combined report, give each
-   defect once, under the owner's classifier.
+   `llm-integration-review` LLM and agent integrations;
+   `frontend-security-review` browser-side code and page headers (V3, and the
+   XSS sinks, browser storage, and client-bundle secrets there; CORS and CSRF
+   checks stay here); `privacy-review` personal-data handling (V14, and 15.3.1
+   when the over-returned fields are personal data). If the owner runs in the
+   same review, leave its area to it; in a combined report, give each defect
+   once, under the owner's classifier.
 
 ## What to look for (by ASVS category)
 

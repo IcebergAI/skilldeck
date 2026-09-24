@@ -35,6 +35,14 @@
       "version": "0.4.0"
     },
     {
+      "body_sha256": "sha256:94ab468a0837179a8fa7470be404884cfc475f05f8be2314bff6e409ecffc5e5",
+      "canonical_sha256": "sha256:c3c2bde57bbb2c220da2f44c775e1d2bb71956915572094acd0fcf8a1c411186",
+      "claude_rendered_sha256": "sha256:11d8bdbf3419cb7c4040bc02e19b502d5b64ba77e65aa2190e1cd51dc826d76a",
+      "meta_sha256": "sha256:6337828e91940730210bd7fea7690573610f9413d484d40a2596772c387b94fb",
+      "name": "frontend-security-review",
+      "version": "0.1.0"
+    },
+    {
       "body_sha256": "sha256:5503c0d7457247cfa17b81e7485e4ea2d8bdcc00c244f77e32d9df5ffc24b67b",
       "canonical_sha256": "sha256:d3b1a7aedb82eb14724253a447c1b67d9d3e8f5928f9b3555c7c17a9975bf529",
       "claude_rendered_sha256": "sha256:0e2496faefe746b3e1db50e470c509f1eaea8cb29c4e273f958088cdbd2589a7",
@@ -67,6 +75,14 @@
       "version": "0.4.0"
     },
     {
+      "body_sha256": "sha256:063c8b0a474515dce78dac4196f49e2a0a25912e0d794a65c64387a9033448f5",
+      "canonical_sha256": "sha256:e499fd8757af810839c4421ee5affbfbb43bb72d9ff542fb40849583fb3e81c8",
+      "claude_rendered_sha256": "sha256:1f9838f8b4d1e7def32d9eb7f3d2a6f6b8a9bdabbc1572870dae68bc843d341c",
+      "meta_sha256": "sha256:d934b1fa74fcce6b2825c6e4c7744a4a57d1fbcd7d15577f864a4c72941d029c",
+      "name": "privacy-review",
+      "version": "0.1.0"
+    },
+    {
       "body_sha256": "sha256:3a063e1f8e93f442e622c6da68eeb0196c33d16d1a7b114b85ae18d48e4222bc",
       "canonical_sha256": "sha256:2c1e1682efcb2e62296711cd1e0a143a33228600498d70a6fee5a20fdb0f5a9c",
       "claude_rendered_sha256": "sha256:8df93b79fceab51ff41d49996253e07c3b9c50c0ea132487e32a233dc5bc770d",
@@ -75,12 +91,12 @@
       "version": "0.3.0"
     },
     {
-      "body_sha256": "sha256:9ece959ebf18e604f8409f559153ad401dce432945b6d7dddece33ecfa7cdb5d",
-      "canonical_sha256": "sha256:c41ced78db00af3b3ddd2b511628ecee5254fca66ee84db66dd1d1d644577dc9",
-      "claude_rendered_sha256": "sha256:1058a488350795b3905910057ac77b8b4265a23792bf3441e9a07f9d8b2ab7c9",
-      "meta_sha256": "sha256:d9071165a64f4c4952be8e23cfa69c9846cced1f9131170eaf8e0ce8e7101a64",
+      "body_sha256": "sha256:b11892bc3f625828f52c4d90a33b68e1df581cea5bd0cf984d1e56f88efff7be",
+      "canonical_sha256": "sha256:f7fb3e489ba1dff5324dda4682166d60b745379401a26505e29efb8261f4f46c",
+      "claude_rendered_sha256": "sha256:5250d9e6f57d0830a16a2ead1b505b77d61e0a4edc82ce6e3b878a59f040e710",
+      "meta_sha256": "sha256:60a12438cf365b8d31db1c15a22bec93acf3b9067b791933405ff038a54ef447",
       "name": "security-review",
-      "version": "0.5.0"
+      "version": "0.5.1"
     },
     {
       "body_sha256": "sha256:49215350ea63412ec0c5cc0aad38d74546002014abaeb0327f60f65f8082a4af",

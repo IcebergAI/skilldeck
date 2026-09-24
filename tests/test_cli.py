@@ -24,7 +24,9 @@ def test_list_groups_by_category():
     # category headers are emitted, and each skill is listed under its header
     assert "security:" in result.output
     assert "review:" in result.output
-    assert result.output.index("security:") < result.output.index("security-review")
+    assert result.output.index("security:") < result.output.index(
+        "\n  security-review "
+    )
 
 
 def test_install_writes_file(tmp_path, monkeypatch):
@@ -392,6 +394,11 @@ def test_status_skips_unreadable_files_in_shared_dirs(tmp_path, monkeypatch, sym
     assert "orphan" not in result.output
 
 
+def _status_line(output, skill):
+    """The `skilldeck status` row for exactly ``skill``."""
+    return next(line for line in output.splitlines() if line.split()[:1] == [skill])
+
+
 def test_status_accepts_several_agents_with_headers(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     runner = CliRunner()
@@ -400,8 +407,9 @@ def test_status_accepts_several_agents_with_headers(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     claude_part, codex_part = result.output.split("\ncodex:\n")
     assert claude_part.startswith("claude:\n")
-    assert "not installed" in claude_part.split("security-review")[1].split("\n")[0]
-    assert "up to date" in codex_part.split("security-review")[1].split("\n")[0]
+    # match the whole skill name: frontend-security-review sorts before it
+    assert "not installed" in _status_line(claude_part, "security-review")
+    assert "up to date" in _status_line(codex_part, "security-review")
 
 
 def test_status_agent_all_covers_every_adapter(tmp_path, monkeypatch):

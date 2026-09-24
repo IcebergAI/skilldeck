@@ -498,6 +498,31 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `frontend-security-review` skill (0.1.0) (#105) — reviews browser-side
+  changes (React, Vue, Angular, Svelte, plain JavaScript and HTML templates,
+  CSP and header config): framework escape hatches (`dangerouslySetInnerHTML`,
+  `v-html`, `bypassSecurityTrust*`, `{@html}`) and DOM XSS sinks (`innerHTML`,
+  `insertAdjacentHTML`, `document.write`, string `eval`/`setTimeout`,
+  `javascript:` URLs), weakened CSP (`'unsafe-inline'`, `'unsafe-eval'`,
+  wildcard sources, missing `object-src`/`base-uri`, report-only), missing
+  `frame-ancestors`, `message` listeners without an origin check and
+  `postMessage` to `"*"`, sensitive data in web storage, secrets inlined into
+  client bundles through `NEXT_PUBLIC_`/`VITE_` variables, third-party scripts
+  without SRI (a mutable CDN URL is a mutable pin), and client-side open
+  redirects. Classified by OWASP ASVS 5.0 chapter (V3 Web Frontend Security,
+  with V1, V13 and V14), with patterns from the OWASP XSS, DOM-based XSS, CSP,
+  HTML5 Security, Clickjacking and Third-Party JavaScript cheat sheets and the
+  React, Vue, Angular, Svelte, Next.js, Vite and MDN docs and the React
+  changelog. Registered in `docs/finding-output.md` as the owner of
+  browser-side V3 (server-side CORS and CSRF checks stay with
+  `security-review`; cookies and session or OAuth tokens in browser storage
+  with `authentication-review`), of live credentials shipped in client code,
+  and of mutable pins in page `<script>`/`<link>` tags; `security-review`
+  (0.5.1) hands it browser-side code and page headers among its companion
+  skills. Ships with a planted eval fixture (a member-written bio rendered
+  through `dangerouslySetInnerHTML`, and a help-widget `message` listener that
+  navigates wherever any sender asks) and a clean one (the same change with
+  DOMPurify and a sender- and URL-checked listener).
 - `llm-integration-review` skill (0.1.0) (#105) — reviews changes that
   integrate LLMs or AI agents: prompt injection through untrusted context
   (retrieved documents, tickets, tool and MCP results), model output reaching
@@ -517,6 +542,30 @@ All notable changes to this project are documented here. The format is based on
   and a clean one (allow-listed tag suggestions a human applies, with an
   output-token cap). A citation test now rejects `LLMxx:2025` IDs, since the
   2026 edition renumbered the entries.
+- `privacy-review` skill (0.1.0) (#105) — reviews changes that handle
+  personal data: over-collection and over-broad responses (whole records or
+  `SELECT *` rows where a few fields suffice, precision beyond need, upload
+  metadata), personal data sent to analytics, ad, session-replay or
+  error-tracking tools without a consent check (including Sentry's
+  `send_default_pii` and `data_collection` defaults), fingerprinting and
+  pre-consent identifiers, new personal-data stores with no retention or
+  deletion path, soft deletes that leave PII readable, export and deletion
+  code that misses new tables, sensitive categories (health, precise
+  location, government IDs, biometrics) stored in plaintext, and PII in URLs,
+  shared caches, and browser storage. Grounded in OWASP ASVS 5.0 V14 (with
+  3.4.5 and 15.3.1), the OWASP Top 10 Privacy Risks, the OWASP User Privacy
+  Protection Cheat Sheet, the CNIL GDPR Developer Guide, and the W3C
+  fingerprinting guidance; it stays technical and gives no legal advice.
+  Registered in `docs/finding-output.md` as the owner of personal-data
+  handling (V14, and 15.3.1 when the over-returned fields are personal data)
+  instead of `security-review`; PII in logs stays with `logging` and PII in
+  prompts with `llm-integration-review`. `security-review`'s own companion
+  list does not name `privacy-review` yet. Ships with a planted eval
+  fixture (a member directory returning the whole user row, national ID
+  included, and a page-view hook sending email and phone coordinates to
+  Segment with no consent check) and a clean one (an explicit public-field
+  allow-list and a consent-gated hook keyed on a random analytics ID that
+  sends only the route template).
 - `skilldeck migrate --agent <agent>|all [--scope ...] [--force]` moves skills
   installed in an agent's old format (Codex custom prompts, Copilot prompt
   files, Cursor rules, Kiro steering files) to its `SKILL.md` folder: it

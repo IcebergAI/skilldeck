@@ -1,0 +1,59 @@
+# A React/TypeScript community app. Members' profiles are public to every
+# signed-in member, and the change starts rendering each member's bio as HTML
+# (converted from Markdown, with inline HTML passed through) and embeds a
+# vendor's help widget whose iframe can ask the app to navigate.
+skill: frontend-security-review
+plants:
+  # the member-written bio HTML goes straight into dangerouslySetInnerHTML, so
+  # any member can plant script that runs for everyone who views the profile
+  - file: src/components/ProfileCard.tsx
+    keywords:
+      - XSS
+      - cross-site scripting
+      - script injection
+      - HTML injection
+      - markup injection
+      - inject script
+      - injects script
+      - arbitrary script
+      - arbitrary HTML
+      - untrusted HTML
+      - raw HTML
+      - sanitize
+      - sanitized
+      - sanitizes
+      - sanitizing
+      - sanitizer
+      - sanitization
+      - unsanitized
+      - DOMPurify
+      - event handler
+      - onerror
+    # the rubric rates XSS that takes an account to plant high; one step below
+    min-severity: medium
+  # the message listener never checks who sent the message, so any page that
+  # opens or frames the app can make it navigate (to a javascript: URL, too);
+  # only terms for the missing sender check, not for the URL it navigates to,
+  # which is the file's other defect (so no bare "origin": a Fix saying
+  # "same-origin paths" must not satisfy this plant)
+  - file: src/embed/helpWidget.ts
+    keywords:
+      - event.origin
+      - origin check
+      - check the origin
+      - checks the origin
+      - checking the origin
+      - unchecked origin
+      - any origin
+      - untrusted origin
+      - sender
+      - senders
+      - any window
+      - any site
+      - any website
+      - any page
+      - any frame
+      - any domain
+    # message-borne XSS needs the victim on the attacker's page: high; one below
+    min-severity: medium
+max-findings: 4
