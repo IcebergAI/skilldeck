@@ -576,7 +576,13 @@ def run_agent(agent_cmd: str, prompt: str, repo: Path, timeout: int) -> AgentRun
     cmd = [part.replace("{prompt}", prompt) for part in shlex.split(agent_cmd)]
     try:
         result = subprocess.run(
-            cmd, cwd=repo, capture_output=True, text=True, timeout=timeout
+            cmd,
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
         )
     except FileNotFoundError:
         raise SystemExit(
