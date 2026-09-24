@@ -1,5 +1,7 @@
 skill: logging
 plants:
   - file: auth/session.py
+    lines: [14, 14]
     keywords: [secret, credential, sensitive]
+    min-severity: high
 max-findings: 4

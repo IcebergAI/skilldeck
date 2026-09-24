@@ -1,5 +1,7 @@
 skill: authentication-review
 plants:
   - file: app/sso.py
+    lines: [17, 46]
     keywords: [state, PKCE, CSRF]
+    min-severity: high
 max-findings: 6

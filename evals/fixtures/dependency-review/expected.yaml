@@ -1,5 +1,7 @@
 skill: dependency-review
 plants:
   - file: requirements.txt
-    keywords: [provenance, fork, git]
+    lines: [3, 3]
+    keywords: [provenance, fork, untrusted]
+    min-severity: high
 max-findings: 4

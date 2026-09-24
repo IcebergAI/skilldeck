@@ -1,5 +1,7 @@
 skill: test-review
 plants:
   - file: tests/test_discount.py
+    lines: [8, 9]
     keywords: [assertion, asserts]
+    min-severity: medium
 max-findings: 6

@@ -12,7 +12,8 @@ planted defect:
 
 For every fixture the runner builds the git repo in a temp dir, installs the
 skill for Claude at project scope, invokes the agent inside the repo, and
-scores the report: every plant must be mentioned (file + at least one keyword)
+scores the report: every plant must match a distinct finding (file, lines,
+severity and at least one keyword in the Issue description)
 and the finding count must stay under ``max_findings``.
 
 This calls a real agent and costs real money -- it is run manually (e.g.
@@ -52,16 +53,99 @@ DEFAULT_AGENT_CMD = "claude -p {prompt}"
 DEFAULT_PROMPT = (
     "Review the pending changes on the current branch (the diff against main) "
     "using the {skill} skill installed in .claude/skills. Output the findings "
-    "report exactly as the skill specifies."
+    "report exactly as the skill specifies. For this eval, every finding, "
+    "including dependency findings, must use a repository-relative file:line "
+    "or file:start-end location in its header."
 )
-# one finding bullet as the skills' Output sections specify: "- **[severity]"
-FINDING_RE = re.compile(r"^\s*-\s+\*\*\[", re.MULTILINE)
+SEVERITIES = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+BULLET_RE = re.compile(r"^(?:[-+*]|\d+[.)])\s+")
+HEADER_RE = re.compile(
+    r"^(?:[-+*]|\d+[.)])\s+\*\*\[(critical|high|medium|low)\] "
+    r".+?\*\*\s+[—–-]\s+`([^`]+):(\d+)(?:-(\d+))?`\s*$",
+    re.IGNORECASE,
+)
+BODY_RE = re.compile(
+    r"\s*\*\*Issue:\*\*\s*(.+?)\s+\*\*Fix:\*\*\s*(\S.*?)\s*",
+    re.DOTALL,
+)
 
 
 @dataclass(frozen=True)
 class Plant:
     file: str
     keywords: tuple[str, ...]
+    lines: tuple[int, int]
+    min_severity: str = "low"
+
+
+@dataclass(frozen=True)
+class Finding:
+    file: str
+    lines: tuple[int, int]
+    severity: str
+    issue: str
+
+
+class AgentError(RuntimeError):
+    """The agent did not complete successfully; its output must not be scored."""
+
+
+def keyword_matches(keyword: str, text: str) -> bool:
+    return (
+        re.search(r"(?<!\w)" + re.escape(keyword) + r"(?!\w)", text, re.I) is not None
+    )
+
+
+def parse_findings(report: str) -> tuple[list[Finding], list[str]]:
+    """Parse top-level findings, excluding fenced examples and unindented prose."""
+    blocks: list[list[str]] = []
+    block: list[str] | None = None
+    fence: tuple[str, int] | None = None
+    problems = []
+    for line in report.splitlines():
+        marker = re.match(r"^\s*(`{3,}|~{3,})", line)
+        if marker:
+            value = marker[1]
+            if fence is None:
+                fence = (value[0], len(value))
+            elif value[0] == fence[0] and len(value) >= fence[1]:
+                fence = None
+            continue
+        if fence:
+            continue
+        if line.startswith((" ", "\t")) and HEADER_RE.match(line.lstrip()):
+            problems.append("malformed finding: finding headers must be top-level")
+            block = None
+            continue
+        if BULLET_RE.match(line):
+            block = [line]
+            blocks.append(block)
+        elif block is not None and (line.startswith("  ") or not line.strip()):
+            block.append(line)
+        else:
+            block = None
+
+    findings = []
+    for number, lines in enumerate(blocks, 1):
+        header = HEADER_RE.fullmatch(lines[0])
+        body = BODY_RE.fullmatch("\n".join(lines[1:]))
+        if header is None or body is None:
+            problems.append(
+                f"malformed finding {number}: "
+                "expected severity, file:lines, Issue and Fix"
+            )
+            continue
+        severity, file, start, end = header.groups()
+        first, last = int(start), int(end or start)
+        if first < 1 or last < first:
+            problems.append(f"malformed finding {number}: invalid line range")
+            continue
+        findings.append(Finding(file, (first, last), severity.lower(), body[1]))
+    if not findings:
+        problems.append("no parsed findings")
+    if fence:
+        problems.append("unclosed code fence")
+    return findings, problems
 
 
 @dataclass(frozen=True)
@@ -78,7 +162,12 @@ def load_fixture(path: Path) -> Fixture:
         path=path,
         skill=expected["skill"],
         plants=tuple(
-            Plant(file=p["file"], keywords=tuple(p["keywords"]))
+            Plant(
+                file=p["file"],
+                keywords=tuple(p["keywords"]),
+                lines=tuple(p["lines"]),
+                min_severity=p.get("min-severity", "low"),
+            )
             for p in expected["plants"]
         ),
         max_findings=int(expected["max-findings"]),
@@ -127,26 +216,50 @@ def run_agent(agent_cmd: str, prompt: str, repo: Path, timeout: int) -> str:
             "--agent-cmd"
         ) from None
     except subprocess.TimeoutExpired:
-        return f"(agent timed out after {timeout}s)"
-    return result.stdout + result.stderr
+        raise AgentError(f"agent timed out after {timeout}s") from None
+    if result.returncode:
+        raise AgentError(
+            f"agent exited with status {result.returncode}: {result.stderr.strip()}"
+        )
+    return result.stdout
 
 
 def score(fixture: Fixture, report: str) -> tuple[list[str], bool]:
     """Return (problems, passed) for one fixture's report."""
-    problems = []
-    lowered = report.lower()
-    for plant in fixture.plants:
-        file_hit = Path(plant.file).name.lower() in lowered
-        keyword_hit = any(k.lower() in lowered for k in plant.keywords)
-        if not (file_hit and keyword_hit):
+    findings, problems = parse_findings(report)
+    # A report must provide a separate finding for each plant, even when two
+    # plants share a file. Augmenting paths avoid a greedy order dependency.
+    matched: dict[int, int] = {}
+
+    def assign(plant_index: int, seen: set[int]) -> bool:
+        plant = fixture.plants[plant_index]
+        for index, finding in enumerate(findings):
+            if index in seen:
+                continue
+            if not (
+                finding.file.removeprefix("./") == plant.file
+                and max(finding.lines[0], plant.lines[0])
+                <= min(finding.lines[1], plant.lines[1])
+                and SEVERITIES[finding.severity] >= SEVERITIES[plant.min_severity]
+                and any(keyword_matches(k, finding.issue) for k in plant.keywords)
+            ):
+                continue
+            seen.add(index)
+            if index not in matched or assign(matched[index], seen):
+                matched[index] = plant_index
+                return True
+        return False
+
+    for index, plant in enumerate(fixture.plants):
+        if not assign(index, set()):
             problems.append(
                 f"missed plant: {plant.file} "
-                f"(need the file and one of {list(plant.keywords)})"
+                f"lines {plant.lines}, severity >= {plant.min_severity} "
+                f"(need a distinct finding with one of {list(plant.keywords)} in Issue)"
             )
-    findings = len(FINDING_RE.findall(report))
-    if findings > fixture.max_findings:
+    if len(findings) > fixture.max_findings:
         problems.append(
-            f"too many findings: {findings} > max {fixture.max_findings} "
+            f"too many findings: {len(findings)} > max {fixture.max_findings} "
             "(false-positive pressure)"
         )
     return problems, not problems
@@ -183,11 +296,17 @@ def main() -> int:
     for fixture in fixtures:
         repo = prepare_repo(fixture, workdir)
         prompt = DEFAULT_PROMPT.format(skill=fixture.skill)
-        report = run_agent(args.agent_cmd, prompt, repo, args.timeout)
+        try:
+            report = run_agent(args.agent_cmd, prompt, repo, args.timeout)
+        except AgentError as error:
+            (repo / "agent-error.txt").write_text(str(error), encoding="utf-8")
+            print(f"ERROR {fixture.skill}: {error}")
+            failed += 1
+            continue
         (repo / "report.txt").write_text(report, encoding="utf-8")
         problems, passed = score(fixture, report)
         status = "PASS" if passed else "FAIL"
-        findings = len(FINDING_RE.findall(report))
+        findings = len(parse_findings(report)[0])
         print(f"{status}  {fixture.skill}  ({findings} findings)")
         for problem in problems:
             print(f"      {problem}")
