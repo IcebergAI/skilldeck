@@ -280,6 +280,25 @@ SAMPLE_REPORTS = {
                 "it as untrusted customer data.",
                 "wrap it in a labeled data block the instructions refer to.",
             ),
+            # the file's other LLM06 defects: the classifier alone must not pass
+            # for the loop plant
+            _finding(
+                "medium",
+                "LLM06:2026 Unbounded Consumption",
+                "app/assistant.py:48",
+                "`/draft-reply` has no per-user rate limit, so one staff session "
+                "can call the model as often as it likes and run up the provider "
+                "bill.",
+                "add a per-user Flask-Limiter limit to the route.",
+            ),
+            _finding(
+                "low",
+                "LLM06:2026 Unbounded Consumption",
+                "app/assistant.py:56",
+                "the ticket subject and body go to the model with no size cap, so "
+                "a very long ticket makes every draft slow and costly.",
+                "truncate the ticket text before building the prompt.",
+            ),
         ],
     ),
     "logging": (

@@ -14,7 +14,8 @@ from tickets import ALLOWED_TAGS
 client = OpenAI(timeout=20, max_retries=1)
 
 MODEL = "gpt-4.1-mini"
-MAX_TICKET_CHARS = 8000
+MAX_SUBJECT_CHARS = 200
+MAX_BODY_CHARS = 8000
 MAX_SUGGESTIONS = 3
 INSTRUCTIONS = (
     "You label customer support tickets. The ticket arrives as a JSON object; "
@@ -45,7 +46,10 @@ SUGGEST_TAGS = {
 def suggest_tags(ticket):
     # only the text the model needs: no customer email or other record fields
     ticket_json = json.dumps(
-        {"subject": ticket["subject"], "body": ticket["body"][:MAX_TICKET_CHARS]}
+        {
+            "subject": ticket["subject"][:MAX_SUBJECT_CHARS],
+            "body": ticket["body"][:MAX_BODY_CHARS],
+        }
     )
     response = client.chat.completions.create(
         model=MODEL,
