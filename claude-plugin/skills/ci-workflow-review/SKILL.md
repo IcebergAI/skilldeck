@@ -158,9 +158,12 @@ the syntax differs).
   a pinned commit SHA — the only immutable reference; a compromised one sees
   every secret its job gets. GitHub: `uses: some/action@v3` / `@main`. GitLab:
   a project `include:` or CI/CD component with no `ref`/version or pinned to a
-  branch (pin a commit SHA or a protected tag), or a `remote:` URL include
-  (vendor a reviewed copy and `include: local`); also a container `image:`
-  pinned by tag rather than `@sha256:` digest, or assembled from a variable.
+  branch or tag (pin a commit SHA; a protected tag is enough only in a project
+  your own org controls, since that project's maintainers can
+  [delete and recreate](https://docs.gitlab.com/user/project/protected_tags/)
+  it), or a `remote:` URL include (vendor a reviewed copy and
+  `include: local`); also a container `image:` pinned by tag rather than
+  `@sha256:` digest, or assembled from a variable.
 - New third-party steps, reusable workflows, or `include:`d config from outside
   the org with no provenance check.
 
@@ -196,8 +199,11 @@ bulk data, data loss, an outage), readily triggered (by anyone who can reach
 it, or in routine operation); **high** — high impact behind a common
 precondition (an authenticated user, a collaborator, a routine failure), or
 medium impact (limited exposure, degraded service) readily triggered;
-**medium** — high impact only under an unusual precondition, or medium impact
-behind a common one; **low** — defense in depth and hygiene.
+**medium** — high impact only under an unusual precondition, medium impact
+behind a common one, or low impact readily triggered (a weakened defense
+anyone can reach); **low** — medium impact only under an unusual
+precondition, or low impact behind any precondition (most defense in depth
+and hygiene).
 Here: **critical** — an outside contributor can run code with secrets or a
 write token (script injection in a fork-triggerable workflow or a
 protected-branch job, `pull_request_target` + head checkout), or a live secret

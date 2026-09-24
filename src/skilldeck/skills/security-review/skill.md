@@ -127,8 +127,11 @@ bulk data, data loss, an outage), readily triggered (by anyone who can reach
 it, or in routine operation); **high** — high impact behind a common
 precondition (an authenticated user, a collaborator, a routine failure), or
 medium impact (limited exposure, degraded service) readily triggered;
-**medium** — high impact only under an unusual precondition, or medium impact
-behind a common one; **low** — defense in depth and hygiene.
+**medium** — high impact only under an unusual precondition, medium impact
+behind a common one, or low impact readily triggered (a weakened defense
+anyone can reach); **low** — medium impact only under an unusual
+precondition, or low impact behind any precondition (most defense in depth
+and hygiene).
 Here, a live credential committed to the repository or written to logs others
 can read is always **critical**, and its Fix must also
 [revoke and rotate](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html)
@@ -150,7 +153,8 @@ survive, report the ones worth a human's time and summarize the rest in a line.
 
 Open the report with one line stating what was reviewed and the outcome, e.g.
 `Reviewed origin/main...HEAD (4 files): 2 findings, worst high.` If the diff
-touches nothing security-relevant (e.g. docs or comments only), say so and
-stop. If no security-relevant issues are found, say the change is clean
+touches nothing security-relevant (e.g. docs or comments only, once you have
+checked them for pasted credentials), say so and stop. If no
+security-relevant issues are found, say the change is clean
 explicitly rather than padding the report. Do not flag stylistic issues — that
 is the job of code review.

@@ -90,8 +90,12 @@ where behavior differs (AWS/GCP/Azure defaults are not the same).
 - Third-party images by tag (none means `:latest`) rather than `@sha256:`
   digest — tags can be moved, digests are fixed
   ([Kubernetes images](https://kubernetes.io/docs/concepts/containers/images/));
-  registry modules with no `version`, or git module sources with no `ref` or a
-  branch `ref` ([Terraform modules](https://developer.hashicorp.com/terraform/language/modules/syntax)).
+  third-party registry modules without an exact `version` (none, or a range —
+  the lock file records providers, not modules)
+  ([module version](https://developer.hashicorp.com/terraform/language/modules/syntax#version),
+  [lock file](https://developer.hashicorp.com/terraform/language/files/dependency-lock)),
+  or git module sources whose `ref` is not a commit SHA
+  ([selecting a revision](https://developer.hashicorp.com/terraform/language/modules/sources#selecting-a-revision)).
 
 ### Change safety
 
@@ -116,8 +120,11 @@ bulk data, data loss, an outage), readily triggered (by anyone who can reach
 it, or in routine operation); **high** — high impact behind a common
 precondition (an authenticated user, a collaborator, a routine failure), or
 medium impact (limited exposure, degraded service) readily triggered;
-**medium** — high impact only under an unusual precondition, or medium impact
-behind a common one; **low** — defense in depth and hygiene.
+**medium** — high impact only under an unusual precondition, medium impact
+behind a common one, or low impact readily triggered (a weakened defense
+anyone can reach); **low** — medium impact only under an unusual
+precondition, or low impact behind any precondition (most defense in depth
+and hygiene).
 Here: **critical** — internet-facing attack surface (a bucket or security group
 open to the world on a sensitive port), or a live credential committed in
 templates, variables, manifests, or image layers (the Fix must also

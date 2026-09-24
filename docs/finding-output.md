@@ -76,7 +76,8 @@ rests on.
 | **Low** | low | low | medium |
 
 (OWASP's matrix calls the low/low cell "Note"; skills fold it into `low` or
-drop it.) This is the one-paragraph form every skill inlines, word for word:
+drop it.) This is the one-paragraph form of the matrix, covering every cell,
+that every skill inlines word for word:
 
 > Rate `severity` on the shared severity rubric, impact × likelihood:
 > **critical** — high impact (code execution, auth bypass, stolen credentials or
@@ -84,8 +85,11 @@ drop it.) This is the one-paragraph form every skill inlines, word for word:
 > it, or in routine operation); **high** — high impact behind a common
 > precondition (an authenticated user, a collaborator, a routine failure), or
 > medium impact (limited exposure, degraded service) readily triggered;
-> **medium** — high impact only under an unusual precondition, or medium impact
-> behind a common one; **low** — defense in depth and hygiene.
+> **medium** — high impact only under an unusual precondition, medium impact
+> behind a common one, or low impact readily triggered (a weakened defense
+> anyone can reach); **low** — medium impact only under an unusual
+> precondition, or low impact behind any precondition (most defense in depth
+> and hygiene).
 
 After it, a skill keeps at most a short list of anchors for its own domain,
 consistent with the matrix — never one that contradicts it.
@@ -151,7 +155,7 @@ one area and own it:
 | Authentication depth — ASVS V6, V7, V9, V10 (passwords, MFA, sessions and cookies, tokens, OAuth/OIDC, SAML and LDAP sign-in) | `authentication-review` | `security-review` |
 | Security logging — ASVS V16 (events logged, secrets or PII in logs, log injection) | `logging` | `security-review`, `authentication-review` |
 | Pipeline config — workflows, CI includes, job images, runners, CI variables and tokens | `ci-workflow-review` | `security-review`, `dependency-review` |
-| Supply chain — package manifests and lockfiles (advisories, provenance, malicious or unmaintained packages) | `dependency-review` | `security-review` (V15.2) |
+| Supply chain — package manifests and lockfiles (advisories, provenance, malicious or unmaintained packages) | `dependency-review` | `security-review` (15.2.1, 15.2.4) |
 | Infrastructure config — Terraform/CloudFormation/Pulumi, Kubernetes/Helm, Dockerfiles, compose | `iac-review` | `security-review`, `dependency-review` |
 
 When the owning skill runs in the same review, the others leave its area to it.

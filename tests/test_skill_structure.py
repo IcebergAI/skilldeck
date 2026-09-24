@@ -88,15 +88,15 @@ def test_skill_has_required_structure(skill):
 
 @pytest.mark.parametrize("skill", SKILLS, ids=lambda s: s.name)
 def test_skill_scope_and_output_carry_the_shared_pieces(skill):
-    body = _normalize(skill.body)
+    scope = _normalize(_section(skill.body, "Scope"))
     output = _normalize(_section(skill.body, "Output"))
     missing = [
         f"{why} (/{pattern}/)"
-        for patterns, text in ((SCOPE_PATTERNS, body), (OUTPUT_PATTERNS, output))
+        for patterns, text in ((SCOPE_PATTERNS, scope), (OUTPUT_PATTERNS, output))
         for pattern, why in patterns.items()
         if not re.search(pattern, text)
     ]
-    if not re.search(NOTHING_IN_SCOPE, body, re.I):
+    if not re.search(NOTHING_IN_SCOPE, _normalize(skill.body), re.I):
         missing.append("a line for a change that touches nothing in scope")
     assert not missing, f"{skill.name}/skill.md is missing: " + "; ".join(missing)
 
@@ -111,16 +111,26 @@ def test_skill_inlines_the_shared_severity_rubric(skill):
 
 @pytest.mark.parametrize("skill", SKILLS, ids=lambda s: s.name)
 def test_skill_uses_three_dot_ranges_only(skill):
-    two_dot = re.findall(r"\S*(?<!\.)\.\.HEAD\b", skill.body)
+    # `main..feature`, `<base>..HEAD`; not `...`, and not a `../` path
+    two_dot = re.findall(r"[\w/<>-]*[\w>]\.\.(?!\.)[\w<][\w/<>-]*", skill.body)
     assert not two_dot, f"{skill.name}/skill.md uses a two-dot range: {two_dot}"
+
+
+def test_capped_skills_exist():
+    # A renamed skill would otherwise drop out of the parametrized test below.
+    assert not CAPPED_AT_HIGH - {s.name for s in SKILLS}
 
 
 @pytest.mark.parametrize(
     "skill", [s for s in SKILLS if s.name in CAPPED_AT_HIGH], ids=lambda s: s.name
 )
 def test_non_security_skills_never_rate_critical(skill):
-    assert "[critical]" not in skill.body and "worst critical" not in skill.body
-    assert re.search(r"top out at \*\*high\*\*", _normalize(skill.body))
+    # The inlined rubric defines critical; nothing else may use it.
+    rest = _normalize(skill.body).replace(_doc_rubric(), "")
+    assert not re.search(r"\bcritical\b", rest, re.I), (
+        f"{skill.name}/skill.md mentions critical outside the shared rubric"
+    )
+    assert re.search(r"top out at \*\*high\*\*", rest)
 
 
 def test_finding_output_doc_lists_every_skill():

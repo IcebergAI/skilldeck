@@ -108,16 +108,21 @@ bulk data, data loss, an outage), readily triggered (by anyone who can reach
 it, or in routine operation); **high** — high impact behind a common
 precondition (an authenticated user, a collaborator, a routine failure), or
 medium impact (limited exposure, degraded service) readily triggered;
-**medium** — high impact only under an unusual precondition, or medium impact
-behind a common one; **low** — defense in depth and hygiene.
-Here, **critical** is only for an outage or data loss that a routine
-dependency failure triggers (the system hangs or the failure cascades);
-**high** — duplicated side effects or resource exhaustion under failure, or
-data loss under a rarer failure; **medium** — degraded behavior confined to
-the failing path. The classifier is the resilience concern (e.g.
-`Missing timeout`, `Retry without backoff`, `Resource leak`,
-`Unbounded queue`, `No graceful degradation`). Order findings by severity,
-highest first, and keep one issue per finding. For example:
+**medium** — high impact only under an unusual precondition, medium impact
+behind a common one, or low impact readily triggered (a weakened defense
+anyone can reach); **low** — medium impact only under an unusual
+precondition, or low impact behind any precondition (most defense in depth
+and hygiene).
+Here, **critical** is only for an outage or data loss in routine operation,
+with no failure needed (a resource leaked on every request, queued work lost
+on every deploy); **high** — an outage or data loss that a routine dependency
+failure triggers (the caller hangs, resources run out, the failure cascades);
+**medium** — duplicated side effects under failure, data loss only under a
+rare failure, or degraded behavior confined to the failing path. The
+classifier is the resilience concern (e.g. `Missing timeout`,
+`Retry without backoff`, `Resource leak`, `Unbounded queue`,
+`No graceful degradation`). Order findings by severity, highest first, and
+keep one issue per finding. For example:
 
 - **[high] Missing timeout** — `services/enrich.py:33`
   **Issue:** `requests.get(url)` has no timeout, so a stalled enrichment service

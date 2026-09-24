@@ -83,14 +83,20 @@ bulk data, data loss, an outage), readily triggered (by anyone who can reach
 it, or in routine operation); **high** — high impact behind a common
 precondition (an authenticated user, a collaborator, a routine failure), or
 medium impact (limited exposure, degraded service) readily triggered;
-**medium** — high impact only under an unusual precondition, or medium impact
-behind a common one; **low** — defense in depth and hygiene.
+**medium** — high impact only under an unusual precondition, medium impact
+behind a common one, or low impact readily triggered (a weakened defense
+anyone can reach); **low** — medium impact only under an unusual
+precondition, or low impact behind any precondition (most defense in depth
+and hygiene).
 Here: **critical** — an advisory that is known-exploited or critical in the
 resolved version range, or a clear malicious-package signal; **high** — a
-high-severity advisory, or a serious provenance concern (fork or git source,
-newly introduced install scripts); **medium** — outdated or unmaintained
-packages, lockfile drift, or a mutable pin (classified `Mutable pin`). The
-classifier is the advisory ID (e.g. `CVE-2024-12345`, `GHSA-…`) or the
+high-severity advisory, or a serious provenance concern (a switch to a fork,
+a personal repo, or a non-canonical registry or index; newly introduced
+install scripts); **medium** — outdated or unmaintained packages, lockfile
+drift, or a mutable pin (classified `Mutable pin`). A provenance finding
+already covers its source's floating ref, so don't file a pin for it too; a
+git source from the usual owner that lacks a commit SHA is a `Mutable pin`.
+The classifier is the advisory ID (e.g. `CVE-2024-12345`, `GHSA-…`) or the
 supply-chain concern (e.g. `Typosquatting`); the location slot names the
 package and its version change instead of a `file:line`. Order findings by
 severity, highest first, and keep one issue per finding. For example:

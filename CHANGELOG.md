@@ -106,12 +106,13 @@ All notable changes to this project are documented here. The format is based on
   `logging`, `iac-review`, and `ci-workflow-review` alike, and its Fix must
   revoke and rotate it (OWASP Secrets Management Cheat Sheet). A mutable pin (a
   tag or branch instead of a SHA or digest, or an unlocked package range) is
-  medium everywhere, down from high for CI steps in privileged jobs. Each kind
-  of pin has one owner: `ci-workflow-review` for CI config (classified
-  `CICD-SEC-3 Dependency Chain Abuse`), `iac-review` for IaC and Kubernetes
-  images and Terraform modules (it gains a Mutable pins checklist citing the
-  Kubernetes and Terraform docs), and `dependency-review` for package
-  manifests; the others defer to the owner.
+  medium everywhere, down from high for CI steps in privileged jobs; a GitLab
+  include or component pinned to a tag in a project outside your org now
+  counts as one. Each kind of pin has one owner: `ci-workflow-review` for CI
+  config (classified `CICD-SEC-3 Dependency Chain Abuse`), `iac-review` for
+  IaC and Kubernetes images and Terraform modules (it gains a Mutable pins
+  checklist citing the Kubernetes and Terraform docs), and `dependency-review`
+  for package manifests; the others defer to the owner.
 - A new "Which skill owns what" section in `docs/finding-output.md` names
   the owner of each overlapping area: `authentication-review` for ASVS V6,
   V7, V9, and V10, `logging` for V16, and `ci-workflow-review`,
