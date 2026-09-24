@@ -20,3 +20,13 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+  # The CLI tools the workflows run with uvx (zizmor, pypi-attestations). Scoped
+  # to .github/tools so it never scans the eval fixtures. Syft needs no entry:
+  # anchore/sbom-action pins its own Syft release, so Dependabot's
+  # github-actions updates to that SHA-pinned action carry it.
+  - package-ecosystem: pip
+    directory: /.github/tools
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
