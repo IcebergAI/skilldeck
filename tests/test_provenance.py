@@ -170,7 +170,9 @@ def test_verify_bundled_skills_reports_every_kind_of_drift(installed_skills):
 
 def test_verify_bundled_skills_uses_newline_normalised_identity(installed_skills):
     meta = installed_skills / "logging" / "meta.yaml"
-    meta.write_bytes(meta.read_bytes().replace(b"\n", b"\r\n"))
+    # normalise first: a Windows checkout may already use CRLF
+    lf = meta.read_bytes().replace(b"\r\n", b"\n")
+    meta.write_bytes(lf.replace(b"\n", b"\r\n"))
     assert verify_bundled_skills() == []
 
 

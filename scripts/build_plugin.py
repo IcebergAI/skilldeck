@@ -179,9 +179,9 @@ def stale(files: dict[Path, str], root: Path = ROOT) -> list[str]:
     for rel, content in files.items():
         on_disk = root / rel
         if not on_disk.is_file():
-            problems.append(f"missing: {rel}")
+            problems.append(f"missing: {rel.as_posix()}")
         elif on_disk.read_text(encoding="utf-8") != content:
-            problems.append(f"outdated: {rel}")
+            problems.append(f"outdated: {rel.as_posix()}")
     plugin_dir = root / PLUGIN_DIR
     if plugin_dir.is_dir():
         expected = {root / rel for rel in files if rel.is_relative_to(PLUGIN_DIR)}
@@ -191,7 +191,7 @@ def stale(files: dict[Path, str], root: Path = ROOT) -> list[str]:
             if path.is_file() or path.is_symlink()
         }
         for path in sorted(actual - expected):
-            problems.append(f"unexpected: {path.relative_to(root)}")
+            problems.append(f"unexpected: {path.relative_to(root).as_posix()}")
     return problems
 
 
