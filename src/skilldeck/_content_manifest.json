@@ -91,9 +91,9 @@
       "version": "0.3.0"
     },
     {
-      "body_sha256": "sha256:3b406def04876bd8c23cdca58cf7d9c5165d1ea9a89a591b0aa8bf7b384124de",
-      "canonical_sha256": "sha256:5dc16651e05cae1449cf37bc956614269402c680cb35cafbc49a615121a59786",
-      "claude_rendered_sha256": "sha256:dcff1e4e2ebd7e18734f8370b4e294a391e58d06ce13383afb5523a7c2b4fa30",
+      "body_sha256": "sha256:b11892bc3f625828f52c4d90a33b68e1df581cea5bd0cf984d1e56f88efff7be",
+      "canonical_sha256": "sha256:f7fb3e489ba1dff5324dda4682166d60b745379401a26505e29efb8261f4f46c",
+      "claude_rendered_sha256": "sha256:5250d9e6f57d0830a16a2ead1b505b77d61e0a4edc82ce6e3b878a59f040e710",
       "meta_sha256": "sha256:60a12438cf365b8d31db1c15a22bec93acf3b9067b791933405ff038a54ef447",
       "name": "security-review",
       "version": "0.5.1"

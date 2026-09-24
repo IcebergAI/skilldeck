@@ -31,9 +31,10 @@ Unless told otherwise, review to **L2**.
    `llm-integration-review` LLM and agent integrations;
    `frontend-security-review` browser-side code and page headers (V3, and the
    XSS sinks, browser storage, and client-bundle secrets there; CORS and CSRF
-   checks stay here). If the owner runs in
-   the same review, leave its area to it; in a combined report, give each
-   defect once, under the owner's classifier.
+   checks stay here); `privacy-review` personal-data handling (V14, and 15.3.1
+   when the over-returned fields are personal data). If the owner runs in the
+   same review, leave its area to it; in a combined report, give each defect
+   once, under the owner's classifier.
 
 ## What to look for (by ASVS category)
 
