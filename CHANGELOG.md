@@ -400,6 +400,25 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `llm-integration-review` skill (0.1.0) (#105) — reviews changes that
+  integrate LLMs or AI agents: prompt injection through untrusted context
+  (retrieved documents, tickets, tool and MCP results), model output reaching
+  a shell, SQL, `eval`, HTML, file paths or fetched URLs, excessive agency
+  (open-ended or over-privileged tools, no human approval before side
+  effects), secrets in prompts and hidden context, prompts and PII in logs,
+  per-tenant scoping of RAG retrieval, MCP configuration (unvetted servers,
+  tool poisoning, token passthrough, confused deputy, wildcard scopes, local
+  server launch), model supply chain (mutable model references,
+  `trust_remote_code`, pickle loading), and unbounded consumption (no token,
+  step or cost limits). Classified against the OWASP Top 10 for LLM
+  Applications 2026 (`LLM01:2026`–`LLM10:2026`), with patterns from the MCP
+  Security Best Practices and tools specification (2026-07-28) and Hugging
+  Face's custom-model loading guidance. Ships with a planted eval fixture (a
+  support-bot endpoint where the customer-written ticket steers a shell tool
+  with no allow-list or confirmation, inside an uncapped tool-calling loop)
+  and a clean one (allow-listed tag suggestions a human applies, with an
+  output-token cap). A citation test now rejects `LLMxx:2025` IDs, since the
+  2026 edition renumbered the entries.
 - `skilldeck migrate --agent <agent>|all [--scope ...] [--force]` moves skills
   installed in an agent's old format (Codex custom prompts, Copilot prompt
   files, Cursor rules, Kiro steering files) to its `SKILL.md` folder: it
