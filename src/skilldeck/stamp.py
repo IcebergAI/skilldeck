@@ -37,10 +37,18 @@ def _digest(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
+def _terminated(content: str) -> str:
+    return content if content.endswith("\n") else content + "\n"
+
+
+def content_hash(content: str) -> str:
+    """The ``hash=`` value :func:`stamp` records for ``content``."""
+    return _digest(_terminated(content))
+
+
 def stamp(content: str, name: str, version: str) -> str:
     """Append a stamp comment to ``content`` (newline-terminating it first)."""
-    if not content.endswith("\n"):
-        content += "\n"
+    content = _terminated(content)
     digest = _digest(content)
     return f"{content}<!-- skilldeck name={name} version={version} hash={digest} -->\n"
 

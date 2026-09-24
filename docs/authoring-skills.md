@@ -24,9 +24,11 @@ supported-agents:         # non-empty list; adapters skip skills they aren't in
   - kiro
 ```
 
-All five fields are required (a sixth, `deprecated`, is optional: see
-[Deprecating a skill](#deprecating-a-skill)), and the loader (`skilldeck.registry`) rejects a
-`meta.yaml` that breaks any of these rules with an error naming the field:
+All five fields are required, and the loader (`skilldeck.registry`) rejects a
+`meta.yaml` that breaks any of these rules with an error naming the field. A
+sixth field, `deprecated`, is optional (see
+[Deprecating a skill](#deprecating-a-skill)); any other key is an error, so a
+misspelt field fails loudly instead of being ignored.
 
 | Field | Rule |
 |-------|------|
@@ -69,10 +71,13 @@ Leave `deprecated` out for a skill that is not deprecated; `deprecated: false`
 or `null` is an error rather than a synonym. The loader also rejects an
 unknown key, a `since` that is not a `MAJOR.MINOR.PATCH` string or is later
 than the skill's `version`, a `reason` that is empty or spans lines (or runs
-past 1024 characters), and a `replacement` that is the skill itself, is not a
-bundled skill, or is deprecated too. `skilldeck list` and `skilldeck catalog`
-mark deprecated skills, and `skilldeck catalog --json` reports the record to
-tools (see [the skill catalog](catalog.md)).
+past 1024 characters; a folded `reason: >` block is fine), and a
+`replacement` that is the skill itself, is not a bundled skill, is deprecated
+too, or lacks one of the deprecated skill's `supported-agents` (its users on
+that agent would have nothing to move to). `skilldeck list` and
+`skilldeck catalog` mark deprecated skills, `install` and `update` warn when
+they write one, and `skilldeck catalog --json` reports the record to tools
+(see [the skill catalog](catalog.md)).
 
 ## `skill.md`
 

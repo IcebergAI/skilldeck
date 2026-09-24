@@ -5,7 +5,8 @@ product contract: ``CATALOG_SCHEMA_VERSION`` and the JSON Schema shipped next
 to this module (``catalog.schema.json``) describe it, and docs/catalog.md sets
 the rules for changing it. Every skill's ``canonical_sha256`` is recomputed
 from the skill files and must equal the packaged content manifest's record,
-the digest ``skilldeck provenance --verify`` checks.
+the digest ``skilldeck provenance --verify`` checks; ``rendered_sha256`` gives,
+per native agent, the ``hash=`` an install stamp records for that agent's file.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from collections.abc import Collection, Iterable
 from importlib.resources import files
 from typing import TypedDict
 
+from .adapters import ADAPTERS
 from .provenance import (
     REPOSITORY_URL,
     ContentManifest,
@@ -23,6 +25,7 @@ from .provenance import (
     load_content_manifest,
 )
 from .registry import Skill
+from .stamp import content_hash
 
 # Bump only for a breaking change; see docs/catalog.md.
 CATALOG_SCHEMA_VERSION = 1
@@ -49,6 +52,7 @@ class CatalogSkill(TypedDict):
     description: str
     supported_agents: list[str]
     canonical_sha256: str
+    rendered_sha256: dict[str, str]
     source: CatalogSource
     deprecated: CatalogDeprecation | None
 
@@ -82,6 +86,11 @@ def _entry(skill: Skill, digest: str) -> CatalogSkill:
         "description": skill.description,
         "supported_agents": sorted(skill.supported_agents),
         "canonical_sha256": digest,
+        "rendered_sha256": {
+            name: f"sha256:{content_hash(adapter.render(skill))}"
+            for name, adapter in sorted(ADAPTERS.items())
+            if adapter.supports(skill)
+        },
         "source": {
             "repository": REPOSITORY_URL,
             "path": f"{SKILLS_SOURCE_PATH}/{skill.name}",

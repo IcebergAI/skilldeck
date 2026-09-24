@@ -26,6 +26,9 @@ import yaml
 DEFAULT_SKILLS_DIR = Path(__file__).resolve().parent / "skills"
 
 REQUIRED_FIELDS = ("name", "description", "category", "version", "supported-agents")
+# Every key meta.yaml may carry; anything else (say, a misspelt ``depreciated``)
+# is an error rather than silently ignored.
+ALLOWED_FIELDS = (*REQUIRED_FIELDS, "deprecated")
 
 # ``name`` and ``description`` limits follow the Agent Skills specification
 # (https://agentskills.io/specification), the ``SKILL.md`` format the Claude
@@ -95,6 +98,12 @@ def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> 
     missing = [f for f in REQUIRED_FIELDS if f not in meta]
     if missing:
         raise SkillError(f"{skill_dir}: meta.yaml missing fields: {', '.join(missing)}")
+    unknown = sorted(str(key) for key in meta if key not in ALLOWED_FIELDS)
+    if unknown:
+        raise SkillError(
+            f"{skill_dir}: meta.yaml has unknown field(s): {', '.join(unknown)}; "
+            f"the fields are {', '.join(ALLOWED_FIELDS)}"
+        )
 
     name = _require_str(skill_dir, meta, "name")
     if len(name) > MAX_NAME_LENGTH or not NAME_RE.fullmatch(name):
@@ -114,7 +123,10 @@ def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> 
     # double-quoted escapes such as "\u2028" or "\x85" also break the one-line
     # ``skilldeck list`` output.
     if description.splitlines() != [description]:
-        raise SkillError(f"{skill_dir}: meta.yaml description must be a single line")
+        raise SkillError(
+            f"{skill_dir}: meta.yaml description must be a single line (a folded "
+            "block needs >- rather than >, which keeps a final line break)"
+        )
     if len(description) > MAX_DESCRIPTION_LENGTH:
         raise SkillError(
             f"{skill_dir}: meta.yaml description is {len(description)} characters; "
@@ -234,6 +246,11 @@ def _load_deprecation(
         )
 
     reason = raw["reason"]
+    if isinstance(reason, str):
+        # A folded ``reason: >`` block keeps one final line break. Dropping
+        # trailing line breaks accepts it without changing any other value:
+        # the single-line check below rejects every value that has one.
+        reason = reason.rstrip("\r\n")
     if not isinstance(reason, str) or not reason.strip():
         raise SkillError(
             f"{skill_dir}: meta.yaml deprecated.reason must be a non-empty string"
@@ -276,10 +293,12 @@ def discover_skills(
 
 
 def _check_replacements(skills: list[Skill]) -> None:
-    """Fail unless every deprecated skill's replacement is a current skill.
+    """Fail unless every deprecated skill's replacement is a current skill
+    that supports every agent the deprecated one does.
 
-    A replacement that is missing, or deprecated itself, would send users to
-    a skill they cannot install or should not adopt.
+    A replacement that is missing, deprecated itself, or missing one of those
+    agents would send users to a skill they cannot install or should not
+    adopt.
     """
     by_name = {skill.name: skill for skill in skills}
     for skill in skills:
@@ -297,4 +316,16 @@ def _check_replacements(skills: list[Skill]) -> None:
                 f"{skill.path}: meta.yaml deprecated.replacement "
                 f"{replacement.name!r} is itself deprecated; name the skill "
                 "that replaces it instead"
+            )
+        lacking = [
+            agent
+            for agent in skill.supported_agents
+            if agent not in replacement.supported_agents
+        ]
+        if lacking:
+            raise SkillError(
+                f"{skill.path}: meta.yaml deprecated.replacement "
+                f"{replacement.name!r} does not support {', '.join(lacking)}, "
+                f"which {skill.name} supports; its users there would have no "
+                "replacement to install"
             )

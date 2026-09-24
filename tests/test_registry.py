@@ -368,3 +368,73 @@ def test_deprecated_replacement_must_not_be_deprecated(tmp_path):
 
 def test_no_bundled_skill_is_deprecated():
     assert [s.name for s in discover_skills() if s.deprecated is not None] == []
+
+
+def test_folded_deprecated_reason_is_accepted(tmp_path):
+    # a folded ``>`` block keeps one final line break; it isn't a second line
+    skill_dir = _write_skill(tmp_path, "demo")
+    _deprecate(
+        skill_dir,
+        """
+        deprecated:
+          since: 0.1.0
+          reason: >
+            Superseded by a broader
+            skill.
+        """,
+    )
+    deprecated = load_skill(skill_dir).deprecated
+    assert deprecated is not None
+    assert deprecated.reason == "Superseded by a broader skill."
+
+
+def test_literal_multiline_deprecated_reason_is_rejected(tmp_path):
+    skill_dir = _write_skill(tmp_path, "demo")
+    _deprecate(skill_dir, "deprecated:\n  since: 0.1.0\n  reason: |\n    a\n    b\n")
+    with pytest.raises(SkillError, match="reason must be a single line"):
+        load_skill(skill_dir)
+
+
+def test_folded_description_error_names_the_fix(tmp_path):
+    skill_dir = _write_skill(tmp_path, "demo")
+    meta = skill_dir / "meta.yaml"
+    meta.write_text(
+        meta.read_text(encoding="utf-8").replace(
+            "description: a test skill", "description: >\n  a test skill"
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(SkillError, match="single line .*>- rather than >"):
+        load_skill(skill_dir)
+
+
+def test_deprecated_replacement_must_support_the_same_agents(tmp_path):
+    _deprecate(
+        _write_skill(tmp_path, "old", agents="[claude, codex, kiro]"),
+        "deprecated: {since: 0.1.0, reason: x, replacement: new}",
+    )
+    _write_skill(tmp_path, "new", agents="[claude]")
+    with pytest.raises(
+        SkillError, match="'new' does not support codex, kiro, which old supports"
+    ):
+        discover_skills(tmp_path)
+
+
+def test_deprecated_replacement_may_support_more_agents(tmp_path):
+    _deprecate(
+        _write_skill(tmp_path, "old", agents="[kiro]"),
+        "deprecated: {since: 0.1.0, reason: x, replacement: new}",
+    )
+    _write_skill(tmp_path, "new", agents="[claude, kiro]")
+    assert [s.name for s in discover_skills(tmp_path)] == ["new", "old"]
+
+
+def test_unknown_meta_field_rejected(tmp_path):
+    skill_dir = _write_skill(tmp_path, "demo")
+    _deprecate(skill_dir, "depreciated: {since: 0.1.0, reason: x}\nauthor: me")
+    with pytest.raises(
+        SkillError,
+        match="unknown field\\(s\\): author, depreciated; the fields are name, "
+        "description, category, version, supported-agents, deprecated",
+    ):
+        load_skill(skill_dir)

@@ -8,8 +8,14 @@ import textwrap
 import pytest
 from click.testing import CliRunner
 
-from skilldeck import __version__, catalog, registry
-from skilldeck.catalog import CATALOG_SCHEMA_VERSION, catalog_schema_text
+from skilldeck import __version__, catalog, provenance, registry
+from skilldeck.adapters import ADAPTERS
+from skilldeck.catalog import (
+    CATALOG_SCHEMA_VERSION,
+    CatalogError,
+    build_catalog,
+    catalog_schema_text,
+)
 from skilldeck.cli import cli
 from skilldeck.provenance import (
     canonical_json,
@@ -17,6 +23,7 @@ from skilldeck.provenance import (
     load_content_manifest,
 )
 from skilldeck.registry import DEFAULT_SKILLS_DIR, discover_skills
+from skilldeck.targets import Scope
 
 # --- a minimal JSON Schema validator ------------------------------------------
 # Only the keywords the committed schema uses, so the tests need no new
@@ -32,6 +39,8 @@ SUPPORTED_KEYWORDS = {
     "const",
     "required",
     "properties",
+    "additionalProperties",
+    "oneOf",
     "items",
     "pattern",
     "minLength",
@@ -57,9 +66,9 @@ def schema_errors(instance, schema=None, *, exact=False):
     """Every way ``instance`` breaks ``schema``; with ``exact``, also any
     object property the schema does not describe."""
     root = schema or _schema()
-    errors: list[str] = []
 
-    def check(value, node, path):
+    def check(value, node, path, exact):
+        errors: list[str] = []
         if "$ref" in node:
             # the schema's $ref siblings are only annotations, so merging the
             # target in is exact here (and lets ``exact`` see its properties)
@@ -68,12 +77,18 @@ def schema_errors(instance, schema=None, *, exact=False):
         if "type" in node:
             types = node["type"] if isinstance(node["type"], list) else [node["type"]]
             if not any(_TYPES[t](value) for t in types):
-                errors.append(f"{path}: {value!r} is not of type {types}")
-                return
+                return [f"{path}: {value!r} is not of type {types}"]
         if "const" in node and (
             value != node["const"] or type(value) is not type(node["const"])
         ):
             errors.append(f"{path}: {value!r} is not {node['const']!r}")
+        if "oneOf" in node:
+            # branches only constrain; ``exact`` is the enclosing node's job
+            matches = [
+                not check(value, branch, path, False) for branch in node["oneOf"]
+            ]
+            if matches.count(True) != 1:
+                errors.append(f"{path}: matches {matches.count(True)} of oneOf")
         if isinstance(value, str):
             if len(value) < node.get("minLength", 0):
                 errors.append(f"{path}: too short")
@@ -90,7 +105,7 @@ def schema_errors(instance, schema=None, *, exact=False):
                 errors.append(f"{path}: items are not unique")
             if "items" in node:
                 for index, item in enumerate(value):
-                    check(item, node["items"], f"{path}[{index}]")
+                    errors += check(item, node["items"], f"{path}[{index}]", exact)
         if isinstance(value, dict):
             for key in node.get("required", []):
                 if key not in value:
@@ -98,21 +113,31 @@ def schema_errors(instance, schema=None, *, exact=False):
             properties = node.get("properties", {})
             for key, item in value.items():
                 if key in properties:
-                    check(item, properties[key], f"{path}.{key}")
+                    errors += check(item, properties[key], f"{path}.{key}", exact)
+                elif "additionalProperties" in node:
+                    extra = node["additionalProperties"]
+                    errors += check(item, extra, f"{path}.{key}", exact)
                 elif exact:
                     errors.append(f"{path}: undocumented property {key}")
+        return errors
 
-    check(instance, root, "$")
-    return errors
+    return check(instance, root, "$", exact)
 
 
-def _schema_nodes(node):
+def _schema_nodes(node, *, branches=True):
+    """``node`` and every schema below it; ``branches``: including oneOf's."""
     yield node
-    for key in ("properties", "$defs"):
-        for child in node.get(key, {}).values():
-            yield from _schema_nodes(child)
-    if "items" in node:
-        yield from _schema_nodes(node["items"])
+    children = [
+        *node.get("properties", {}).values(),
+        *node.get("$defs", {}).values(),
+    ]
+    for key in ("items", "additionalProperties"):
+        if isinstance(node.get(key), dict):
+            children.append(node[key])
+    if branches:
+        children += node.get("oneOf", [])
+    for child in children:
+        yield from _schema_nodes(child, branches=branches)
 
 
 def test_schema_uses_only_supported_keywords():
@@ -125,7 +150,8 @@ def test_schema_uses_only_supported_keywords():
 def test_schema_requires_every_property_it_describes():
     # additive fields may be optional to consumers, but skilldeck always
     # emits every field (null when empty), so the schema requires them all
-    for node in _schema_nodes(_schema()):
+    # (oneOf branches only add constraints to properties required above them)
+    for node in _schema_nodes(_schema(), branches=False):
         if "properties" in node:
             assert set(node["required"]) == set(node["properties"])
 
@@ -137,7 +163,7 @@ def test_schema_version_matches_the_code():
 
 
 def test_validator_rejects_malformed_catalogs():
-    good = json.loads(_invoke("catalog", "--json").output)
+    good = json.loads(_invoke("catalog", "--json").stdout)
     assert schema_errors(good, exact=True) == []
 
     def broken(change):
@@ -159,6 +185,18 @@ def test_validator_rejects_malformed_catalogs():
             deprecated={"since": "0.1.0", "replacement": "Bad", "reason": "x"}
         )
     )
+    assert broken(
+        lambda d: d["skills"][0]["rendered_sha256"].update(claude="sha256:abc")
+    )
+    # a tag without its commit, or a commit without its tag
+    commit = "0" * 40
+    assert broken(lambda d: d["distribution"].update(source_ref="refs/tags/v1.0.0"))
+    assert broken(lambda d: d["distribution"].update(source_commit=commit))
+    assert not broken(
+        lambda d: d["distribution"].update(
+            source_ref="refs/tags/v1.0.0", source_commit=commit
+        )
+    )
     # consumers must ignore unknown properties, so the schema allows them
     assert not broken(lambda d: d["skills"][0].update(added_later=1))
 
@@ -173,16 +211,24 @@ def _invoke(*args):
 
 
 def test_catalog_json_is_deterministic_canonical_json():
-    first = _invoke("catalog", "--json").output
-    second = _invoke("catalog", "--json").output
+    first = _invoke("catalog", "--json").stdout_bytes
+    second = _invoke("catalog", "--json").stdout_bytes
     assert first == second
-    # sorted keys, fixed indentation, ASCII only, one final newline
-    assert first == canonical_json(json.loads(first))
+    # sorted keys, fixed indentation, ASCII only, one final newline, and
+    # written as bytes: no CRLF even on Windows
+    assert first == canonical_json(json.loads(first)).encode("utf-8")
     assert first.isascii()
+    assert b"\r" not in first
+
+
+def test_provenance_json_is_written_as_the_same_canonical_bytes():
+    out = _invoke("provenance", "--json").stdout_bytes
+    assert out == canonical_json(json.loads(out)).encode("utf-8")
+    assert b"\r" not in out
 
 
 def test_catalog_lists_every_bundled_skill_exactly_once_sorted():
-    data = json.loads(_invoke("catalog", "--json").output)
+    data = json.loads(_invoke("catalog", "--json").stdout)
     assert data["schema_version"] == CATALOG_SCHEMA_VERSION
     names = [skill["name"] for skill in data["skills"]]
     assert names == sorted(skill.name for skill in discover_skills())
@@ -190,7 +236,7 @@ def test_catalog_lists_every_bundled_skill_exactly_once_sorted():
 
 
 def test_catalog_mirrors_canonical_metadata():
-    data = json.loads(_invoke("catalog", "--json").output)
+    data = json.loads(_invoke("catalog", "--json").stdout)
     by_name = {skill.name: skill for skill in discover_skills()}
     for entry in data["skills"]:
         skill = by_name[entry["name"]]
@@ -206,20 +252,40 @@ def test_catalog_mirrors_canonical_metadata():
 
 
 def test_catalog_digests_are_the_ones_provenance_verifies():
-    data = json.loads(_invoke("catalog", "--json").output)
+    data = json.loads(_invoke("catalog", "--json").stdout)
     recorded = {
         record["name"]: record["canonical_sha256"]
         for record in load_content_manifest()["skills"]
     }
-    provenance = json.loads(_invoke("provenance", "--verify", "--json").output)
+    provenance = json.loads(_invoke("provenance", "--verify", "--json").stdout)
     verified = {s["name"]: s["canonical_sha256"] for s in provenance["skills"]}
     digests = {s["name"]: s["canonical_sha256"] for s in data["skills"]}
     assert digests == recorded == verified
     assert data["distribution"] == provenance["distribution"]
 
 
+def test_rendered_digests_match_install_stamps(tmp_path, monkeypatch):
+    # what a stamp's hash= records, for every native agent, is in the catalog
+    monkeypatch.chdir(tmp_path)
+    _invoke("install", "--all", "--agent", "all")
+    data = json.loads(_invoke("catalog", "--json").stdout)
+    by_name = {skill.name: skill for skill in discover_skills()}
+    compared = 0
+    for entry in data["skills"]:
+        skill = by_name[entry["name"]]
+        assert sorted(entry["rendered_sha256"]) == entry["supported_agents"]
+        for agent, digest in entry["rendered_sha256"].items():
+            installed = ADAPTERS[agent].destination(skill, Scope.PROJECT)
+            text = installed.read_text(encoding="utf-8")
+            recorded = re.search(r" hash=([0-9a-f]{64}) -->\n\Z", text)
+            assert recorded, installed
+            assert digest == f"sha256:{recorded.group(1)}"
+            compared += 1
+    assert compared == sum(len(s.supported_agents) for s in by_name.values())
+
+
 def test_catalog_output_validates_against_the_schema():
-    data = json.loads(_invoke("catalog", "--json").output)
+    data = json.loads(_invoke("catalog", "--json").stdout)
     assert schema_errors(data, exact=True) == []
 
 
@@ -241,7 +307,7 @@ def test_schema_option_takes_no_other_options():
 
 
 def _names(*args):
-    data = json.loads(_invoke("catalog", "--json", *args).output)
+    data = json.loads(_invoke("catalog", "--json", *args).stdout)
     assert schema_errors(data, exact=True) == []
     return [skill["name"] for skill in data["skills"]]
 
@@ -257,6 +323,16 @@ def test_category_filter():
     ]
     # an unknown category is an empty, still valid, catalog
     assert _names("--category", "no-such-category") == []
+
+
+def test_unknown_category_warns_with_the_known_ones():
+    result = _invoke("catalog", "--json", "--category", "nope", "--category", "review")
+    assert json.loads(result.stdout)["skills"]
+    categories = ", ".join(sorted({s.category for s in discover_skills()}))
+    assert result.stderr == (
+        f"warning: no skill has category nope; the categories are {categories}\n"
+    )
+    assert _invoke("catalog", "--category", "review").stderr == ""
 
 
 def test_agent_filter():
@@ -320,9 +396,28 @@ def _write(root, name, *, agents="[claude, codex]", extra=""):
 def _use(monkeypatch, root, manifest=None):
     """Point skilldeck at ``root`` and a content manifest recorded for it."""
     monkeypatch.setattr(registry, "DEFAULT_SKILLS_DIR", root)
+    monkeypatch.setattr(provenance, "DEFAULT_SKILLS_DIR", root)
     if manifest is None:
         manifest = content_manifest(__version__, discover_skills(root))
+    monkeypatch.setattr(provenance, "load_content_manifest", lambda: manifest)
     monkeypatch.setattr(catalog, "load_content_manifest", lambda: manifest)
+
+
+def _bundle_copy(tmp_path, monkeypatch):
+    """A copy of the bundled skills, checked against the packaged manifest."""
+    copy = tmp_path / "skills"
+    shutil.copytree(DEFAULT_SKILLS_DIR, copy)
+    monkeypatch.setattr(registry, "DEFAULT_SKILLS_DIR", copy)
+    monkeypatch.setattr(provenance, "DEFAULT_SKILLS_DIR", copy)
+    return copy
+
+
+def _fails(*args):
+    result = CliRunner().invoke(cli, list(args))
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert "do not match the content manifest" in result.stderr
+    return result.stderr
 
 
 @pytest.fixture
@@ -341,7 +436,7 @@ def deprecated_skills(tmp_path, monkeypatch):
 
 
 def test_catalog_reports_deprecation_state(deprecated_skills):
-    data = json.loads(_invoke("catalog", "--json").output)
+    data = json.loads(_invoke("catalog", "--json").stdout)
     assert schema_errors(data, exact=True) == []
     states = {skill["name"]: skill["deprecated"] for skill in data["skills"]}
     assert states == {
@@ -372,24 +467,30 @@ def test_list_does_not_mark_current_skills():
 
 
 def test_catalog_rejects_skills_that_differ_from_the_manifest(tmp_path, monkeypatch):
-    copy = tmp_path / "skills"
-    shutil.copytree(DEFAULT_SKILLS_DIR, copy)
-    monkeypatch.setattr(registry, "DEFAULT_SKILLS_DIR", copy)
+    copy = _bundle_copy(tmp_path, monkeypatch)
     body = copy / "logging" / "skill.md"
     body.write_text(body.read_text(encoding="utf-8") + "extra\n", encoding="utf-8")
     shutil.rmtree(copy / "iac-review")
+    errors = _fails("catalog", "--json")
+    assert "error: logging: installed files do not match canonical digest" in errors
+    assert "error: iac-review: cannot read the bundled skill" in errors
 
-    result = CliRunner().invoke(cli, ["catalog", "--json"])
-    assert result.exit_code == 1
-    assert "error: logging: skill files do not match canonical digest" in (
-        result.output
-    )
-    assert (
-        "error: iac-review: listed in the content manifest but not bundled"
-        in result.output
-    )
-    assert "do not match the content manifest" in result.output
-    assert not result.output.lstrip().startswith("{")
+
+@pytest.mark.parametrize(
+    ("extra", "problem"),
+    [
+        ("logging/payload.sh", "logging: unexpected file(s): payload.sh"),
+        ("README.txt", "README.txt: not listed in the packaged content manifest"),
+    ],
+)
+def test_catalog_rejects_files_the_manifest_does_not_list(
+    tmp_path, monkeypatch, extra, problem
+):
+    # the skills themselves still match; provenance --verify fails, so must this
+    copy = _bundle_copy(tmp_path, monkeypatch)
+    (copy / extra).write_text("echo pwned\n", encoding="utf-8")
+    assert f"error: {problem}" in _fails("catalog", "--json")
+    assert CliRunner().invoke(cli, ["provenance", "--verify"]).exit_code == 1
 
 
 def test_catalog_rejects_a_skill_missing_from_the_manifest(tmp_path, monkeypatch):
@@ -398,22 +499,75 @@ def test_catalog_rejects_a_skill_missing_from_the_manifest(tmp_path, monkeypatch
     manifest = content_manifest(__version__, discover_skills(root))
     _write(root, "unlisted")
     _use(monkeypatch, root, manifest)
-    result = CliRunner().invoke(cli, ["catalog"])
-    assert result.exit_code == 1
-    assert "error: unlisted: not listed in the content manifest" in result.output
+    assert "error: unlisted: not listed in the" in _fails("catalog")
+
+
+def test_build_catalog_checks_the_skills_it_is_given(tmp_path):
+    # build_catalog also stands on its own, for callers other than the CLI
+    root = _skills_dir(tmp_path)
+    _write(root, "kept")
+    _write(root, "dropped")
+    manifest = content_manifest(__version__, discover_skills(root))
+    (root / "kept" / "skill.md").write_text("changed\n", encoding="utf-8")
+    skills = [s for s in discover_skills(root) if s.name == "kept"]
+    with pytest.raises(CatalogError) as caught:
+        build_catalog(skills, manifest)
+    assert caught.value.problems == [
+        f"kept: skill files do not match canonical digest "
+        f"{manifest['skills'][1]['canonical_sha256']}",
+        "dropped: listed in the content manifest but not bundled",
+    ]
 
 
 def test_catalog_digest_ignores_newline_style(tmp_path, monkeypatch):
-    copy = tmp_path / "skills"
-    shutil.copytree(DEFAULT_SKILLS_DIR, copy)
-    monkeypatch.setattr(registry, "DEFAULT_SKILLS_DIR", copy)
+    copy = _bundle_copy(tmp_path, monkeypatch)
     meta = copy / "logging" / "meta.yaml"
     # normalise first: a Windows checkout may already use CRLF
     lf = meta.read_bytes().replace(b"\r\n", b"\n")
     meta.write_bytes(lf.replace(b"\n", b"\r\n"))
-    data = json.loads(_invoke("catalog", "--json").output)
+    data = json.loads(_invoke("catalog", "--json").stdout)
     recorded = {
         record["name"]: record["canonical_sha256"]
         for record in load_content_manifest()["skills"]
     }
     assert {s["name"]: s["canonical_sha256"] for s in data["skills"]} == recorded
+
+
+# --- install/update warn about deprecated skills --------------------------------
+
+
+def test_install_warns_about_deprecated_skills(
+    deprecated_skills, tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    result = _invoke(
+        "install",
+        "old-review",
+        "retired",
+        "new-review",
+        "--agent",
+        "claude",
+        "--agent",
+        "codex",
+    )
+    assert result.stderr == (
+        "warning: old-review is deprecated since 1.1.0; use new-review "
+        "(Folded into new-review.)\n"
+        "warning: retired is deprecated since 1.2.0 (Obsolete.)\n"
+    )
+    assert "installed old-review" in result.stdout
+
+
+def test_update_warns_about_deprecated_skills(deprecated_skills, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _invoke("install", "--all", "--agent", "claude")
+    meta = deprecated_skills / "retired" / "meta.yaml"
+    meta.write_text(
+        meta.read_text(encoding="utf-8").replace("version: 1.2.0", "version: 1.3.0"),
+        encoding="utf-8",
+    )
+    result = _invoke("update", "--agent", "claude")
+    assert "updated retired (1.2.0 -> 1.3.0)" in result.stdout
+    assert result.stderr == "warning: retired is deprecated since 1.2.0 (Obsolete.)\n"
+    # nothing refreshed, nothing to warn about
+    assert _invoke("update", "--agent", "claude").stderr == ""

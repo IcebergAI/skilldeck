@@ -27,10 +27,26 @@
           "type": ["string", "null"],
           "pattern": "^[0-9a-f]{40}$"
         }
-      }
+      },
+      "oneOf": [
+        {
+          "description": "A release build names both its tag and its commit.",
+          "properties": {
+            "source_ref": {"type": "string"},
+            "source_commit": {"type": "string"}
+          }
+        },
+        {
+          "description": "A development build names neither.",
+          "properties": {
+            "source_ref": {"type": "null"},
+            "source_commit": {"type": "null"}
+          }
+        }
+      ]
     },
     "skills": {
-      "description": "Every bundled skill exactly once, sorted by name.",
+      "description": "Every bundled skill exactly once, sorted by name (guarantees JSON Schema cannot express; see docs/catalog.md).",
       "type": "array",
       "items": {"$ref": "#/$defs/skill"}
     }
@@ -54,6 +70,7 @@
         "description",
         "supported_agents",
         "canonical_sha256",
+        "rendered_sha256",
         "source",
         "deprecated"
       ],
@@ -73,6 +90,14 @@
           "description": "The skill's canonical content digest, as recorded in the packaged content manifest and checked by `skilldeck provenance --verify`.",
           "type": "string",
           "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "rendered_sha256": {
+          "description": "For each supported agent, the digest of the file skilldeck installs for it: after the sha256: prefix, exactly the hash= an install stamp records.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
         },
         "source": {
           "type": "object",
