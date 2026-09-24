@@ -1,35 +1,17 @@
 """Cursor adapter.
 
-Cursor loads project rules from ``.cursor/rules/<name>.mdc``, with MDC
-frontmatter. A rule with a ``description`` and ``alwaysApply: false`` (and no
-globs) is "agent-requested": the agent pulls it in when the description
-matches the task, and the user can ``@``-mention it — the right behavior for
-on-demand review prompts.
-
-Cursor keeps user-level rules in app settings, not on the filesystem, so this
-adapter is project-scope only.
+Cursor loads skills from ``.cursor/skills/<name>/SKILL.md`` in the workspace
+and from ``~/.cursor/skills/<name>/SKILL.md`` for the user. No environment
+variable moves them. The older rule format is the ``cursor-rule`` adapter.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from ..registry import Skill
-from ..targets import Scope
-from .base import Adapter, yaml_frontmatter
+from ..targets import UserDir
+from .skill_md import SkillMdAdapter
 
 
-class CursorAdapter(Adapter):
+class CursorAdapter(SkillMdAdapter):
     name = "cursor"
-    installed_glob = ".cursor/rules/*.mdc"
-    scopes = (Scope.PROJECT,)
-
-    def relative_path(self, skill: Skill) -> Path:
-        return Path(".cursor/rules") / f"{skill.name}.mdc"
-
-    def render(self, skill: Skill) -> str:
-        fields: dict[str, object] = {
-            "description": skill.description,
-            "alwaysApply": False,
-        }
-        return f"{yaml_frontmatter(fields)}\n{skill.body}"
+    project_dir = ".cursor/skills"
+    global_dir = UserDir(".cursor", "skills")

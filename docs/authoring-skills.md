@@ -15,7 +15,7 @@ src/skilldeck/skills/
 
 ```yaml
 name: my-skill            # MUST match the directory name
-description: One-line summary used in `skilldeck list` and Claude frontmatter.
+description: One-line summary used in `skilldeck list` and SKILL.md frontmatter.
 category: security        # free-form grouping, e.g. security, review, refactor
 version: "0.1.0"
 supported-agents:         # non-empty list; adapters skip skills they aren't in
@@ -33,13 +33,13 @@ All five fields are required, and the loader (`skilldeck.registry`) rejects a
 | `description` | A non-empty string of at most 1024 characters on a single line, with no line break of any kind (including escapes such as `"\u2028"`). |
 | `category` | A non-empty string. |
 | `version` | A **string** of the form `MAJOR.MINOR.PATCH`: three non-negative integers without leading zeroes, e.g. `0.1.0` or `1.10.0`. |
-| `supported-agents` | A non-empty list of agent names (strings), each listed once. Each must be an agent skilldeck has an adapter for. |
+| `supported-agents` | A non-empty list of agent names (strings), each listed once: `claude`, `codex`, `copilot`, `cursor`, `kiro`. The legacy adapters (`copilot-prompt`, ...) follow their agent's entry and are not listed. |
 
 Both `meta.yaml` and `skill.md` must be UTF-8.
 
 The `name` and `description` limits come from the
 [Agent Skills specification](https://agentskills.io/specification), the
-`SKILL.md` format the Claude adapter writes. The name is also used in install
+`SKILL.md` format every native adapter writes. The name is also used in install
 paths, so the character rule keeps it a safe path component. The `version`
 format is a [SemVer](https://semver.org/) normal version.
 

@@ -1,31 +1,20 @@
 """GitHub Copilot adapter.
 
-Copilot (VS Code) surfaces prompt files from ``.github/prompts/
-<name>.prompt.md``; the user runs one on demand with ``/<name>`` in chat. The
-frontmatter ``description`` labels it in the prompt picker.
-
-User-level prompt files live inside the VS Code profile's user-data directory,
-which has no stable path relative to the home directory, so this adapter is
-project-scope only.
+Copilot (VS Code agent mode, Copilot CLI, the cloud agent and code review)
+loads project skills from ``.github/skills/<name>/SKILL.md`` and personal
+skills from ``~/.copilot/skills/<name>/SKILL.md``. ``COPILOT_HOME`` replaces
+the whole ``~/.copilot`` directory for Copilot CLI; the VS Code local agent
+reads ``~/.copilot/skills`` regardless. The older prompt-file format is the
+``copilot-prompt`` adapter.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from ..registry import Skill
-from ..targets import Scope
-from .base import Adapter, yaml_frontmatter
+from ..targets import UserDir
+from .skill_md import SkillMdAdapter
 
 
-class CopilotAdapter(Adapter):
+class CopilotAdapter(SkillMdAdapter):
     name = "copilot"
-    installed_glob = ".github/prompts/*.prompt.md"
-    scopes = (Scope.PROJECT,)
-
-    def relative_path(self, skill: Skill) -> Path:
-        return Path(".github/prompts") / f"{skill.name}.prompt.md"
-
-    def render(self, skill: Skill) -> str:
-        fields: dict[str, object] = {"description": skill.description}
-        return f"{yaml_frontmatter(fields)}\n{skill.body}"
+    project_dir = ".github/skills"
+    global_dir = UserDir(".copilot", "skills", env="COPILOT_HOME")
