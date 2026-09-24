@@ -9,8 +9,10 @@ def start_session(user, token_store):
     return token
 
 
-def validate_token(user, token, token_store):
-    if not token_store.check(user.id, token):
-        logger.warning(f"auth failed for user {user.id} with token {token}")
-        return False
-    return True
+def login(form, remote_addr, users, token_store):
+    user = users.authenticate(form["username"], form["password"])
+    if user is None:
+        logger.warning("login failed for %s from %s", form["username"], remote_addr)
+        return None
+    logger.info("login succeeded", extra={"user_id": user.id, "ip": remote_addr})
+    return start_session(user, token_store)

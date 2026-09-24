@@ -1,9 +1,22 @@
 skill: security-review
 plants:
-  # the invoice route loads any order by ID without scoping it to the caller
+  # The document route is owner-scoped (so not the IDOR of the skill's worked
+  # example), but it joins the `name` query parameter onto the order's
+  # directory unchecked: `../../..` segments, or an absolute path (which
+  # os.path.join lets replace the whole prefix), read any file the app can,
+  # its config and secrets included. Path traversal, ASVS 5.3.2. The rubric
+  # rates a flaw an authenticated user can exploit for bulk data high; one step
+  # below catches it buried as low without failing on a high/medium split. The
+  # V5 classifier is not a keyword: a download-filename finding is V5 too.
   - file: app/orders.py
-    keywords: [IDOR, authorization, V8]
-    # the rubric rates a flaw an authenticated user can exploit high; one step
-    # below catches it buried as low without failing on a high/medium split
+    keywords:
+      - traversal
+      - path traversal
+      - directory traversal
+      - arbitrary file
+      - arbitrary files
+      - any file
+      - file inclusion
+      - LFI
     min-severity: medium
 max-findings: 5

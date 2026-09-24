@@ -646,10 +646,10 @@ def test_main_repeats_each_fixture_and_reports_the_pass_rate(
         """\
         import sys
         assert ".claude/skills/logging/SKILL.md" in sys.argv[1]
-        print("Reviewed main..HEAD (1 file): 1 finding, critical.")
-        print("- **[critical] Secret in log** — `auth/session.py:14`")
-        print("  **Issue:** the bearer token, a credential, is logged.")
-        print("  **Fix:** log the user id only.")
+        print("Reviewed main..HEAD (1 file): 1 finding, high.")
+        print("- **[high] Log injection** — `auth/session.py:15`")
+        print("  **Issue:** a CR/LF in the username forges log lines.")
+        print("  **Fix:** escape control characters.")
         """,
     )
     status, workdir = _main(

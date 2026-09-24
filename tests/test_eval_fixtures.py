@@ -105,30 +105,33 @@ SAMPLE_REPORTS = {
             _finding(
                 "critical",
                 "CICD-SEC-4 Poisoned Pipeline Execution",
-                ".github/workflows/greet.yml:16",
-                "the attacker-controlled PR title is expanded into the `run:` "
-                "script of a `pull_request_target` job, so a fork author runs "
-                "shell with the base repository's token (script injection).",
-                "pass the title through `env:` and quote it.",
+                ".github/workflows/coverage-report.yml:26",
+                "the `workflow_run` job writes files from the PR run's artifact "
+                "to `$GITHUB_ENV` unchecked; a fork controls that run, and a "
+                "newline in `pr-number` sets arbitrary environment variables "
+                "(`BASH_ENV` pointing at a script in the artifact) for the next "
+                "step, which then runs the fork's code with a write token.",
+                "validate the PR number as an integer and pass values through "
+                "step outputs, never the environment file.",
             ),
             _finding(
-                "critical",
-                "CICD-SEC-4 Poisoned Pipeline Execution",
-                ".github/workflows/greet.yml:13",
-                "`pull_request_target` checks out the PR head and runs its "
-                "`scripts/welcome.sh`, so a fork PR runs its own code with the "
-                "base repository's token and secrets.",
-                "use `pull_request`, or never execute code from the PR head here.",
+                "medium",
+                "CICD-SEC-3 Dependency Chain Abuse",
+                ".github/workflows/coverage-report.yml:34",
+                "`marocchino/sticky-pull-request-comment@v2` is a mutable tag, "
+                "so whoever controls the action can change the code that runs "
+                "with this job's pull-requests write token.",
+                "pin the action to a full-length commit SHA.",
             ),
         ],
         [
             _finding(
-                "high",
-                "CICD-SEC-5 Insufficient PBAC",
-                ".github/workflows/greet.yml:8",
-                "the job sets no `permissions:`, so its token gets the "
-                "repository default, which may be write-all.",
-                "grant only `pull-requests: write`.",
+                "medium",
+                "CICD-SEC-4 Poisoned Pipeline Execution",
+                ".github/workflows/coverage-report.yml:33",
+                "the PR number comes from the fork's artifact, so a fork can "
+                "make the bot label and comment on someone else's pull request.",
+                "check the number against `github.event.workflow_run.head_sha`.",
             )
         ],
     ),
@@ -168,21 +171,22 @@ SAMPLE_REPORTS = {
         [
             _finding(
                 "medium",
-                "Long Method (Bloaters)",
-                "billing/invoice.py:8",
-                "`generate_invoice` validates, prices, discounts, taxes, renders "
-                "and delivers in one ~55-line function.",
-                "Extract Method: pull each step into its own function.",
+                "Duplicate Code (Dispensables)",
+                "billing/quotes.py:8",
+                "`quote_total` repeats `invoice_total`'s subtotal, loyalty "
+                "discount, tax and rounding step for step, so the next pricing "
+                "rule has to be made in both places.",
+                "call `invoice_total(quote, customer)` instead.",
             )
         ],
         [
             _finding(
                 "low",
-                "Magic Number (Bloaters)",
-                "billing/invoice.py:28",
-                "the loyalty rate 0.05, the 10000 threshold and the 50.0 bonus "
-                "are unexplained literals.",
-                "extract them into named constants next to `TAX_RATES`.",
+                "Primitive Obsession (Bloaters)",
+                "billing/quotes.py:9",
+                "amounts are bare floats rounded ad hoc, so currency and "
+                "rounding rules are left to every caller.",
+                "introduce a Money value (a Decimal plus its currency).",
             )
         ],
     ),
@@ -212,44 +216,46 @@ SAMPLE_REPORTS = {
     "iac-review": (
         [
             _finding(
-                "critical",
-                "Open security group",
-                "infra/network.tf:18",
-                "the new ingress rule allows SSH from 0.0.0.0/0, exposing port 22 "
-                "to the whole internet.",
-                "restrict the CIDR to the bastion or VPN range.",
+                "high",
+                "Wildcard IAM",
+                "infra/iam.tf:24",
+                "the app role gets `s3:*` on `*` although it only writes to the "
+                "exports bucket, so a compromised app can read, overwrite or "
+                "delete every bucket in the account and change bucket policies.",
+                "grant `s3:PutObject` on the exports bucket's ARN only.",
             )
         ],
         [
             _finding(
                 "low",
                 "Hygiene",
-                "infra/network.tf:5",
-                "the rules are inline `ingress` blocks, which fight any "
-                "standalone rule resources for the same group on every apply.",
-                "define them as `aws_vpc_security_group_ingress_rule` resources.",
+                "infra/iam.tf:29",
+                "the policy is an inline `aws_iam_role_policy`, which can't be "
+                "attached to another role or reviewed with the managed policies.",
+                "define it as an `aws_iam_policy` with an attachment.",
             )
         ],
     ),
     "logging": (
         [
             _finding(
-                "critical",
-                "Secret in log",
-                "auth/session.py:14",
-                "the raw bearer token is interpolated into the auth-failure "
-                "warning, so anyone with log access can replay the credential.",
-                "log the user id and a token fingerprint instead.",
+                "high",
+                "Log injection",
+                "auth/session.py:15",
+                "the submitted username is written into the failed-login "
+                "warning unescaped, so a CR/LF in it forges extra log lines, "
+                "such as a fake successful login.",
+                "escape control characters, or log the username as a structured field.",
             )
         ],
         [
             _finding(
-                "high",
-                "Log injection",
-                "auth/session.py:14",
-                "the token comes from the request and is interpolated unescaped, "
-                "so CR/LF in it forges log lines.",
-                "pass it as a %-style argument and escape control characters.",
+                "medium",
+                "Logging DoS",
+                "auth/session.py:15",
+                "every failed login writes a warning, so a scripted "
+                "credential-stuffing run fills the log store.",
+                "rate-limit or aggregate the failed-login events.",
             )
         ],
     ),
@@ -257,21 +263,24 @@ SAMPLE_REPORTS = {
         [
             _finding(
                 "critical",
-                "Blocking lock",
-                "db/migrate/20260704120000_add_index_to_events.rb:3",
-                "`add_index` builds the index non-concurrently, holding a lock "
-                "that stops writes to the ~200M-row events table for the build.",
-                "use `algorithm: :concurrently` with `disable_ddl_transaction!`.",
+                "Backward-incompatible change",
+                "db/migrate/20260704120000_rename_kind_to_event_type_on_events.rb:3",
+                "the rename lands while the old release still serves traffic "
+                "and writes `kind` on every request, so its inserts into "
+                "`events` fail until the rollout finishes.",
+                "expand/contract: add `event_type`, write both, backfill, "
+                "switch reads, then drop `kind` in a later release.",
             )
         ],
         [
             _finding(
-                "low",
-                "Reversibility",
-                "db/migrate/20260704120000_add_index_to_events.rb:3",
-                "re-running the migration after a failed deploy errors if the "
-                "index already exists.",
-                "pass `if_not_exists: true`.",
+                "medium",
+                "Blocking lock",
+                "db/migrate/20260704120000_rename_kind_to_event_type_on_events.rb:3",
+                "`RENAME COLUMN` needs an ACCESS EXCLUSIVE lock, and with no "
+                "`lock_timeout` it waits behind any long query on `events`, "
+                "blocking every insert queued behind it.",
+                "set a short `lock_timeout` and retry the migration.",
             )
         ],
     ),
@@ -279,21 +288,30 @@ SAMPLE_REPORTS = {
         [
             _finding(
                 "high",
-                "Missing timeout",
-                "services/client.py:13",
-                "`requests.get` is called without one, so a stalled recs service "
-                "holds the request thread indefinitely.",
-                "pass `timeout=(3, 10)`.",
-            )
+                "Retry without backoff",
+                "services/client.py:14",
+                "the loop retries at once, five times, so when the shipping "
+                "service struggles every caller multiplies its load (a retry "
+                "storm).",
+                "back off exponentially with jitter between attempts.",
+            ),
+            _finding(
+                "medium",
+                "Non-idempotent retry",
+                "services/client.py:16",
+                "a read timeout after the shipment was created sends the POST "
+                "again, so the order ships twice.",
+                "send an idempotency key the shipping service dedupes on.",
+            ),
         ],
         [
             _finding(
                 "medium",
-                "No graceful degradation",
-                "services/client.py:13",
-                "recommendations are optional, but if the recs service errors or "
-                "hangs the whole page fails.",
-                "catch the error and return an empty list.",
+                "Deadline not propagated",
+                "services/client.py:19",
+                "five attempts of up to 13s each can hold the caller for over a "
+                "minute, longer than the request that triggered it will wait.",
+                "pass the caller's remaining deadline down and stop when it runs out.",
             )
         ],
     ),
@@ -301,19 +319,20 @@ SAMPLE_REPORTS = {
         [
             _finding(
                 "high",
-                "V8 Authorization",
-                "app/orders.py:18",
-                "`get_invoice` loads any order by ID without scoping it to the "
-                "signed-in user, so any caller can read another customer's "
-                "invoice (IDOR).",
-                "scope the query to the session's user, as `get_order` does.",
+                "V5 File Handling",
+                "app/orders.py:26",
+                "the `name` query parameter is joined onto the documents path "
+                "unchecked, so `../` segments or an absolute path let a "
+                "signed-in user read any file the app can (path traversal).",
+                "serve the file with `send_from_directory`, or look the "
+                "document up by ID.",
             )
         ],
         [
             _finding(
                 "low",
                 "V16 Security Logging and Error Handling",
-                "app/orders.py:10",
+                "app/orders.py:22",
                 "an anonymous request raises KeyError on `session['user_id']` "
                 "and returns a 500.",
                 "check for a signed-in user and return 401.",
