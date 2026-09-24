@@ -604,7 +604,7 @@ def test_prompt_names_the_installed_skill_for_the_adapter():
     assert "using the logging skill installed at .claude/skills/logging/SKILL.md" in (
         claude
     )
-    assert ".codex/prompts/logging.md" in run_evals.build_prompt(fixture, "codex")
+    assert ".agents/skills/logging/SKILL.md" in run_evals.build_prompt(fixture, "codex")
 
 
 def test_prepare_repo_installs_through_the_chosen_adapter(tmp_path):
