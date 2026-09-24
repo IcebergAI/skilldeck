@@ -119,7 +119,8 @@ platform:
   exactly those files. Then the skill's name, version, canonical digest (the
   one in `src/skilldeck/_content_manifest.json`) and `rendered_sha256`: the
   rendered skill content the adapter installs, excluding the install stamp
-  (it equals the stamp's `hash=`); plus the exact prompt;
+  (it equals the stamp's `hash=` and `skilldeck catalog`'s
+  `rendered_sha256` for that adapter); plus the exact prompt;
 - **how**: the harness name, the exact command template, the model (if
   requested), the harness version (the probe's first line, `null` if it
   failed), the adapter, and the repeat, timeout and budget;

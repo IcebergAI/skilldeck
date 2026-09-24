@@ -84,6 +84,7 @@ from skilldeck.provenance import (  # noqa: E402
     sha256_text,
 )
 from skilldeck.registry import Skill, discover_skills  # noqa: E402
+from skilldeck.stamp import content_hash  # noqa: E402
 from skilldeck.targets import Scope  # noqa: E402
 
 FIXTURES = ROOT / "evals" / "fixtures"
@@ -1054,13 +1055,10 @@ def fixture_layout_problems(fixture: Fixture) -> list[str]:
 def rendered_digest(adapter: str, skill: Skill) -> str:
     """The hash an install stamp records: the rendered skill, stamp excluded.
 
-    Computed as skilldeck.stamp does -- the content, newline-terminated, as
-    UTF-8 -- so it equals the installed file's ``hash=``.
+    It equals the installed file's ``hash=`` and ``skilldeck catalog``'s
+    ``rendered_sha256`` for the same adapter.
     """
-    content = ADAPTERS[adapter].render(skill)
-    if not content.endswith("\n"):
-        content += "\n"
-    return "sha256:" + hashlib.sha256(content.encode("utf-8")).hexdigest()
+    return "sha256:" + content_hash(ADAPTERS[adapter].render(skill))
 
 
 def plan_fixture(fixture: Fixture, adapter: str) -> PlannedFixture:

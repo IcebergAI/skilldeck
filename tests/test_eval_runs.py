@@ -20,7 +20,10 @@ import pytest
 import run_evals  # loaded from evals/run_evals.py by conftest.py
 
 from skilldeck import __version__
+from skilldeck.adapters import ADAPTERS
+from skilldeck.catalog import build_catalog
 from skilldeck.provenance import canonical_json, sha256_text
+from skilldeck.registry import discover_skills
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = json.loads(
@@ -604,6 +607,7 @@ def test_fixture_digest_in_git_follows_what_git_tracks(tmp_path):
 
 def test_rendered_digest_is_the_install_stamp_hash(tmp_path):
     fixture = run_evals.load_fixture(run_evals.FIXTURES / "logging")
+    catalog = build_catalog(discover_skills(known_agents=set(ADAPTERS)))
     for adapter in ("claude", "codex"):
         repo = run_evals.prepare_repo(fixture, tmp_path / adapter, adapter)
         installed = repo / run_evals.skill_path(fixture, adapter)
@@ -612,6 +616,9 @@ def test_rendered_digest_is_the_install_stamp_hash(tmp_path):
         )
         identity = run_evals.plan_fixture(fixture, adapter).identity
         assert identity["skill"]["rendered_sha256"] == f"sha256:{stamp_hash}"
+        # the same value skilldeck catalog publishes for the adapter
+        (entry,) = [e for e in catalog["skills"] if e["name"] == "logging"]
+        assert entry["rendered_sha256"][adapter] == f"sha256:{stamp_hash}"
 
 
 def test_commit_ids_may_be_sha1_or_sha256():
