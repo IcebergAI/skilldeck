@@ -1,5 +1,9 @@
 skill: security-review
 plants:
+  # the invoice route loads any order by ID without scoping it to the caller
   - file: app/orders.py
     keywords: [IDOR, authorization, V8]
+    # the rubric rates a flaw an authenticated user can exploit high; one step
+    # below catches it buried as low without failing on a high/medium split
+    min-severity: medium
 max-findings: 5

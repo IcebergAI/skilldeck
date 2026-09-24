@@ -1,5 +1,7 @@
 skill: iac-review
 plants:
+  # SSH ingress open to every address
   - file: infra/network.tf
-    keywords: [0.0.0.0, internet, world]
+    keywords: [internet, world, anywhere, open security group]
+    min-severity: high
 max-findings: 4

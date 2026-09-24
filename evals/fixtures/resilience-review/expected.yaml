@@ -1,5 +1,16 @@
 skill: resilience-review
 plants:
+  # outbound HTTP call with no timeout on the request path. A bare "hang" is
+  # not a keyword: a graceful-degradation finding on the same call says the
+  # service "errors or hangs" without reporting the missing timeout.
   - file: services/client.py
-    keywords: [timeout]
+    keywords:
+      - missing timeout
+      - no timeout
+      - no explicit timeout
+      - without a timeout
+      - without timeout
+      - never times out
+      - indefinitely
+    min-severity: medium
 max-findings: 5
