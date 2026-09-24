@@ -22,9 +22,11 @@ deterministic tests; coverage shows a line ran, not that it was checked),
 
 ## Scope
 
-1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`),
-   plus any uncommitted or untracked changes. If you are already on the base
-   branch, review the uncommitted changes instead.
+1. Determine the diff: `git fetch`, then `git diff origin/<base>...HEAD`
+   (default base: `main`/`master`; with no remote, the local base), plus
+   uncommitted changes (`git diff HEAD`) and untracked files
+   (`git ls-files --others --exclude-standard`; read them whole). If you are
+   already on the base branch, review the uncommitted changes instead.
 2. Map changed production code to the tests that exercise it. Note new or
    changed behavior that has **no** corresponding test. Search the whole test
    suite, not just the diff — coverage may live in tests the change didn't touch.
@@ -79,15 +81,24 @@ Report each finding as a single list item:
   **Issue:** what is untested, weak, or unreliable.
   **Fix:** the specific test or assertion to add or fix.
 
-`severity` reflects regression risk: **critical** — new or changed behavior with
-no test at all, or a bug fix with no regression test; **high** — tests exist but
-would not catch a realistic regression; **medium** — weak assertions or flaky
-patterns; **low** — hygiene. The classifier is the weakness kind (e.g.
-`Coverage gap`, `Assertion-free test`, `Flaky`); the location is the test or the
-untested production code. Order findings by severity, highest first, and keep
-one issue per finding. For example:
+Rate `severity` on the shared severity rubric, impact × likelihood:
+**critical** — high impact (code execution, auth bypass, stolen credentials or
+bulk data, data loss, an outage), readily triggered (by anyone who can reach
+it, or in routine operation); **high** — high impact behind a common
+precondition (an authenticated user, a collaborator, a routine failure), or
+medium impact (limited exposure, degraded service) readily triggered;
+**medium** — high impact only under an unusual precondition, or medium impact
+behind a common one; **low** — defense in depth and hygiene.
+A test gap lets a defect ship but causes none itself, so findings here top
+out at **high** — new or changed behavior with no test, a bug fix with no
+regression test, or tests that would not catch a realistic regression;
+**medium** — weak assertions or flaky patterns; **low** — hygiene. The
+classifier is the weakness kind (e.g. `Coverage gap`, `Assertion-free test`,
+`Flaky`); the location is the test or the untested production code. Order
+findings by severity, highest first, and keep one issue per finding. For
+example:
 
-- **[critical] Coverage gap** — `src/parser.py:57`
+- **[high] Coverage gap** — `src/parser.py:57`
   **Issue:** the new `strict=True` branch that raises `ParseError` has no test;
   a regression that silently accepts malformed input would not be caught.
   **Fix:** add a test that passes malformed input with `strict=True` and asserts
@@ -100,7 +111,7 @@ realistic missed regression. Prefer the few findings that matter; if more than
 line.
 
 Open the report with one line stating what was reviewed and the outcome, e.g.
-`Reviewed main..HEAD (4 files): 2 findings, worst critical.` If the tests
-adequately cover the change, say so explicitly rather than inventing findings.
-If the diff genuinely needs no tests (e.g. docs, comments, pure config), state
-that instead of forcing suggestions.
+`Reviewed origin/main...HEAD (4 files): 2 findings, worst high.` If the diff
+changes no behavior that needs tests (e.g. docs, comments, pure config), say
+so and stop. If the tests adequately cover the change, say so explicitly
+rather than inventing findings.

@@ -25,9 +25,11 @@ specific tool.
 
 ## Scope
 
-1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`),
-   plus any uncommitted or untracked changes. If you are already on the base
-   branch, review the uncommitted changes instead.
+1. Determine the diff: `git fetch`, then `git diff origin/<base>...HEAD`
+   (default base: `main`/`master`; with no remote, the local base), plus
+   uncommitted changes (`git diff HEAD`) and untracked files
+   (`git ls-files --others --exclude-standard`; read them whole). If you are
+   already on the base branch, review the uncommitted changes instead.
 2. Review only changed files and the code paths they touch — but read the whole
    function or file around each hunk, not just the diff: a timeout, retry, or
    cleanup may sit just outside it.
@@ -106,13 +108,22 @@ Report each finding as a single list item:
   **Fix:** the concrete pattern to apply (e.g. add a timeout, backoff with jitter,
   an idempotency key, a bounded queue, release on the error path).
 
-`severity` reflects blast radius: **critical** — a routine dependency failure
-hangs or cascades across the system; **high** — data loss, duplicated side
-effects, or resource exhaustion under failure; **medium** — degraded behavior
-confined to the failing path; **low** — hardening. The classifier is the
-resilience concern (e.g. `Missing timeout`, `Retry without backoff`,
-`Resource leak`, `Unbounded queue`, `No graceful degradation`). Order findings
-by severity, highest first, and keep one issue per finding. For example:
+Rate `severity` on the shared severity rubric, impact × likelihood:
+**critical** — high impact (code execution, auth bypass, stolen credentials or
+bulk data, data loss, an outage), readily triggered (by anyone who can reach
+it, or in routine operation); **high** — high impact behind a common
+precondition (an authenticated user, a collaborator, a routine failure), or
+medium impact (limited exposure, degraded service) readily triggered;
+**medium** — high impact only under an unusual precondition, or medium impact
+behind a common one; **low** — defense in depth and hygiene.
+Here, **critical** is only for an outage or data loss that a routine
+dependency failure triggers (the system hangs or the failure cascades);
+**high** — duplicated side effects or resource exhaustion under failure, or
+data loss under a rarer failure; **medium** — degraded behavior confined to
+the failing path. The classifier is the resilience concern (e.g.
+`Missing timeout`, `Retry without backoff`, `Resource leak`,
+`Unbounded queue`, `No graceful degradation`). Order findings by severity,
+highest first, and keep one issue per finding. For example:
 
 - **[high] Missing timeout** — `services/enrich.py:33`
   **Issue:** `requests.get(url)` has no timeout, so a stalled enrichment service
@@ -126,7 +137,7 @@ scenario. Prefer the few findings that matter; if more than ~10 survive, report
 the ones worth a human's time and summarize the rest in a line.
 
 Open the report with one line stating what was reviewed and the outcome, e.g.
-`Reviewed main..HEAD (5 files): 2 findings, worst high.` If the change
-introduces no new failure modes — or genuinely doesn't cross a failure boundary
-(pure logic, local computation, docs/config) — say so explicitly rather than
-manufacturing findings.
+`Reviewed origin/main...HEAD (5 files): 2 findings, worst high.` If the diff
+doesn't cross a failure boundary (pure logic, local computation, docs/config),
+say so and stop. If it introduces no new failure modes, say so explicitly
+rather than manufacturing findings.

@@ -59,7 +59,24 @@ assumptions); the adapters add whatever wrapping each agent needs at install tim
 
 If the skill is a **review** skill that emits findings, make its `## Output`
 section follow the shared [finding output format](finding-output.md) so findings
-from different skills stay consistent.
+from different skills stay consistent. `tests/test_skill_structure.py` checks
+that every review skill carries the shared pieces:
+
+- a `## Scope` section whose first step determines the diff the same way in
+  every skill: `git fetch`, then `git diff origin/<base>...HEAD`, plus
+  uncommitted changes and untracked files
+  (`git ls-files --others --exclude-standard`);
+- a `## Output` section with the finding format, the
+  [severity rubric](finding-output.md#severity-rubric) paragraph copied word
+  for word (then at most a short list of domain anchors), a worked example,
+  the "Verify before reporting" instruction, the ~10-findings cap, and the
+  one-line `Reviewed origin/<base>...HEAD …` report header;
+- one line saying what to do when the change touches nothing in the skill's
+  area: say so and stop.
+
+If the skill overlaps another, add it to
+[Which skill owns what](finding-output.md#which-skill-owns-what) and give the
+skill one line that leaves the owner's area to the owner.
 
 ## Testing your skill
 

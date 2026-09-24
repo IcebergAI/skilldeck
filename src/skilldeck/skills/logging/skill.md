@@ -13,12 +13,19 @@ that touches logging.
 
 - **Writing or hardening logging**: apply the checklists below to the code you
   produce; no findings report is needed.
-- **Reviewing a change**: determine the diff — `git diff <base>...HEAD` (default
-  base: `main`/`master`), plus any uncommitted or untracked changes; if you are
-  already on the base branch, review the uncommitted changes instead. Review the
-  changed files and the code paths they touch, reading the whole function around
-  each hunk (masking or sanitization may sit just outside the diff), and report
-  findings as described at the end.
+- **Reviewing a change**: determine the diff — `git fetch`, then
+  `git diff origin/<base>...HEAD` (default base: `main`/`master`; with no
+  remote, the local base), plus uncommitted changes (`git diff HEAD`) and
+  untracked files (`git ls-files --others --exclude-standard`; read them
+  whole). If you are already on the base branch, review the uncommitted
+  changes instead. Review the changed files and the code paths they touch,
+  reading the whole function around each hunk (masking or sanitization may sit
+  just outside the diff), and report findings as described under Output.
+- **Companion skills**: this skill owns security logging (ASVS V16) for
+  `security-review` and `authentication-review`; secrets in CI job output
+  belong to `ci-workflow-review`. If the owner runs in the same review, leave
+  its area to it; in a combined report, give each defect once, under the
+  owner's classifier.
 
 ## Log these events
 
@@ -84,26 +91,37 @@ pseudonymize rather than logging them raw (e.g. log a hashed session ID).
   who/what/result context needed to investigate.
 - Sensitive data returned to the client or surfaced in error responses.
 
+## Output
+
 Report each finding as a single list item:
 
 - **[severity] issue kind** — `file:line`
   **Issue:** what is wrong.
   **Fix:** the concrete change that resolves it.
 
-`severity` reflects exposure: **critical** — a secret or credential written to
-logs; **high** — sensitive PII logged, or log injection from user-controlled
+Rate `severity` on the shared severity rubric, impact × likelihood:
+**critical** — high impact (code execution, auth bypass, stolen credentials or
+bulk data, data loss, an outage), readily triggered (by anyone who can reach
+it, or in routine operation); **high** — high impact behind a common
+precondition (an authenticated user, a collaborator, a routine failure), or
+medium impact (limited exposure, degraded service) readily triggered;
+**medium** — high impact only under an unusual precondition, or medium impact
+behind a common one; **low** — defense in depth and hygiene.
+Here: **critical** — a live credential (password, token, key) written to logs
+others can read (the Fix must also
+[revoke and rotate](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html)
+it); **high** — sensitive PII logged, or log injection from user-controlled
 input; **medium** — a security event unlogged or missing the who/what/result
-context needed to investigate; **low** — hygiene (format, level choice). The
-classifier is the logging issue kind (e.g. `Secret in log`, `Log injection`,
-`Missing event`). Order findings by severity, highest first, and keep one issue
-per finding. For example:
+context needed to investigate. The classifier is the logging issue kind (e.g.
+`Secret in log`, `Log injection`, `Missing event`). Order findings by severity,
+highest first, and keep one issue per finding. For example:
 
 - **[critical] Secret in log** — `auth/session.py:71`
   **Issue:** the raw bearer token is interpolated into the failure message
   (`logger.warning(f"auth failed for {token}")`), so anyone with log access can
   replay it.
   **Fix:** log a hashed or truncated token identifier and the user ID instead of
-  the raw credential.
+  the raw credential, and revoke the tokens already logged.
 
 Verify before reporting: re-check each candidate against the surrounding code —
 masking or sanitization may happen upstream — and drop any you cannot
@@ -111,5 +129,7 @@ substantiate. Prefer the few findings that matter; if more than ~10 survive,
 report the ones worth a human's time and summarize the rest in a line.
 
 Open the report with one line stating what was reviewed and the outcome, e.g.
-`Reviewed main..HEAD (3 files): 1 finding, critical.` If the logging is sound,
-say so explicitly rather than manufacturing findings.
+`Reviewed origin/main...HEAD (3 files): 1 finding, critical.` If the diff
+neither touches logging nor adds security-relevant events that should be
+logged, say so and stop. If the logging is sound, say so explicitly rather
+than manufacturing findings.

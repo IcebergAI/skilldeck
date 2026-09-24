@@ -28,9 +28,11 @@ behavior differs (Postgres / MySQL / SQLite lock and rewrite differently).
 
 ## Scope
 
-1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`),
-   plus any uncommitted or untracked changes. If you are already on the base
-   branch, review the uncommitted changes instead.
+1. Determine the diff: `git fetch`, then `git diff origin/<base>...HEAD`
+   (default base: `main`/`master`; with no remote, the local base), plus
+   uncommitted changes (`git diff HEAD`) and untracked files
+   (`git ls-files --others --exclude-standard`; read them whole). If you are
+   already on the base branch, review the uncommitted changes instead.
 2. Review the migration files / schema definitions in the diff (migration
    directories, `*.sql`, ORM migrations, `schema.rb`/`structure.sql`, Alembic,
    Prisma, Knex, etc.) **and** the application code that reads or writes the
@@ -109,12 +111,20 @@ Report each finding as a single list item:
   index concurrently, batch the backfill, add the constraint `NOT VALID` then
   validate, set a lock timeout).
 
-`severity` reflects deploy-window risk: **critical** — breaks the currently
-deployed code, or locks a hot table for the duration of a long operation;
-**high** — likely to block or fail under production load, or to leave the schema
-half-applied; **medium** — risky only under specific conditions (table growth,
-deploy timing); **low** — reversibility and hygiene. The classifier is the
-migration hazard (e.g. `Backward-incompatible change`, `Blocking lock`,
+Rate `severity` on the shared severity rubric, impact × likelihood:
+**critical** — high impact (code execution, auth bypass, stolen credentials or
+bulk data, data loss, an outage), readily triggered (by anyone who can reach
+it, or in routine operation); **high** — high impact behind a common
+precondition (an authenticated user, a collaborator, a routine failure), or
+medium impact (limited exposure, degraded service) readily triggered;
+**medium** — high impact only under an unusual precondition, or medium impact
+behind a common one; **low** — defense in depth and hygiene.
+Here, **critical** is only for an outage or data loss: breaking the currently
+deployed code, locking a hot table for the duration of a long operation, or
+a lossy change to data still in use; **high** — likely to block or fail under
+production load, or to leave the schema half-applied; **medium** — risky only
+under specific conditions (table growth, deploy timing). The classifier is
+the migration hazard (e.g. `Backward-incompatible change`, `Blocking lock`,
 `Unbatched backfill`, `Irreversible`). Order findings by severity, highest
 first, and keep one issue per finding. For example:
 
@@ -132,7 +142,7 @@ matter; if more than ~10 survive, report the ones worth a human's time and
 summarize the rest in a line.
 
 Open the report with one line stating what was reviewed and the outcome, e.g.
-`Reviewed main..HEAD (2 migrations): 1 finding, critical.` If the diff contains
-no schema or data migration, say so rather than reviewing application code. If
-the migrations are safe for the project's deploy model, say so explicitly rather
-than manufacturing findings.
+`Reviewed origin/main...HEAD (2 migrations): 1 finding, critical.` If the diff
+contains no schema or data migration, say so and stop. If the migrations are
+safe for the project's deploy model, say so explicitly rather than
+manufacturing findings.
