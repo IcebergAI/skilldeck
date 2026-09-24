@@ -86,7 +86,7 @@ def test_uninstall_refuses_a_file_skilldeck_did_not_write(tmp_path, monkeypatch)
     monkeypatch.chdir(tmp_path)
     own = tmp_path / ".cursor/rules/security-review.mdc"
     own.parent.mkdir(parents=True)
-    own.write_text("my own hand-written rule\n")
+    own.write_text("my own hand-written rule\n", encoding="utf-8")
     runner = CliRunner()
     result = runner.invoke(
         cli, ["uninstall", "security-review", "--agent", "cursor-rule"]
@@ -94,7 +94,7 @@ def test_uninstall_refuses_a_file_skilldeck_did_not_write(tmp_path, monkeypatch)
     assert result.exit_code == 1
     assert "has no skilldeck stamp" in result.output
     assert "--force" in result.output
-    assert own.read_text() == "my own hand-written rule\n"
+    assert own.read_text(encoding="utf-8") == "my own hand-written rule\n"
 
     result = runner.invoke(
         cli, ["uninstall", "security-review", "--agent", "cursor-rule", "--force"]
@@ -108,12 +108,12 @@ def test_uninstall_refuses_local_modifications(tmp_path, monkeypatch):
     runner = CliRunner()
     runner.invoke(cli, ["install", "logging", "--agent", "cursor"])
     dest = tmp_path / ".cursor/skills/logging/SKILL.md"
-    dest.write_text(dest.read_text() + "local edit\n")
+    dest.write_text(dest.read_text(encoding="utf-8") + "local edit\n", encoding="utf-8")
 
     result = runner.invoke(cli, ["uninstall", "logging", "--agent", "cursor"])
     assert result.exit_code == 1
     assert "has local modifications" in result.output
-    assert "local edit" in dest.read_text()
+    assert "local edit" in dest.read_text(encoding="utf-8")
 
     result = runner.invoke(
         cli, ["uninstall", "logging", "--agent", "cursor", "--force"]
@@ -127,7 +127,7 @@ def test_uninstall_reports_errors_and_keeps_going(tmp_path, monkeypatch):
     runner = CliRunner()
     runner.invoke(cli, ["install", "--all", "--agent", "codex"])
     edited = tmp_path / ".agents/skills/logging/SKILL.md"
-    edited.write_text(edited.read_text() + "mine\n")
+    edited.write_text(edited.read_text(encoding="utf-8") + "mine\n", encoding="utf-8")
 
     result = runner.invoke(cli, ["uninstall", "--all", "--agent", "codex"])
     assert result.exit_code == 1
@@ -138,14 +138,16 @@ def test_uninstall_reports_errors_and_keeps_going(tmp_path, monkeypatch):
     assert remaining == ["logging"]  # every other skill was still removed
 
 
-def test_uninstall_force_removes_a_symlink_but_not_its_target(tmp_path, monkeypatch):
+def test_uninstall_force_removes_a_symlink_but_not_its_target(
+    tmp_path, monkeypatch, symlink
+):
     monkeypatch.chdir(tmp_path)
     target = tmp_path / "team-rules/security-review.md"
     target.parent.mkdir()
-    target.write_text("shared team prompt\n")
+    target.write_text("shared team prompt\n", encoding="utf-8")
     link = tmp_path / ".agents/skills/security-review/SKILL.md"
     link.parent.mkdir(parents=True)
-    link.symlink_to(target)
+    symlink(link, target)
     runner = CliRunner()
 
     result = runner.invoke(cli, ["uninstall", "security-review", "--agent", "codex"])
@@ -158,7 +160,7 @@ def test_uninstall_force_removes_a_symlink_but_not_its_target(tmp_path, monkeypa
     )
     assert result.exit_code == 0, result.output
     assert not link.is_symlink() and not link.exists()
-    assert target.read_text() == "shared team prompt\n"
+    assert target.read_text(encoding="utf-8") == "shared team prompt\n"
 
 
 @pytest.mark.parametrize("command", ["install", "uninstall"])
@@ -288,18 +290,18 @@ def test_install_over_modified_file_fails_without_force(tmp_path, monkeypatch):
     runner = CliRunner()
     runner.invoke(cli, ["install", "security-review", "--agent", "claude"])
     dest = tmp_path / ".claude/skills/security-review/SKILL.md"
-    dest.write_text(dest.read_text() + "my tweak\n")
+    dest.write_text(dest.read_text(encoding="utf-8") + "my tweak\n", encoding="utf-8")
 
     result = runner.invoke(cli, ["install", "security-review", "--agent", "claude"])
     assert result.exit_code == 1
     assert "local modifications" in result.output
-    assert "my tweak" in dest.read_text()
+    assert "my tweak" in dest.read_text(encoding="utf-8")
 
     result = runner.invoke(
         cli, ["install", "security-review", "--agent", "claude", "--force"]
     )
     assert result.exit_code == 0, result.output
-    assert "my tweak" not in dest.read_text()
+    assert "my tweak" not in dest.read_text(encoding="utf-8")
 
 
 def test_status_reports_each_state(tmp_path, monkeypatch):
@@ -309,7 +311,7 @@ def test_status_reports_each_state(tmp_path, monkeypatch):
         cli, ["install", "security-review", "test-review", "--agent", "claude"]
     )
     dest = tmp_path / ".claude/skills/test-review/SKILL.md"
-    dest.write_text(dest.read_text() + "my tweak\n")
+    dest.write_text(dest.read_text(encoding="utf-8") + "my tweak\n", encoding="utf-8")
 
     result = runner.invoke(cli, ["status", "--agent", "claude"])
     assert result.exit_code == 0, result.output
@@ -325,7 +327,9 @@ def test_status_reports_orphans(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     orphan = tmp_path / ".claude/skills/retired-skill/SKILL.md"
     orphan.parent.mkdir(parents=True)
-    orphan.write_text(stamp("left behind\n", "retired-skill", "0.1.0"))
+    orphan.write_text(
+        stamp("left behind\n", "retired-skill", "0.1.0"), encoding="utf-8"
+    )
     result = CliRunner().invoke(cli, ["status", "--agent", "claude"])
     assert result.exit_code == 0
     assert "orphan:" in result.output
@@ -336,7 +340,9 @@ def test_status_orphans_flag_local_edits(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     orphan = tmp_path / ".agents/skills/retired/SKILL.md"
     orphan.parent.mkdir(parents=True)
-    orphan.write_text(stamp("old\n", "retired", "0.1.0").replace("old", "mine"))
+    orphan.write_text(
+        stamp("old\n", "retired", "0.1.0").replace("old", "mine"), encoding="utf-8"
+    )
     result = CliRunner().invoke(cli, ["status", "--agent", "codex"])
     assert result.exit_code == 0, result.output
     assert "(retired 0.1.0, modified locally)" in result.output
@@ -363,13 +369,13 @@ def test_status_ignores_users_own_files_in_shared_dirs(
     monkeypatch.chdir(tmp_path)
     own = tmp_path / relative
     own.parent.mkdir(parents=True)
-    own.write_text("my prompt\n")
+    own.write_text("my prompt\n", encoding="utf-8")
     result = CliRunner().invoke(cli, ["status", "--agent", agent])
     assert result.exit_code == 0, result.output
     assert "orphan" not in result.output
 
 
-def test_status_skips_unreadable_files_in_shared_dirs(tmp_path, monkeypatch):
+def test_status_skips_unreadable_files_in_shared_dirs(tmp_path, monkeypatch, symlink):
     # Shared dirs can hold anything: binary files, directories, dangling links
     # whose names match the install glob. None of it may crash status (#96).
     monkeypatch.chdir(tmp_path)
@@ -377,10 +383,10 @@ def test_status_skips_unreadable_files_in_shared_dirs(tmp_path, monkeypatch):
     shared.mkdir(parents=True)
     (shared / "binary.mdc").write_bytes(b"\xff\xfe\x00 not utf-8")
     (shared / "a-directory.mdc").mkdir()
-    (shared / "dangling.mdc").symlink_to(tmp_path / "missing")
+    symlink(shared / "dangling.mdc", tmp_path / "missing")
     stamped = tmp_path / "elsewhere.mdc"
-    stamped.write_text(stamp("x\n", "linked", "1.0.0"))
-    (shared / "linked.mdc").symlink_to(stamped)
+    stamped.write_text(stamp("x\n", "linked", "1.0.0"), encoding="utf-8")
+    symlink(shared / "linked.mdc", stamped)
     result = CliRunner().invoke(cli, ["status", "--agent", "cursor-rule"])
     assert result.exit_code == 0, result.output
     assert "orphan" not in result.output
@@ -490,7 +496,7 @@ def test_claude_config_dir_directs_global_commands(tmp_path, monkeypatch):
     assert not (tmp_path / "home").exists()
     orphan = config / "skills/retired/SKILL.md"
     orphan.parent.mkdir()
-    orphan.write_text(stamp("old\n", "retired", "0.1.0"))
+    orphan.write_text(stamp("old\n", "retired", "0.1.0"), encoding="utf-8")
     result = runner.invoke(cli, ["status", "--agent", "claude", "--scope", "global"])
     assert result.exit_code == 0, result.output
     assert "up to date" in result.output.split("logging")[1].split("\n")[0]
@@ -535,21 +541,23 @@ def test_update_refreshes_stale_and_skips_modified(tmp_path, monkeypatch):
     )
     stale = tmp_path / ".claude/skills/security-review/SKILL.md"
     # simulate an install from an older skilldeck: rewrite with an old stamp
-    stale.write_text(stamp("old body\n", "security-review", "0.0.1"))
+    stale.write_text(stamp("old body\n", "security-review", "0.0.1"), encoding="utf-8")
     modified = tmp_path / ".claude/skills/test-review/SKILL.md"
-    modified.write_text(modified.read_text() + "my tweak\n")
+    modified.write_text(
+        modified.read_text(encoding="utf-8") + "my tweak\n", encoding="utf-8"
+    )
 
     result = runner.invoke(cli, ["update", "--agent", "claude"])
     assert result.exit_code == 0, result.output
     assert "updated security-review (0.0.1 ->" in result.output
     assert "skip test-review: locally modified" in result.output
-    assert "old body" not in stale.read_text()
-    assert "my tweak" in modified.read_text()
+    assert "old body" not in stale.read_text(encoding="utf-8")
+    assert "my tweak" in modified.read_text(encoding="utf-8")
 
     # --force also refreshes the modified install
     result = runner.invoke(cli, ["update", "--agent", "claude", "--force"])
     assert result.exit_code == 0, result.output
-    assert "my tweak" not in modified.read_text()
+    assert "my tweak" not in modified.read_text(encoding="utf-8")
 
 
 def test_update_with_nothing_installed_is_a_noop(tmp_path, monkeypatch):
@@ -560,7 +568,7 @@ def test_update_with_nothing_installed_is_a_noop(tmp_path, monkeypatch):
 
 
 def _make_stale(path, name):
-    path.write_text(stamp("old body\n", name, "0.0.1"))
+    path.write_text(stamp("old body\n", name, "0.0.1"), encoding="utf-8")
 
 
 def test_update_reports_an_error_and_keeps_going(tmp_path, monkeypatch):
@@ -587,7 +595,9 @@ def test_update_reports_an_error_and_keeps_going(tmp_path, monkeypatch):
     assert "error: cannot install security-review" in result.output
     assert "disk full" in result.output
     assert "updated test-review (0.0.1 ->" in result.output
-    assert "old body" in (skills_dir / "security-review/SKILL.md").read_text()
+    assert "old body" in (skills_dir / "security-review/SKILL.md").read_text(
+        encoding="utf-8"
+    )
 
     # with the only candidate failing, it doesn't also claim nothing to update
     result = runner.invoke(cli, ["update", "--agent", "claude"])
@@ -605,20 +615,22 @@ def test_update_accepts_several_agents(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "claude:\n  nothing to update" in result.output
     assert "kiro:\n  updated logging (0.0.1 ->" in result.output
-    assert "old body" not in (tmp_path / ".kiro/skills/logging/SKILL.md").read_text()
+    assert "old body" not in (tmp_path / ".kiro/skills/logging/SKILL.md").read_text(
+        encoding="utf-8"
+    )
 
 
-def test_update_leaves_a_symlinked_destination_alone(tmp_path, monkeypatch):
+def test_update_leaves_a_symlinked_destination_alone(tmp_path, monkeypatch, symlink):
     monkeypatch.chdir(tmp_path)
     target = tmp_path / "shared-copy.md"
-    target.write_text(stamp("old body\n", "logging", "0.0.1"))
+    target.write_text(stamp("old body\n", "logging", "0.0.1"), encoding="utf-8")
     dest = tmp_path / ".agents/skills/logging/SKILL.md"
     dest.parent.mkdir(parents=True)
-    dest.symlink_to(target)
+    symlink(dest, target)
     result = CliRunner().invoke(cli, ["update", "--agent", "codex"])
     assert result.exit_code == 0, result.output
     assert "skip logging: symlink, not managed by skilldeck" in result.output
-    assert dest.is_symlink() and "old body" in target.read_text()
+    assert dest.is_symlink() and "old body" in target.read_text(encoding="utf-8")
 
 
 def test_directory_at_an_install_path_is_not_offered_install_force(

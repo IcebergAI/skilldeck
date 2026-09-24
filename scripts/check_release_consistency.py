@@ -3,8 +3,9 @@
 
 With no arguments, asserts that ``pyproject.toml``'s ``[project].version``
 matches the newest dated section in ``CHANGELOG.md``. Pass ``--tag`` with the
-pushed git ref (e.g. ``v0.3.0`` or ``refs/tags/v0.3.0``) to additionally assert
-the tag matches the package version before publishing.
+pushed git ref (exactly ``vX.Y.Z`` or ``refs/tags/vX.Y.Z``; anything else is
+rejected) to additionally assert the tag matches the package version before
+publishing.
 
 See ``docs/releasing.md``. Pure standard library so it runs anywhere.
 """
@@ -17,19 +18,39 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import _pyproject  # noqa: E402
+
+# A release version: three ASCII numbers without leading zeros. PEP 440
+# normalizes ``0.04.0`` to ``0.4.0`` in the built metadata, so a zero-padded
+# version could never match the tag, manifest, and ``__version__`` at once.
+_NUMBER = r"(?:0|[1-9][0-9]*)"
+RELEASE_VERSION_RE = re.compile(rf"{_NUMBER}\.{_NUMBER}\.{_NUMBER}")
+# The only accepted release tag shapes: ``vX.Y.Z`` or its full ref.
+_TAG_RE = re.compile(rf"(?:refs/tags/)?v({RELEASE_VERSION_RE.pattern})")
+_DATED_SECTION_RE = re.compile(
+    r"^##\s*\[(\d+\.\d+\.\d+)\]\s*-\s*\d{4}-\d{2}-\d{2}", re.MULTILINE
+)
+
+
+def version_key(version: str) -> tuple[int, ...]:
+    """Sort key comparing ``X.Y.Z`` numerically (so 0.10.0 > 0.3.0)."""
+    return tuple(int(part) for part in version.split("."))
+
+
+def newest_dated_version(changelog: str) -> str | None:
+    """The highest ``## [x.y.z] - DATE`` version in ``changelog``, if any."""
+    versions = _DATED_SECTION_RE.findall(changelog)
+    return max(versions, key=version_key) if versions else None
 
 
 def project_version() -> str:
     """Return ``version`` from the ``[project]`` table of pyproject.toml."""
-    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    start = re.search(r"^\[project\]", text, re.MULTILINE)
-    if not start:
-        raise SystemExit("error: no [project] table in pyproject.toml")
-    section = re.split(r"^\[", text[start.end() :], maxsplit=1, flags=re.MULTILINE)[0]
-    match = re.search(r'^version\s*=\s*"([^"]+)"', section, re.MULTILINE)
-    if not match:
-        raise SystemExit("error: no version in the [project] table")
-    return match.group(1)
+    try:
+        return _pyproject.project_version(ROOT)
+    except _pyproject.PyprojectError as exc:
+        raise SystemExit(f"error: {exc}") from None
 
 
 def latest_changelog_version() -> str:
@@ -39,19 +60,26 @@ def latest_changelog_version() -> str:
     numbers (not file order) keeps the check honest if a section is ever
     added in the wrong place.
     """
-    text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    versions = re.findall(
-        r"^##\s*\[(\d+\.\d+\.\d+)\]\s*-\s*\d{4}-\d{2}-\d{2}", text, re.MULTILINE
-    )
-    if not versions:
+    newest = newest_dated_version((ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))
+    if newest is None:
         raise SystemExit("error: no dated version section in CHANGELOG.md")
-    return max(versions, key=lambda v: tuple(int(part) for part in v.split(".")))
+    return newest
 
 
 def normalize_tag(ref: str) -> str:
-    """Reduce a tag ref (``refs/tags/v0.3.0``) to a bare version (``0.3.0``)."""
-    tag = ref.rsplit("/", 1)[-1]
-    return tag[1:] if tag.startswith("v") else tag
+    """Reduce ``refs/tags/vX.Y.Z`` or ``vX.Y.Z`` to the bare version ``X.Y.Z``.
+
+    Anything else (a bare version, a nested ref such as ``refs/tags/x/v0.3.0``,
+    a branch, a pre-release suffix, a zero-padded number) raises
+    ``ValueError`` rather than being guessed at: the release workflow must only
+    ever publish an exact tag.
+    """
+    match = _TAG_RE.fullmatch(ref)
+    if not match:
+        raise ValueError(
+            f"release tag {ref!r} is not of the form vX.Y.Z or refs/tags/vX.Y.Z"
+        )
+    return match.group(1)
 
 
 def main() -> int:
@@ -70,12 +98,16 @@ def main() -> int:
             f"pyproject version {version!r} != newest CHANGELOG version {changelog!r}"
         )
     if args.tag:
-        tag_version = normalize_tag(args.tag)
-        if tag_version != version:
-            errors.append(
-                f"tag {args.tag!r} (-> {tag_version!r}) != "
-                f"pyproject version {version!r}"
-            )
+        try:
+            tag_version = normalize_tag(args.tag)
+        except ValueError as exc:
+            errors.append(str(exc))
+        else:
+            if tag_version != version:
+                errors.append(
+                    f"tag {args.tag!r} (-> {tag_version!r}) != "
+                    f"pyproject version {version!r}"
+                )
 
     if errors:
         for error in errors:

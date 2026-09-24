@@ -75,7 +75,9 @@ FINDINGS = {
 
 
 def _script_lines():
-    ci = yaml.safe_load((FIXTURE / "change" / ".gitlab-ci.yml").read_text())
+    ci = yaml.safe_load(
+        (FIXTURE / "change" / ".gitlab-ci.yml").read_text(encoding="utf-8")
+    )
     return [
         line
         for job in ci.values()
@@ -100,7 +102,13 @@ def _runs_attacker_text(line, workdir):
     return False
 
 
-needs_sh = pytest.mark.skipif(shutil.which("sh") is None, reason="needs sh")
+# These run script lines the way a GitLab runner's POSIX shell would. On Windows
+# any `sh` on PATH is Git for Windows' MSYS shell, not that shell, so Windows
+# skips them; the Linux and macOS legs run them.
+needs_sh = pytest.mark.skipif(
+    sys.platform == "win32" or shutil.which("sh") is None,
+    reason="needs a POSIX sh (GitLab runner shell)",
+)
 
 
 @pytest.mark.parametrize("plant", EXPECTED["plants"], ids=lambda p: p["keywords"][0])
@@ -116,8 +124,7 @@ def test_plant_keywords_do_not_appear_in_the_planted_file(plant):
     ids=[p["keywords"][0] for p in EXPECTED["plants"]],
 )
 def test_a_report_of_the_other_plant_does_not_score_this_one(index):
-    # score() matches keywords anywhere in the report, so a keyword that a
-    # finding about the other plant (or ordinary prose) would contain lets a
+    # a keyword that a finding about the other plant would contain lets a
     # report that misses this plant pass
     fixture = run_evals.load_fixture(FIXTURE)
     plant = fixture.plants[index]

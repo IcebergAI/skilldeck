@@ -51,18 +51,20 @@ def test_last_stamp_wins_when_body_contains_a_lookalike():
 
 def test_read_returns_the_stamp_of_a_regular_file(tmp_path):
     path = tmp_path / "skill.md"
-    path.write_text(stamp("BODY\n", "demo", "1.0.0"))
+    path.write_text(stamp("BODY\n", "demo", "1.0.0"), encoding="utf-8")
     found = read(path)
     assert found is not None and (found.name, found.version) == ("demo", "1.0.0")
 
 
-def test_read_treats_anything_skilldeck_cannot_have_written_as_unstamped(tmp_path):
+def test_read_treats_anything_skilldeck_cannot_have_written_as_unstamped(
+    tmp_path, symlink
+):
     stamped = tmp_path / "stamped.md"
-    stamped.write_text(stamp("BODY\n", "demo", "1.0.0"))
+    stamped.write_text(stamp("BODY\n", "demo", "1.0.0"), encoding="utf-8")
     binary = tmp_path / "binary.md"
     binary.write_bytes(b"\xff\xfe\x00")
     link = tmp_path / "link.md"
-    link.symlink_to(stamped)
+    symlink(link, stamped)
     directory = tmp_path / "dir.md"
     directory.mkdir()
     for path in (binary, link, directory, tmp_path / "missing.md"):

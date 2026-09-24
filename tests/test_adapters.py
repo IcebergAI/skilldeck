@@ -283,9 +283,10 @@ def test_legacy_names_are_not_agents_a_skill_can_list(tmp_path):
     skill_dir.mkdir()
     (skill_dir / "meta.yaml").write_text(
         "name: demo\ndescription: d\ncategory: c\nversion: 0.1.0\n"
-        "supported-agents: [copilot-prompt]\n"
+        "supported-agents: [copilot-prompt]\n",
+        encoding="utf-8",
     )
-    (skill_dir / "skill.md").write_text("body\n")
+    (skill_dir / "skill.md").write_text("body\n", encoding="utf-8")
     with pytest.raises(SkillError, match="unknown agent.*copilot-prompt"):
         load_skill(skill_dir, known_agents=set(ADAPTERS))
 
@@ -308,7 +309,7 @@ def test_install_and_uninstall_roundtrip(skill, tmp_path):
 def test_install_writes_a_valid_stamp(skill, tmp_path):
     adapter = ADAPTERS["claude"]
     dest = adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
-    found = parse_stamp(dest.read_text())
+    found = parse_stamp(dest.read_text(encoding="utf-8"))
     assert found is not None
     assert (found.name, found.version, found.modified) == ("demo", "0.1.0", False)
     assert adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path)[0] is (
@@ -319,23 +320,26 @@ def test_install_writes_a_valid_stamp(skill, tmp_path):
 def test_install_refuses_to_clobber_local_modifications(skill, tmp_path):
     adapter = ADAPTERS["claude"]
     dest = adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
-    dest.write_text(dest.read_text().replace("DEMO BODY", "my local tweak"))
+    dest.write_text(
+        dest.read_text(encoding="utf-8").replace("DEMO BODY", "my local tweak"),
+        encoding="utf-8",
+    )
 
     state, _ = adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path)
     assert state is InstallState.MODIFIED
     with pytest.raises(SkillError, match="local modifications"):
         adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
-    assert "my local tweak" in dest.read_text()  # not clobbered
+    assert "my local tweak" in dest.read_text(encoding="utf-8")  # not clobbered
 
     adapter.install(skill, Scope.PROJECT, project_root=tmp_path, force=True)
-    assert "my local tweak" not in dest.read_text()
+    assert "my local tweak" not in dest.read_text(encoding="utf-8")
 
 
 def test_install_refuses_to_clobber_unmanaged_file(skill, tmp_path):
     adapter = ADAPTERS["claude"]
     dest = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path)
     dest.parent.mkdir(parents=True)
-    dest.write_text("hand-written skill\n")
+    dest.write_text("hand-written skill\n", encoding="utf-8")
 
     state, _ = adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path)
     assert state is InstallState.UNMANAGED
@@ -343,7 +347,7 @@ def test_install_refuses_to_clobber_unmanaged_file(skill, tmp_path):
         adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
 
     adapter.install(skill, Scope.PROJECT, project_root=tmp_path, force=True)
-    assert "DEMO BODY" in dest.read_text()
+    assert "DEMO BODY" in dest.read_text(encoding="utf-8")
 
 
 def test_inspect_detects_stale_install(skill, tmp_path):
@@ -377,22 +381,22 @@ def test_installed_files_finds_installs(skill, tmp_path):
 def test_install_reports_unwritable_destination_cleanly(skill, tmp_path):
     # If a parent of the destination exists as a regular file, install must
     # raise SkillError (clean CLI message), not leak an OSError traceback.
-    (tmp_path / ".claude").write_text("a file, not a directory")
+    (tmp_path / ".claude").write_text("a file, not a directory", encoding="utf-8")
     with pytest.raises(SkillError, match="cannot install"):
         ADAPTERS["claude"].install(skill, Scope.PROJECT, project_root=tmp_path)
 
 
-def test_install_refuses_to_write_through_symlink(skill, tmp_path):
+def test_install_refuses_to_write_through_symlink(skill, tmp_path, symlink):
     adapter = ADAPTERS["claude"]
     dest = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path)
     dest.parent.mkdir(parents=True)
     target = tmp_path / "outside.txt"
-    target.write_text("original")
-    dest.symlink_to(target)
+    target.write_text("original", encoding="utf-8")
+    symlink(dest, target)
 
     with pytest.raises(SkillError, match="symlink"):
         adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
-    assert target.read_text() == "original"  # link target not clobbered
+    assert target.read_text(encoding="utf-8") == "original"  # link target not clobbered
 
 
 def _bare_skill(name, agent, body):
@@ -468,13 +472,13 @@ def test_uninstall_refuses_unmanaged_file_unless_forced(skill, tmp_path):
     adapter = LEGACY_ADAPTERS["cursor-rule"]
     dest = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path)
     dest.parent.mkdir(parents=True)
-    dest.write_text("my own rule\n")
+    dest.write_text("my own rule\n", encoding="utf-8")
 
     with pytest.raises(
         SkillError, match="no skilldeck stamp.*0.3.0 or earlier.*--force"
     ):
         adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path)
-    assert dest.read_text() == "my own rule\n"
+    assert dest.read_text(encoding="utf-8") == "my own rule\n"
 
     removed = adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path, force=True)
     assert removed == dest
@@ -484,11 +488,11 @@ def test_uninstall_refuses_unmanaged_file_unless_forced(skill, tmp_path):
 def test_uninstall_refuses_modified_install_unless_forced(skill, tmp_path):
     adapter = ADAPTERS["claude"]
     dest = adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
-    dest.write_text(dest.read_text() + "local edit\n")
+    dest.write_text(dest.read_text(encoding="utf-8") + "local edit\n", encoding="utf-8")
 
     with pytest.raises(SkillError, match="local modifications.*--force"):
         adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path)
-    assert "local edit" in dest.read_text()
+    assert "local edit" in dest.read_text(encoding="utf-8")
 
     adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path, force=True)
     assert not dest.exists()
@@ -505,7 +509,9 @@ def test_uninstall_removes_a_stale_install_without_force(skill, tmp_path):
     assert adapter.uninstall(newer, Scope.PROJECT, project_root=tmp_path) is not None
 
 
-def test_symlink_to_a_stamped_file_is_not_treated_as_an_install(skill, tmp_path):
+def test_symlink_to_a_stamped_file_is_not_treated_as_an_install(
+    skill, tmp_path, symlink
+):
     # skilldeck never creates symlinks, so inspect must not follow one to a
     # stamped file elsewhere and report it as a managed (deletable) install.
     adapter = ADAPTERS["codex"]
@@ -513,7 +519,7 @@ def test_symlink_to_a_stamped_file_is_not_treated_as_an_install(skill, tmp_path)
     target = adapter.install(skill, Scope.PROJECT, project_root=elsewhere)
     dest = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path)
     dest.parent.mkdir(parents=True)
-    dest.symlink_to(target)
+    symlink(dest, target)
 
     assert adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path) == (
         InstallState.UNMANAGED,
@@ -526,14 +532,14 @@ def test_symlink_to_a_stamped_file_is_not_treated_as_an_install(skill, tmp_path)
     adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path, force=True)
     assert not dest.is_symlink()
     assert target.is_file()  # the link target is never deleted
-    assert parse_stamp(target.read_text()) is not None
+    assert parse_stamp(target.read_text(encoding="utf-8")) is not None
 
 
-def test_dangling_symlink_is_present_not_missing(skill, tmp_path):
+def test_dangling_symlink_is_present_not_missing(skill, tmp_path, symlink):
     adapter = ADAPTERS["kiro"]
     dest = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path)
     dest.parent.mkdir(parents=True)
-    dest.symlink_to(tmp_path / "gone")
+    symlink(dest, tmp_path / "gone")
     state, _ = adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path)
     assert state is InstallState.UNMANAGED
     adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path, force=True)
@@ -559,7 +565,7 @@ def test_directory_at_destination_is_never_removed(skill, tmp_path):
     adapter = ADAPTERS["codex"]
     dest = adapter.destination(skill, Scope.PROJECT, project_root=tmp_path)
     dest.mkdir(parents=True)
-    (dest / "keep.txt").write_text("keep")
+    (dest / "keep.txt").write_text("keep", encoding="utf-8")
     assert adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path)[0] is (
         InstallState.UNMANAGED
     )
@@ -568,7 +574,7 @@ def test_directory_at_destination_is_never_removed(skill, tmp_path):
     # nor replaced: a clean refusal, not an os.replace error naming a temp file
     with pytest.raises(SkillError, match="is a directory, which skilldeck never rep"):
         adapter.install(skill, Scope.PROJECT, project_root=tmp_path, force=True)
-    assert (dest / "keep.txt").read_text() == "keep"
+    assert (dest / "keep.txt").read_text(encoding="utf-8") == "keep"
     assert _leftovers(dest.parent) == []
 
 
@@ -621,7 +627,7 @@ def test_failed_install_keeps_the_old_file_and_cleans_up(skill, tmp_path, monkey
     # failure part-way leaves the previous install intact and no debris behind.
     adapter = ADAPTERS["codex"]
     dest = adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
-    before = dest.read_text()
+    before = dest.read_text(encoding="utf-8")
     newer = dataclasses.replace(skill, version="0.2.0", body="NEW BODY")
 
     def boom(src, dst):
@@ -630,7 +636,7 @@ def test_failed_install_keeps_the_old_file_and_cleans_up(skill, tmp_path, monkey
     monkeypatch.setattr(base.os, "replace", boom)
     with pytest.raises(SkillError, match="cannot install demo.*disk full"):
         adapter.install(newer, Scope.PROJECT, project_root=tmp_path)
-    assert dest.read_text() == before
+    assert dest.read_text(encoding="utf-8") == before
     assert _leftovers(dest.parent) == []
 
 
@@ -664,7 +670,7 @@ def test_install_file_modes(skill, tmp_path):
         dest.chmod(0o220)
         adapter.install(skill, Scope.PROJECT, project_root=tmp_path, force=True)
         assert stat.S_IMODE(dest.stat().st_mode) == 0o620
-        assert parse_stamp(dest.read_text()) is not None
+        assert parse_stamp(dest.read_text(encoding="utf-8")) is not None
     finally:
         os.umask(old_umask)
 
@@ -675,7 +681,7 @@ def test_install_refuses_a_read_only_destination(skill, tmp_path, monkeypatch):
     # rather than chmod'ed: root may write to any file.)
     adapter = ADAPTERS["codex"]
     dest = adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
-    before = dest.read_text()
+    before = dest.read_text(encoding="utf-8")
     newer = dataclasses.replace(skill, version="0.2.0", body="NEW BODY")
     real_access = os.access
     monkeypatch.setattr(
@@ -685,7 +691,7 @@ def test_install_refuses_a_read_only_destination(skill, tmp_path, monkeypatch):
     )
     with pytest.raises(SkillError, match="is read-only"):
         adapter.install(newer, Scope.PROJECT, project_root=tmp_path, force=True)
-    assert dest.read_text() == before
+    assert dest.read_text(encoding="utf-8") == before
     assert _leftovers(dest.parent) == []
 
 

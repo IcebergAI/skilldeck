@@ -15,7 +15,7 @@ You'll need [uv](https://docs.astral.sh/uv/) (there's no system pip in CI).
 
 ```bash
 git clone https://github.com/IcebergAI/skilldeck && cd skilldeck
-uv run skilldeck list      # run the CLI in place, no install needed
+uv run --extra dev skilldeck list   # run the CLI in place, no install needed
 ```
 
 ## Making a change
@@ -28,12 +28,22 @@ uv run skilldeck list      # run the CLI in place, no install needed
 
 ### Run the checks before pushing
 
-CI runs lint, format, types, and a 3.10–3.14 pytest matrix on every PR. Run the same
-locally so there are no surprises:
+CI runs lint, format, types, a 3.10–3.14 pytest matrix (plus Windows and macOS, and
+the lowest allowed dependency versions), and a workflow lint on every PR. Run the same
+checks locally so there are no surprises:
 
 ```bash
-uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest
+uv run --extra dev ruff check . && uv run --extra dev ruff format --check . \
+  && uv run --extra dev mypy && uv run --extra dev pytest
 ```
+
+Always pass `--extra dev`: the linters and test runner live in the `dev` extra, and a
+bare `uv run` does not install them.
+
+Because the suite also runs on Windows, tests pass `encoding="utf-8"` to every text
+read and write (Windows defaults to the locale's code page) and create symlinks through
+the `symlink` fixture in `tests/conftest.py`, which skips only when the account may not
+create them.
 
 ## Authoring or changing a skill
 

@@ -19,13 +19,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import shutil
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))  # run from a checkout without installing
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import _pyproject  # noqa: E402
 
 from skilldeck.adapters import ADAPTERS  # noqa: E402
 from skilldeck.provenance import (  # noqa: E402
@@ -41,11 +43,10 @@ REPO_URL = "https://github.com/IcebergAI/skilldeck"
 
 
 def project_version() -> str:
-    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
-    if not match:
-        raise SystemExit("error: no version in pyproject.toml")
-    return match.group(1)
+    try:
+        return _pyproject.project_version(ROOT)
+    except _pyproject.PyprojectError as exc:
+        raise SystemExit(f"error: {exc}") from None
 
 
 def generate() -> dict[Path, str]:

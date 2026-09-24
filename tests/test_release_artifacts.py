@@ -27,7 +27,7 @@ sbom = _script("verify_sbom.py")
 def _release_dir(tmp_path: Path) -> Path:
     (tmp_path / "skilldeck-1.2.3-py3-none-any.whl").write_bytes(b"wheel")
     (tmp_path / "skilldeck-1.2.3.tar.gz").write_bytes(b"sdist")
-    (tmp_path / "skilldeck-1.2.3.spdx.json").write_text("{}\n")
+    (tmp_path / "skilldeck-1.2.3.spdx.json").write_text("{}\n", encoding="utf-8")
     return tmp_path
 
 
@@ -44,20 +44,20 @@ def test_checksum_round_trip_and_tamper_failure(tmp_path):
 def test_checksum_set_rejects_missing_extra_and_malformed_entries(tmp_path):
     directory = _release_dir(tmp_path)
     output = checksums.write(directory)
-    (directory / "unexpected.txt").write_text("no")
+    (directory / "unexpected.txt").write_text("no", encoding="utf-8")
     with pytest.raises(checksums.ChecksumError, match="unexpected"):
         checksums.verify(output)
     (directory / "unexpected.txt").unlink()
-    output.write_text("not a checksum\n")
+    output.write_text("not a checksum\n", encoding="utf-8")
     with pytest.raises(checksums.ChecksumError, match="malformed"):
         checksums.verify(output)
 
 
-def test_checksum_set_rejects_symlinked_artifact(tmp_path):
+def test_checksum_set_rejects_symlinked_artifact(tmp_path, symlink):
     directory = _release_dir(tmp_path)
     wheel = directory / "skilldeck-1.2.3-py3-none-any.whl"
     wheel.unlink()
-    wheel.symlink_to(directory / "skilldeck-1.2.3.tar.gz")
+    symlink(wheel, directory / "skilldeck-1.2.3.tar.gz")
     with pytest.raises(checksums.ChecksumError, match="regular file"):
         checksums.write(directory)
 
@@ -137,7 +137,8 @@ def _sbom(tmp_path: Path, names: list[str]) -> Path:
                     for index, name in enumerate(names)
                 ],
             }
-        )
+        ),
+        encoding="utf-8",
     )
     return path
 
@@ -157,18 +158,18 @@ def test_sbom_requires_runtime_and_excludes_development_packages(tmp_path):
         sbom.verify(polluted)
 
 
-def test_verifiers_reject_symlink_inputs(tmp_path):
+def test_verifiers_reject_symlink_inputs(tmp_path, symlink):
     directory = tmp_path / "bundle"
     directory.mkdir()
     directory = _release_dir(directory)
     checksums_path = checksums.write(directory)
     checksum_link = tmp_path / "SHA256SUMS"
-    checksum_link.symlink_to(checksums_path)
+    symlink(checksum_link, checksums_path)
     with pytest.raises(checksums.ChecksumError, match="regular file"):
         checksums.verify(checksum_link)
 
     valid = _sbom(tmp_path, ["skilldeck", "click", "PyYAML"])
     sbom_link = tmp_path / "linked.spdx.json"
-    sbom_link.symlink_to(valid)
+    symlink(sbom_link, valid)
     with pytest.raises(sbom.SbomError, match="regular file"):
         sbom.verify(sbom_link)

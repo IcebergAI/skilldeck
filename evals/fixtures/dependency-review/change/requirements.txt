@@ -1,3 +1,7 @@
+# Public packages come straight from PyPI; the corp index is only needed for
+# our internal corp-* packages.
+--index-url https://pypi.org/simple/
+--extra-index-url https://pypi.corp.example.com/simple/
 click==8.1.7
 requests==2.33.0
-left-pad @ git+https://github.com/someuser/left-pad@main
+corp-auth-client~=2.4
