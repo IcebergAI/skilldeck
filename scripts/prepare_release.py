@@ -9,7 +9,8 @@
    ``## [x.y.z] - YYYY-MM-DD`` section, leaving a fresh empty ``[Unreleased]``
    above it (refuses to release an empty Unreleased section)
 3. re-lock (``uv lock``) so the lockfile mirrors the version
-4. regenerate the Claude Code plugin tree, whose manifest pins the version
+4. regenerate the Claude Code plugin tree, recording its current content as
+   the release's so ``plugin.json`` carries exactly the release version
 5. re-run the release-consistency guard
 
 Every check that can reject the release (a canonical ``X.Y.Z`` version newer
@@ -17,9 +18,10 @@ than both the current one and the newest dated CHANGELOG section, an
 ``[Unreleased]`` section with at least one entry, no existing section for the
 version) runs before any file is written. If ``uv lock`` or generating the
 plugin tree fails, ``pyproject.toml``, ``CHANGELOG.md`` and ``uv.lock`` are
-restored and the script exits non-zero. Only a failure while writing the
-plugin tree itself, or of the final consistency guard (which the checks above
-exist to prevent), leaves the edits in place for inspection.
+restored and the script exits non-zero, as they are if the regenerated
+plugin would not carry exactly the release version. Only a failure while
+writing the plugin tree itself, or of the final consistency guard (which the
+checks above exist to prevent), leaves the edits in place for inspection.
 
 It does not commit, push, or tag: review the diff, open a ``Release x.y.z``
 PR, and tag ``vX.Y.Z`` after the merge (which publishes to PyPI).
@@ -149,6 +151,16 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "error: `uv lock` failed; pyproject.toml, CHANGELOG.md, and uv.lock "
             "were restored. Fix the lock problem and re-run.",
+            file=sys.stderr,
+        )
+        return 1
+
+    plugin_version = build_plugin.plugin_version(plugin_files)
+    if plugin_version != version:
+        _restore(originals)
+        print(
+            f"error: the regenerated plugin would be {plugin_version}, not "
+            f"{version}; pyproject.toml, CHANGELOG.md, and uv.lock were restored.",
             file=sys.stderr,
         )
         return 1

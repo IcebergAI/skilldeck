@@ -75,7 +75,15 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
 - `.claude-plugin/marketplace.json` + `claude-plugin/` — the Claude Code plugin
   marketplace tree, **generated** by `scripts/build_plugin.py` from the
   canonical skills; regenerate after changing skills or the project version (a
-  pytest freshness guard enforces this), never edit by hand
+  pytest freshness guard enforces this), never edit by hand. Marketplace users
+  get `main`, and Claude Code updates a plugin only when `plugin.json`'s
+  `version` string changes, so that version is derived from the plugin
+  content: exactly the project version for the content recorded in
+  `claude-plugin/.skilldeck/release.json` when the version was bumped, else
+  `X.Y.(Z+1)-dev.sha256-<12 hex>` (see `docs/releasing.md`). Never restore or
+  edit that record outside an unmerged release PR:
+  `scripts/check_release_consistency.py` fails a record change without a
+  version bump, or one that differs from its release tag's copy
 - `src/skilldeck/_content_manifest.json` +
   `claude-plugin/.skilldeck/content-manifest.json` — identical generated
   canonical and rendered-skill identities; regenerated with the plugin tree,
@@ -115,7 +123,12 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
   stay in sync — `scripts/check_release_consistency.py` enforces this in CI and
   `pytest`. A dated CHANGELOG section without a matching `v*` tag is prepared, not
   published.
-- Release CI must build once, verify wheel/sdist/plugin identity, produce a
-  runtime-only SPDX SBOM and exact checksums, attest those bytes, then publish
-  the same bundle. Keep build, attest, PyPI, and GitHub-release permissions in
-  separate jobs and preserve the post-publication readback/tamper gate.
+- Release CI must build once, verify wheel/sdist/plugin identity (against the
+  tagged commit's files), produce a runtime-only SPDX SBOM and exact
+  checksums, attest those bytes, then publish the same bundle. The build job
+  hands the bundle digests to later jobs as a job output; each job checks its
+  download against them before use. Keep build, attest, PyPI, and
+  GitHub-release permissions in separate jobs, keep the PyPI byte readback
+  ahead of the GitHub release, and preserve the post-publication
+  readback/tamper gate (which must accept only gh's "no attestations found"
+  rejection).

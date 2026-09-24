@@ -2,7 +2,10 @@ name: Release
 
 # A tag is the explicit release authorization. The workflow builds once, then
 # carries the same verified bytes through attestation, PyPI, GitHub, and
-# independent channel readback.
+# independent channel readback. The build job publishes the bundle's SHA-256
+# digests as a job output, which GitHub passes to later jobs separately from
+# the artifact; every job checks the bundle it downloads against that output
+# before using it.
 on:
   push:
     tags: ["v*"]
@@ -60,6 +63,7 @@ jobs:
       contents: read
     outputs:
       version: ${{ steps.release.outputs.version }}
+      digests: ${{ steps.bundle.outputs.digests }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -90,7 +94,8 @@ jobs:
             --plugin-dir claude-plugin \
             --expected-version "$EXPECTED_VERSION" \
             --expected-ref "$GITHUB_REF" \
-            --expected-commit "$GITHUB_SHA"
+            --expected-commit "$GITHUB_SHA" \
+            --release-plugin
       # The SBOM describes this venv, so it must hold exactly what uv.lock pins
       # (hash-checked), not whatever a fresh resolve would pick at tag time.
       - name: Install only the release wheel and locked runtime dependencies
@@ -105,7 +110,8 @@ jobs:
             --require-hashes -r "$RUNNER_TEMP/runtime-requirements.txt"
           uv pip install --python .release-venv/bin/python --no-deps dist/*.whl
           uv pip check --python .release-venv/bin/python
-          .release-venv/bin/skilldeck provenance --json > "$RUNNER_TEMP/provenance.json"
+          .release-venv/bin/skilldeck provenance --verify --json \
+            > "$RUNNER_TEMP/provenance.json"
           python3 scripts/verify_provenance.py "$RUNNER_TEMP/provenance.json" \
             --expected-version "$EXPECTED_VERSION" \
             --expected-ref "$GITHUB_REF" \
@@ -121,11 +127,14 @@ jobs:
           upload-release-assets: false
           dependency-snapshot: false
           syft-version: v1.51.0
-      - name: Validate SBOM and exact checksum set
+      - name: Validate SBOM, write checksums, and record bundle digests
+        id: bundle
         run: |
           python3 scripts/verify_sbom.py dist/*.spdx.json
           python3 scripts/write_checksums.py dist
           python3 scripts/write_checksums.py --verify dist/SHA256SUMS
+          DIGESTS=$(python3 scripts/write_checksums.py --digests dist)
+          echo "digests=${DIGESTS}" >> "$GITHUB_OUTPUT"
       - name: Upload immutable release bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -148,8 +157,10 @@ jobs:
         with:
           name: release-bundle
           path: dist
-      - name: Re-verify downloaded bundle
-        run: python3 scripts/write_checksums.py --verify dist/SHA256SUMS
+      - name: Check the bundle against the build job's digests
+        env:
+          EXPECTED_DIGESTS: ${{ needs.build.outputs.digests }}
+        run: python3 scripts/write_checksums.py --expect "$EXPECTED_DIGESTS" dist
       - name: Attest artifact build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
@@ -181,17 +192,54 @@ jobs:
         with:
           name: release-bundle
           path: release-bundle
-      - name: Re-verify and isolate Python distributions
+      - name: Check the bundle against the build job's digests; isolate Python distributions
+        env:
+          EXPECTED_DIGESTS: ${{ needs.build.outputs.digests }}
         run: |
-          python3 scripts/write_checksums.py --verify release-bundle/SHA256SUMS
+          python3 scripts/write_checksums.py --expect "$EXPECTED_DIGESTS" release-bundle
           mkdir publish
           cp release-bundle/*.whl release-bundle/*.tar.gz publish/
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: publish
 
+  # PyPI uploads cannot be undone, so this cannot un-publish anything; it runs
+  # before the GitHub release so a mismatch stops the release there (and the
+  # maintainer yanks the PyPI files).
+  verify-pypi:
+    needs: [build, publish-pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.14"
+          enable-cache: false
+      - name: Compare the files PyPI serves with the build job's digests
+        env:
+          EXPECTED_VERSION: ${{ needs.build.outputs.version }}
+          EXPECTED_DIGESTS: ${{ needs.build.outputs.digests }}
+        run: |
+          python3 scripts/verify_pypi_release.py \
+            --version "$EXPECTED_VERSION" \
+            --expected-digests "$EXPECTED_DIGESTS"
+      - name: Verify PyPI's PEP 740 publish attestations
+        env:
+          EXPECTED_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          for BASENAME in "skilldeck-${EXPECTED_VERSION}-py3-none-any.whl" \
+            "skilldeck-${EXPECTED_VERSION}.tar.gz"; do
+            uvx --from pypi-attestations==0.0.29 pypi-attestations verify pypi \
+              --repository https://github.com/IcebergAI/skilldeck \
+              "pypi:$BASENAME"
+          done
+
   github-release:
-    needs: [build, attest, publish-pypi]
+    needs: [build, attest, verify-pypi]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -203,11 +251,12 @@ jobs:
         with:
           name: release-bundle
           path: release-bundle
-      - name: Verify and publish the existing tag
+      - name: Check the bundle against the build job's digests and publish the existing tag
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPECTED_DIGESTS: ${{ needs.build.outputs.digests }}
         run: |
-          python3 scripts/write_checksums.py --verify release-bundle/SHA256SUMS
+          python3 scripts/write_checksums.py --expect "$EXPECTED_DIGESTS" release-bundle
           gh release create "$GITHUB_REF_NAME" release-bundle/* \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
@@ -232,13 +281,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release download "$GITHUB_REF_NAME" --dir downloaded
-      - name: Verify fresh bytes, GitHub attestations, and PyPI attestations
+      - name: Verify fresh bytes and GitHub attestations
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPECTED_DIGESTS: ${{ needs.build.outputs.digests }}
         run: |
-          python3 scripts/write_checksums.py --verify downloaded/SHA256SUMS
+          python3 scripts/write_checksums.py --expect "$EXPECTED_DIGESTS" downloaded
           for ARTIFACT in downloaded/*.whl downloaded/*.tar.gz; do
-            BASENAME=$(basename "$ARTIFACT")
             gh attestation verify "$ARTIFACT" \
               --repo "$GITHUB_REPOSITORY" \
               --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
@@ -252,9 +301,6 @@ jobs:
               --source-digest "$GITHUB_SHA" \
               --deny-self-hosted-runners \
               --predicate-type https://spdx.dev/Document/v2.3
-            uvx --from pypi-attestations==0.0.29 pypi-attestations verify pypi \
-              --repository https://github.com/IcebergAI/skilldeck \
-              "pypi:$BASENAME"
           done
       - name: Re-verify distribution identity from downloaded assets
         env:
@@ -266,18 +312,35 @@ jobs:
             --plugin-dir claude-plugin \
             --expected-version "$EXPECTED_VERSION" \
             --expected-ref "$GITHUB_REF" \
-            --expected-commit "$GITHUB_SHA"
-      - name: Prove tampering is rejected
+            --expected-commit "$GITHUB_SHA" \
+            --release-plugin
+      # A modified wheel must be rejected by the same command consumers run
+      # (docs/verifying-releases.md), and for the right reason: gh reports "no
+      # attestations found" when the API lists none for the new digest. Any
+      # other failure (network, auth, a gh change) proves nothing, so it fails
+      # this step instead of passing it. The step above just verified the
+      # untampered wheel with the same flags.
+      - name: Prove a modified wheel is rejected for lack of an attestation
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp -R downloaded tampered
-          printf 'tampered' >> tampered/*.whl
-          if python3 scripts/write_checksums.py --verify tampered/SHA256SUMS; then
-            echo "checksum verification accepted a tampered wheel" >&2
+          WHEEL=$(basename downloaded/*.whl)
+          mkdir tampered
+          cp "downloaded/$WHEEL" "tampered/$WHEEL"
+          printf 'tampered' >> "tampered/$WHEEL"
+          if gh attestation verify "tampered/$WHEEL" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+            --source-ref "$GITHUB_REF" \
+            --source-digest "$GITHUB_SHA" \
+            --deny-self-hosted-runners > "$RUNNER_TEMP/tampered.log" 2>&1; then
+            cat "$RUNNER_TEMP/tampered.log"
+            echo "error: attestation verification accepted a modified wheel" >&2
             exit 1
           fi
-          if gh attestation verify tampered/*.whl --repo "$GITHUB_REPOSITORY"; then
-            echo "attestation verification accepted a tampered wheel" >&2
+          cat "$RUNNER_TEMP/tampered.log"
+          if ! grep -qF "no attestations found" "$RUNNER_TEMP/tampered.log"; then
+            echo "error: verification of the modified wheel failed for another" \
+              "reason than a missing attestation; the tamper check is inconclusive" >&2
             exit 1
           fi

@@ -18,6 +18,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # all branches and tags: the plugin release record is checked
+          # against the PR's base branch and any release tag
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
@@ -28,8 +31,15 @@ jobs:
         run: uv run --locked --extra dev ruff format --check .
       - name: Mypy
         run: uv run --locked --extra dev mypy
-      - name: Release consistency (version matches CHANGELOG)
-        run: python scripts/check_release_consistency.py
+      - name: Release consistency (version, CHANGELOG, plugin release record)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            python scripts/check_release_consistency.py --base "origin/$BASE_REF"
+          else
+            python scripts/check_release_consistency.py
+          fi
 
   test:
     runs-on: ubuntu-latest
@@ -172,7 +182,8 @@ jobs:
             --require-hashes -r "$RUNNER_TEMP/runtime-requirements.txt"
           uv pip install --python .release-venv/bin/python --no-deps dist/*.whl
           uv pip check --python .release-venv/bin/python
-          .release-venv/bin/skilldeck provenance --json > "$RUNNER_TEMP/wheel-provenance.json"
+          .release-venv/bin/skilldeck provenance --verify --json \
+            > "$RUNNER_TEMP/wheel-provenance.json"
           python3 scripts/verify_provenance.py "$RUNNER_TEMP/wheel-provenance.json" \
             --expected-version "$EXPECTED_VERSION" \
             --expected-ref "refs/tags/v${EXPECTED_VERSION}" \
@@ -188,7 +199,7 @@ jobs:
           uv pip install --python "$SDIST_PYTHON" --no-deps dist/*.tar.gz
           uv pip check --python "$SDIST_PYTHON"
           "$RUNNER_TEMP/sdist-venv/bin/skilldeck" list
-          "$RUNNER_TEMP/sdist-venv/bin/skilldeck" provenance --json \
+          "$RUNNER_TEMP/sdist-venv/bin/skilldeck" provenance --verify --json \
             > "$RUNNER_TEMP/sdist-provenance.json"
           python3 scripts/verify_provenance.py "$RUNNER_TEMP/sdist-provenance.json" \
             --expected-version "$EXPECTED_VERSION" \
@@ -205,11 +216,13 @@ jobs:
           upload-release-assets: false
           dependency-snapshot: false
           syft-version: v1.51.0
-      - name: Validate SBOM and exact checksum set
+      - name: Validate SBOM, exact checksum set, and the digest handoff
         run: |
           python3 scripts/verify_sbom.py dist/*.spdx.json
           python3 scripts/write_checksums.py dist
           python3 scripts/write_checksums.py --verify dist/SHA256SUMS
+          DIGESTS=$(python3 scripts/write_checksums.py --digests dist)
+          python3 scripts/write_checksums.py --expect "$DIGESTS" dist
       - name: Upload candidate trust bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
