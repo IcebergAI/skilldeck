@@ -1,5 +1,7 @@
 skill: security-review
 plants:
+  # the invoice route loads any order by ID without scoping it to the caller
   - file: app/orders.py
     keywords: [IDOR, authorization, V8]
+    min-severity: high
 max-findings: 5

@@ -112,6 +112,14 @@ All notable changes to this project are documented here. The format is based on
 - Kiro adapter now renders skills with `inclusion: manual` frontmatter: Kiro
   steering documents are included in every interaction by default, which is
   wrong for on-demand review prompts.
+- Eval fixtures are more realistic (#107): `dependency-review` now plants a
+  dependency-confusion setup (`--extra-index-url` for an internal `corp-*`
+  package, per pip's install docs) instead of an npm package in
+  `requirements.txt`; `migration-review` gains PostgreSQL/table-size context
+  (`config/database.yml`, `db/schema.rb`, a hot ~200M-row `events` table);
+  `authentication-review`'s email-keyed identity becomes an intentional second
+  plant. Every fixture's keywords now describe the defect instead of echoing
+  the planted code, and security-relevant plants set a `min-severity`.
 
 ### Fixed
 
@@ -127,6 +135,15 @@ All notable changes to this project are documented here. The format is based on
 - `scripts/check_release_consistency.py` now selects the highest dated
   CHANGELOG version (compared numerically) rather than assuming the newest
   section appears first in the file.
+- The eval scorer no longer passes wrong reports (#106): the report is parsed
+  into individual findings (`-`, `*`, and numbered bullets), and each plant
+  must be matched by its own finding naming the file and a keyword (whole
+  words, case-insensitive), so a clean mention of the file, a keyword
+  substring (`git` in `github`), or one finding covering two plants no longer
+  counts. Only stdout is scored; a non-zero agent exit or timeout fails the
+  fixture with a clear message (stderr is printed), and a fixture with plants
+  but zero parsed findings fails as `output format drift?` instead of silently
+  disabling the `max-findings` cap. `expected.yaml` is validated on load.
 
 ### Removed
 
@@ -146,6 +163,15 @@ All notable changes to this project are documented here. The format is based on
   `pyproject` version, the newest dated CHANGELOG section, and (on a tag push) the
   release tag all agree. Wired into CI (`lint` job and `pytest`) and the release
   workflow (before publish), so version/CHANGELOG/tag drift fails fast.
+- Eval runner options and fields (#106, #107): `--repeat N` reports a pass rate
+  per fixture; `--adapter NAME` installs the skill through any skilldeck
+  adapter, and the prompt names the installed path instead of hard-coding
+  `.claude/skills`; per-plant `min-severity` and `locators`; `--skill` also
+  selects a skill's variant fixtures. Clean-diff fixtures (`plants: []`) are
+  now allowed, with `security-review-clean` (parameterized, owner-scoped query)
+  and `resilience-review-clean` (timeout plus bounded, jittered retry on an
+  idempotent GET) measuring false positives. A structural test rejects plant
+  keywords that appear verbatim in the planted file.
 
 ## [0.3.0] - 2026-06-27
 

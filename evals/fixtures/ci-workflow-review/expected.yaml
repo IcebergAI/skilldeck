@@ -1,5 +1,8 @@
 skill: ci-workflow-review
 plants:
+  # attacker-controlled PR title expanded into a shell step of a
+  # fork-triggerable, privileged workflow
   - file: .github/workflows/greet.yml
-    keywords: [injection, pull_request_target, untrusted]
+    keywords: [injection, untrusted, attacker-controlled, CICD-SEC-4]
+    min-severity: high
 max-findings: 5

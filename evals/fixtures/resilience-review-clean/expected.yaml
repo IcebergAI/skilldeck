@@ -1,0 +1,10 @@
+# Clean diff: the change gives a scheduled, idempotent GET a connect/read
+# timeout and a bounded retry (3 retries, exponential backoff with jitter,
+# gateway errors only). The caller already degrades to the cached rates on
+# failure, and the worst case (~1 min) fits well inside the 10-minute refresh
+# interval. Retries look risky, but these are correct; a correct report says
+# the change is clean.
+skill: resilience-review
+plants: []
+# tolerate a single hygiene nit; more is manufactured noise
+max-findings: 1

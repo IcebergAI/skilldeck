@@ -1,5 +1,13 @@
 skill: authentication-review
 plants:
+  # hand-rolled code flow: no per-transaction `state` (or PKCE) bound to the
+  # browser session, so the callback accepts any authorization code (login CSRF)
   - file: app/sso.py
-    keywords: [state, PKCE, CSRF]
+    keywords: [state, PKCE, CSRF, code_verifier]
+    min-severity: high
+  # the local account is keyed on the IdP's email claim instead of the stable
+  # iss+sub subject identifier (the skill rates "identity keyed on email" high)
+  - file: app/sso.py
+    keywords: [sub, subject identifier, email_verified, reassignable]
+    min-severity: high
 max-findings: 6
