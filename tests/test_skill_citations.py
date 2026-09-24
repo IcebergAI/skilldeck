@@ -21,6 +21,8 @@ LINK_RE = re.compile(r"\]\((https://[^)\s]+)\)")
 SUPERSEDED = {
     r"\bA\d{2}:2021\b|/Top10/A\d{2}_2021-": "OWASP Top 10:2025 (owasp.org/Top10/2025/)",
     r"\bASVS\s*v?4\.": "ASVS 5.0",
+    # the 2026 edition renumbered the entries, so a 2025 ID names a different risk
+    r"\bLLM\d{2}:2025\b": "OWASP Top 10 for LLM Applications 2026 (LLMxx:2026)",
 }
 
 # old doc paths that only work through redirects -> the canonical form

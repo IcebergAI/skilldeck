@@ -43,6 +43,14 @@
       "version": "0.1.0"
     },
     {
+      "body_sha256": "sha256:d7b5488697886c99ab307e99e35017a749213af4e96792efd14c3c9af8bce878",
+      "canonical_sha256": "sha256:dc66abad01da2a5ffe82ccbf4f3f3a300edd87394bd682a450f85cdc000a66c5",
+      "claude_rendered_sha256": "sha256:e0e02771ed4f8a78dfadbb70f3e25f8ac0d4825320e8467cf7bed7b957e1f7d9",
+      "meta_sha256": "sha256:a90e3c80901dc33337063e09d9cfcd2d39d25e0266acf0a6988fe5a941ad4e08",
+      "name": "llm-integration-review",
+      "version": "0.1.0"
+    },
+    {
       "body_sha256": "sha256:c1dc5d41396e4757f4d83f1bafeee57b5faae2ec1dfd6cafd1424e016e2ef168",
       "canonical_sha256": "sha256:b3bdb8524872d1ea6c5a3e613bb846a3255999f5aafcf41b6c5dbb2b589a228e",
       "claude_rendered_sha256": "sha256:dbda296679e4ab283b60319d69be37f6bde7153b1743f0f72c2cbfb024580519",

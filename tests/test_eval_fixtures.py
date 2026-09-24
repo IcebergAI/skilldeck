@@ -231,6 +231,57 @@ SAMPLE_REPORTS = {
             )
         ],
     ),
+    "llm-integration-review": (
+        [
+            _finding(
+                "critical",
+                "LLM10:2026 Improper Output Handling",
+                "app/assistant.py:43",
+                "`run_diagnostic` hands the model's string to `subprocess.run(..., "
+                "shell=True)` and the model reads the customer-written ticket, so "
+                "a customer can plant instructions that run arbitrary commands on "
+                "the order-service host (remote code execution).",
+                "replace it with an `order_status(order_id)` tool that validates "
+                "the ID and runs a fixed argv without a shell.",
+            ),
+            _finding(
+                "medium",
+                "LLM06:2026 Unbounded Consumption",
+                "app/assistant.py:58",
+                "the `while True` tool-calling loop has no step limit and the "
+                "request sets no `max_completion_tokens`, so a ticket that keeps "
+                "the model calling tools runs up cost without end.",
+                "cap the loop at a few rounds and set `max_completion_tokens`.",
+            ),
+        ],
+        [
+            _finding(
+                "low",
+                "LLM10:2026 Improper Output Handling",
+                "app/assistant.py:67",
+                "`json.loads(call.function.arguments)` raises on malformed tool "
+                "arguments, so one bad tool call turns the request into a 500.",
+                "catch `JSONDecodeError` and return it to the model as the tool "
+                "result.",
+            ),
+            _finding(
+                "medium",
+                "LLM02:2026 Sensitive Information Disclosure",
+                "app/assistant.py:56",
+                "the whole ticket body, which often carries customer addresses and "
+                "order details, goes to the model provider unredacted.",
+                "send only the fields the draft needs.",
+            ),
+            _finding(
+                "medium",
+                "LLM01:2026 Prompt Injection",
+                "app/assistant.py:56",
+                "the ticket text is sent as a bare user turn with nothing marking "
+                "it as untrusted customer data.",
+                "wrap it in a labeled data block the instructions refer to.",
+            ),
+        ],
+    ),
     "logging": (
         [
             _finding(
