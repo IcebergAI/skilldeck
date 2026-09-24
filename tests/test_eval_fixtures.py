@@ -248,6 +248,54 @@ SAMPLE_REPORTS = {
             )
         ],
     ),
+    "frontend-security-review": (
+        [
+            _finding(
+                "high",
+                "V1 Encoding and Sanitization",
+                "src/components/ProfileCard.tsx:9",
+                "the member-written `bioHtml` goes into `dangerouslySetInnerHTML` "
+                "as is, so any member can put `<img src=x onerror=...>` in their "
+                "bio and run script as every member who views the profile "
+                "(stored XSS).",
+                "sanitize it with DOMPurify and a small tag allow-list before "
+                "rendering.",
+            ),
+            _finding(
+                "high",
+                "V3 Web Frontend Security",
+                "src/embed/helpWidget.ts:18",
+                "the `message` listener never checks `event.origin` or "
+                "`event.source`, so any page that opens or frames the app can post "
+                "a `navigate` message with a `javascript:` URL and run script in "
+                "the member's session.",
+                "ignore messages unless `event.origin` is the widget's origin and "
+                "`event.source` is its iframe's `contentWindow`.",
+            ),
+        ],
+        [
+            _finding(
+                "low",
+                "V14 Data Protection",
+                "src/components/ProfileCard.tsx:6",
+                "the avatar loads from whatever URL the member entered, so a "
+                "member can point it at a server they control and log each "
+                "viewer's IP address and, through the Referer header, which "
+                "profile they viewed.",
+                "re-host avatars on the app's own image domain.",
+            ),
+            _finding(
+                "medium",
+                "V3 Web Frontend Security",
+                "src/embed/helpWidget.ts:20",
+                "`window.location.assign(event.data.url)` follows whatever URL "
+                "the message names, including `javascript:` URLs and other hosts, "
+                "so the widget can send members off to a phishing page (open "
+                "redirect).",
+                "navigate only to in-app paths that resolve to the app's own host.",
+            ),
+        ],
+    ),
     "iac-review": (
         [
             _finding(

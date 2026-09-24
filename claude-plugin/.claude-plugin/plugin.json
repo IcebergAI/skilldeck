@@ -1,7 +1,7 @@
 {
   "name": "skilldeck",
-  "version": "0.3.1-dev.sha256-9e0c92ecee6a",
-  "description": "Security and code-review skills for Claude Code: authentication-review, ci-workflow-review, code-smells, dependency-review, iac-review, llm-integration-review, logging, migration-review, resilience-review, security-review, test-review",
+  "version": "0.3.1-dev.sha256-daa01aa0343b",
+  "description": "Security and code-review skills for Claude Code: authentication-review, ci-workflow-review, code-smells, dependency-review, frontend-security-review, iac-review, llm-integration-review, logging, migration-review, resilience-review, security-review, test-review",
   "author": {
     "name": "Richard Hope",
     "url": "https://github.com/IcebergAI/skilldeck"

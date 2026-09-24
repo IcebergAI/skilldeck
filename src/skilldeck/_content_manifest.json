@@ -35,6 +35,14 @@
       "version": "0.4.0"
     },
     {
+      "body_sha256": "sha256:755aa4dd00608a4131380b20fa9e2b910e442fefb7d2c10c70c4d5f754d543cd",
+      "canonical_sha256": "sha256:23c54704999fb1216eef0bf58a9ad3a6ebf288f12e2e6a95ea19acdcfb4907e9",
+      "claude_rendered_sha256": "sha256:5f33659492728fef4a77c332c4f6f2622ce012c92280aead1a6bcb3d6c940e05",
+      "meta_sha256": "sha256:6337828e91940730210bd7fea7690573610f9413d484d40a2596772c387b94fb",
+      "name": "frontend-security-review",
+      "version": "0.1.0"
+    },
+    {
       "body_sha256": "sha256:5503c0d7457247cfa17b81e7485e4ea2d8bdcc00c244f77e32d9df5ffc24b67b",
       "canonical_sha256": "sha256:d3b1a7aedb82eb14724253a447c1b67d9d3e8f5928f9b3555c7c17a9975bf529",
       "claude_rendered_sha256": "sha256:0e2496faefe746b3e1db50e470c509f1eaea8cb29c4e273f958088cdbd2589a7",
@@ -75,12 +83,12 @@
       "version": "0.3.0"
     },
     {
-      "body_sha256": "sha256:9ece959ebf18e604f8409f559153ad401dce432945b6d7dddece33ecfa7cdb5d",
-      "canonical_sha256": "sha256:c41ced78db00af3b3ddd2b511628ecee5254fca66ee84db66dd1d1d644577dc9",
-      "claude_rendered_sha256": "sha256:1058a488350795b3905910057ac77b8b4265a23792bf3441e9a07f9d8b2ab7c9",
-      "meta_sha256": "sha256:d9071165a64f4c4952be8e23cfa69c9846cced1f9131170eaf8e0ce8e7101a64",
+      "body_sha256": "sha256:56f907e6049b1a6eb23bab027b230730a57bb4f064a4fd533c1ce90c79c9ba98",
+      "canonical_sha256": "sha256:eaa1a3bd83c6cbda8c143bb3fab2e9be8716dc72975f31a76bd5940c3a859ba9",
+      "claude_rendered_sha256": "sha256:18c7369b0e95e991f25df94881e6a4f2daf015f7d1fa3aa44a6760148b0eb85c",
+      "meta_sha256": "sha256:60a12438cf365b8d31db1c15a22bec93acf3b9067b791933405ff038a54ef447",
       "name": "security-review",
-      "version": "0.5.0"
+      "version": "0.5.1"
     },
     {
       "body_sha256": "sha256:49215350ea63412ec0c5cc0aad38d74546002014abaeb0327f60f65f8082a4af",

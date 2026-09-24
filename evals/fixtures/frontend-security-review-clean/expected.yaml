@@ -1,0 +1,13 @@
+# Clean diff: the same React/TypeScript community app starts rendering each
+# member's bio as HTML and embeds a vendor's help widget. The member-written
+# bio HTML is passed through DOMPurify with a small tag and attribute
+# allow-list right at the dangerouslySetInnerHTML sink (DOMPurify also drops
+# javascript: links). The message listener accepts only messages whose origin
+# is the widget's and whose source is the widget's own iframe, checks the
+# message shape, and navigates only to a URL that resolves to the app's own
+# origin, so a javascript: URL or another host is ignored. It looks risky, but
+# it is correct; a correct report says the change is clean.
+skill: frontend-security-review
+plants: []
+# tolerate a single hygiene nit; more is manufactured noise
+max-findings: 1

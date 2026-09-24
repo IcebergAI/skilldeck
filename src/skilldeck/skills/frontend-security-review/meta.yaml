@@ -1,0 +1,10 @@
+name: frontend-security-review
+description: Review browser-side changes — React, Vue, Angular, Svelte, and plain JavaScript templates, HTML, and CSP and header config — for XSS sinks, weakened CSP, unchecked postMessage, tokens and secrets exposed to the browser, and other client-side defects, aligned to OWASP ASVS 5.0 V3 Web Frontend Security.
+category: security
+version: 0.1.0
+supported-agents:
+  - claude
+  - codex
+  - copilot
+  - cursor
+  - kiro

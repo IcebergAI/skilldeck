@@ -477,6 +477,28 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `frontend-security-review` skill (0.1.0) (#105) — reviews browser-side
+  changes (React, Vue, Angular, Svelte, plain JavaScript and HTML templates,
+  CSP and header config): framework escape hatches (`dangerouslySetInnerHTML`,
+  `v-html`, `bypassSecurityTrust*`, `{@html}`) and DOM XSS sinks (`innerHTML`,
+  `insertAdjacentHTML`, `document.write`, string `eval`/`setTimeout`,
+  `javascript:` URLs), weakened CSP (`'unsafe-inline'`, `'unsafe-eval'`,
+  wildcard sources, missing `object-src`/`base-uri`, report-only), missing
+  `frame-ancestors`, `message` listeners without an origin check and
+  `postMessage` to `"*"`, tokens in web storage, secrets inlined into client
+  bundles through `NEXT_PUBLIC_`/`VITE_` variables, third-party scripts
+  without SRI, and client-side open redirects. Classified by OWASP ASVS 5.0
+  chapter (V3 Web Frontend Security, with V1, V13 and V14), with patterns from
+  the OWASP XSS, DOM-based XSS, CSP, HTML5 Security, Clickjacking and
+  Third-Party JavaScript cheat sheets and the React, Vue, Angular, Svelte,
+  Next.js, Vite and MDN docs. Registered in `docs/finding-output.md` as the
+  owner of browser-side V3 (server-side CORS and CSRF checks stay with
+  `security-review`, cookies with `authentication-review`) and of live
+  credentials shipped in client code; `security-review` (0.5.1) names it among
+  its companion skills. Ships with a planted eval fixture (a member-written bio
+  rendered through `dangerouslySetInnerHTML`, and a help-widget `message`
+  listener that navigates wherever any sender asks) and a clean one (the same
+  change with DOMPurify and a sender- and URL-checked listener).
 - `llm-integration-review` skill (0.1.0) (#105) — reviews changes that
   integrate LLMs or AI agents: prompt injection through untrusted context
   (retrieved documents, tickets, tool and MCP results), model output reaching
