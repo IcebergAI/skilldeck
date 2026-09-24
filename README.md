@@ -18,10 +18,17 @@ assistant you use.
 ## Supported agents
 
 - Claude (Claude Code)
-- OpenAI Codex
-- GitHub Copilot (VS Code prompt files; project scope only)
-- Cursor (project rules; project scope only)
+- OpenAI Codex (0.95.0 or later)
+- GitHub Copilot (VS Code agent mode, Copilot CLI, the cloud agent)
+- Cursor
 - Kiro
+
+Every agent gets the same [Agent Skills](https://agentskills.io/specification)
+`SKILL.md` folder, in the project or in your home directory. For agent
+versions too old for skills, the earlier formats remain available as the
+`copilot-prompt`, `cursor-rule` and `kiro-steering` adapters. See
+[docs/adapters.md](docs/adapters.md) for each agent's locations and minimum
+version.
 
 ## Claude Code: install as a plugin (no Python needed)
 
@@ -118,6 +125,12 @@ skilldeck install --all --agent all
 # Install every compatible skill globally for Codex
 skilldeck install --all --agent codex --scope global
 
+# Use an older format for an agent version without skills support
+skilldeck install security-review --agent copilot-prompt
+
+# Move installs made in the older formats to the skills folders
+skilldeck migrate --agent all
+
 # Remove a skill
 skilldeck uninstall security-review --agent claude
 
@@ -146,18 +159,30 @@ write. skilldeck never writes through a symlink at an install path.
 [docs/adapters.md](docs/adapters.md#stamps-what-skilldeck-will-overwrite-or-delete)
 for the details.
 
-Upgrading from skilldeck 0.3.0 or earlier: those versions didn't stamp what
-they installed, so skilldeck now treats those files as ones it didn't write.
-Run `install --force` once to replace them with stamped copies, after which
-`update` and `uninstall` work without `--force`, or remove them with
-`uninstall --force`.
+Upgrading: Codex and Kiro skills now install as `SKILL.md` folders instead of
+the custom prompts and steering files that skilldeck 0.3.0 and earlier wrote.
+(Codex never read custom prompts from a project, and has since removed them
+altogether.) If you used a development build with the Copilot and Cursor
+adapters, their prompt files and rules become skills too. Run
+`skilldeck migrate --agent all` (and again with `--scope global` for global
+installs) to replace the old files with skills; `status` prints a hint while
+old files remain. skilldeck 0.3.0 and earlier didn't stamp what they
+installed, so skilldeck treats their files as ones it didn't write: check the
+files the hint counts, then run `migrate` with `--force`, which never
+overwrites a `SKILL.md` you have edited. For Claude skills from those
+versions, run `install --force` once to replace them with stamped copies (or
+`uninstall --force` to remove them), after which `update` and `uninstall`
+work without `--force`. See
+[Migrating from the old formats](docs/adapters.md#migrating-from-the-old-formats).
 
-`--agent all` means every agent that supports the chosen `--scope`. With
-`--scope global`, the project-only agents (Copilot and Cursor) are skipped.
+`--agent all` means every agent's native skills folder; the older formats are
+used only when you name them.
 
-`--scope project` (default) writes into the current directory; `--scope global`
-writes into your home directory. Where exactly each agent looks is documented in
-[docs/adapters.md](docs/adapters.md).
+`--scope project` (default) writes into the current directory, so run it from
+your repository root. `--scope global` writes into your home directory, or
+into the directory named by `CLAUDE_CONFIG_DIR`, `COPILOT_HOME` or `KIRO_HOME`
+when you have set one. Install each skill once per agent, at one scope: see
+[Where each agent looks, and duplicates](docs/adapters.md#where-each-agent-looks-and-duplicates).
 
 ## Release trust
 

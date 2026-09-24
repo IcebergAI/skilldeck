@@ -36,9 +36,11 @@ judging severity.
 
 ## Scope
 
-1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`),
-   plus any uncommitted or untracked changes. If you are already on the base
-   branch, review the uncommitted changes instead.
+1. Determine the diff: `git fetch`, then `git diff origin/<base>...HEAD`
+   (default base: `main`/`master`; with no remote, the local base), plus
+   uncommitted changes (`git diff HEAD`) and untracked files
+   (`git ls-files --others --exclude-standard`; read them whole). If you are
+   already on the base branch, review the uncommitted changes instead.
 2. Route diff signals to the sections below; a change rarely touches all of
    them:
    - **Passwords & recovery** — login/registration/reset/recovery routes;
@@ -65,6 +67,10 @@ judging severity.
    confirming nothing else provides it.
 4. Apply only the sections the diff actually touches — don't force findings in
    protocols the change doesn't reach.
+5. This skill owns V6, V7, V9, and V10 for `security-review`; tokens or OTPs
+   in logs belong to `logging` (V16). If the owner runs in the same review,
+   leave its area to it; in a combined report, give each defect once, under
+   the owner's classifier.
 
 ## What to look for (by area)
 
@@ -243,16 +249,25 @@ Report each finding as a single list item:
   **Issue:** what is wrong and how an attacker exploits it.
   **Fix:** the concrete change that resolves it.
 
-`severity` reflects who can exploit it pre-auth and what identity they gain:
-**critical** — an unauthenticated attacker can bypass login or forge an
+Rate `severity` on the shared severity rubric, impact × likelihood:
+**critical** — high impact (code execution, auth bypass, stolen credentials or
+bulk data, data loss, an outage), readily triggered (by anyone who can reach
+it, or in routine operation); **high** — high impact behind a common
+precondition (an authenticated user, a collaborator, a routine failure), or
+medium impact (limited exposure, degraded service) readily triggered;
+**medium** — high impact only under an unusual precondition, medium impact
+behind a common one, or low impact readily triggered (a weakened defense
+anyone can reach); **low** — medium impact only under an unusual
+precondition, or low impact behind any precondition (most defense in depth
+and hygiene).
+Here: **critical** — an unauthenticated attacker can bypass login or forge an
 identity (signature never verified, `alg` confusion, empty-password LDAP bind,
 MFA or recovery bypass, forgeable session cookie); **high** — account takeover
 behind a common precondition (missing `state`/PKCE/`nonce`, `redirect_uri`
 prefix match, guessable or long-lived reset token, session fixation, identity
 keyed on email); **medium** — weakened protections (weak KDF or parameters,
-user enumeration, missing cookie attributes, missing rate limits or lockout);
-**low** — hardening and hygiene (`__Host-` prefix, timeout tuning, policy
-nits). The classifier is the ASVS 5.0 category — usually `V6 Authentication`,
+user enumeration, missing cookie attributes, missing rate limits or lockout).
+The classifier is the ASVS 5.0 category — usually `V6 Authentication`,
 `V7 Session Management`, `V9 Self-contained Tokens`, or `V10 OAuth & OIDC`;
 use `V11 Cryptography` for password-storage KDF findings and `V3 Web Frontend
 Security` for cookie-attribute findings, matching `security-review`'s
@@ -275,7 +290,6 @@ matter; if more than ~10 survive, report the ones worth a human's time and
 summarize the rest in a line.
 
 Open the report with one line stating what was reviewed and the outcome, e.g.
-`Reviewed main..HEAD (3 files): 2 findings, worst critical.` If the diff
-touches no authentication code, say so rather than reviewing other code. If
-the authentication changes are sound, say so explicitly rather than
-manufacturing findings.
+`Reviewed origin/main...HEAD (3 files): 2 findings, worst critical.` If the
+diff touches no authentication code, say so and stop. If the authentication
+changes are sound, say so explicitly rather than manufacturing findings.

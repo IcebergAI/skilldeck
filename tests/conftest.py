@@ -15,6 +15,9 @@ import pytest
 # (an unelevated account with Developer Mode off)
 _ERROR_PRIVILEGE_NOT_HELD = 1314
 
+#: environment variables that move an agent's user-level config directory
+AGENT_HOME_VARS = ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "COPILOT_HOME", "KIRO_HOME")
+
 
 def _load_run_evals() -> None:
     script = Path(__file__).resolve().parent.parent / "evals" / "run_evals.py"
@@ -28,6 +31,14 @@ def _load_run_evals() -> None:
 
 if "run_evals" not in sys.modules:
     _load_run_evals()
+
+
+@pytest.fixture(autouse=True)
+def _no_agent_home_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Global-scope paths follow these variables, so a developer's own agent
+    # setup must not leak into the tests; tests that need one set it.
+    for var in AGENT_HOME_VARS:
+        monkeypatch.delenv(var, raising=False)
 
 
 @pytest.fixture

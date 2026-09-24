@@ -1,24 +1,19 @@
 """OpenAI Codex adapter.
 
-Codex CLI surfaces custom prompts from ``.codex/prompts/<name>.md`` (project) or
-``~/.codex/prompts/<name>.md`` (global). It has no frontmatter convention, so the
-body is written as-is.
+Codex (0.95.0 and later) loads skills from ``.agents/skills/<name>/SKILL.md``
+in each directory from the project root down to where it runs, and from
+``~/.agents/skills/<name>/SKILL.md`` for the user. ``CODEX_HOME`` does not
+move ``~/.agents``; the ``$CODEX_HOME/skills`` directory it does move is
+labelled deprecated in the Codex source.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from ..registry import Skill
-from .base import Adapter
+from ..targets import UserDir
+from .skill_md import SkillMdAdapter
 
 
-class CodexAdapter(Adapter):
+class CodexAdapter(SkillMdAdapter):
     name = "codex"
-    installed_glob = ".codex/prompts/*.md"
-
-    def relative_path(self, skill: Skill) -> Path:
-        return Path(".codex/prompts") / f"{skill.name}.md"
-
-    def render(self, skill: Skill) -> str:
-        return skill.body
+    project_dir = ".agents/skills"
+    global_dir = UserDir(".agents", "skills")

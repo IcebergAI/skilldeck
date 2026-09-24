@@ -1,0 +1,59 @@
+# A staff-only endpoint asks an LLM to draft a reply to a customer's ticket and
+# lets it call a diagnostics tool on the order-service host. The ticket body is
+# written by the customer, so whatever it says steers the model's tool calls.
+skill: llm-integration-review
+plants:
+  # the model-chosen string runs through a shell with no allow-list or human
+  # confirmation, so ticket text can drive arbitrary commands on the host
+  - file: app/assistant.py
+    keywords:
+      - code execution
+      - command execution
+      - RCE
+      - arbitrary code
+      - arbitrary command
+      - arbitrary commands
+      - arbitrary shell
+      - any command
+      - any shell command
+      - execute commands
+      - command injection
+      - shell injection
+      - shell access
+      - open-ended tool
+      - open-ended tools
+      - allow-list
+      - allowlist
+      - allow list
+      - confirmation
+      - approval
+    # the rubric rates attacker-controlled content reaching a shell critical;
+    # one step below, so a critical/high split passes but a buried medium fails
+    min-severity: high
+  # the tool-calling loop has no round cap and the request no output-token cap;
+  # only terms for those two, not the LLM06 classifier or cost in general, which
+  # also fit the route's missing rate limit and input-size cap
+  - file: app/assistant.py
+    keywords:
+      - infinite
+      - runaway
+      - forever
+      - unbounded loop
+      - max_tokens
+      - max_completion_tokens
+      - max tokens
+      - output token
+      - output-token
+      - output cap
+      - step limit
+      - step cap
+      - iteration limit
+      - iteration cap
+      - loop limit
+      - loop cap
+      - round limit
+      - max rounds
+      - turn limit
+      - max turns
+      - recursion
+max-findings: 5

@@ -1,0 +1,10 @@
+name: llm-integration-review
+description: Review changes that integrate LLMs or AI agents — prompts, tool calling, agent loops, RAG, MCP servers, and model loading — for prompt-injection, output-handling, and excessive-agency defects, aligned to the OWASP Top 10 for LLM Applications 2026.
+category: security
+version: 0.1.0
+supported-agents:
+  - claude
+  - codex
+  - copilot
+  - cursor
+  - kiro

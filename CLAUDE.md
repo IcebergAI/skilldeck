@@ -32,23 +32,35 @@ Skilldeck is a collection of skills for coding assistants to use mostly for secu
   Don't document bare `pip install` as the primary path.
 
 ## Supported agents/harnesses
+All five get the same Agent Skills `SKILL.md` folder at project and global
+scope (locations, env overrides and minimum versions: `docs/adapters.md`):
 - Claude (also installable as a Claude Code plugin marketplace)
 - OpenAI Codex
-- GitHub Copilot (project scope only)
-- Cursor (project scope only)
+- GitHub Copilot
+- Cursor
 - Kiro
+
+Opt-in legacy adapters keep the pre-skills formats for older agent versions:
+`copilot-prompt`, `cursor-rule`, `kiro-steering` (selected only by name, never
+by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
 
 ## Layout
 - `src/skilldeck/skills/<name>/` — canonical, agent-neutral skills (`meta.yaml` +
   `skill.md`); inside the package so they're bundled into the wheel
 - `src/skilldeck/` — the installer package
-  - `cli.py` — `skilldeck list/show/install/uninstall/status/update`
+  - `cli.py` — `skilldeck list/show/install/uninstall/status/update/migrate`
+    and `provenance`
   - `registry.py` — discovers and validates skills
   - `stamp.py` — install stamps (version + content hash on installed files)
-  - `targets.py` — install scope (project vs global base dir)
-  - `adapters/` — per-agent translation (claude, codex, copilot, cursor, kiro);
-    add an agent by subclassing `Adapter` and registering it in
-    `adapters/__init__.py`
+  - `targets.py` — install scope, project base dir, and `UserDir` (an agent's
+    user-level folder, with its env-var override)
+  - `adapters/` — per-agent translation: native `SKILL.md` adapters (claude,
+    codex, copilot, cursor, kiro) share `SkillMdAdapter` and only declare
+    their `project_dir`/`global_dir`; `legacy.py` holds the opt-in older
+    formats and the migration sources. Add an agent by subclassing
+    `SkillMdAdapter` (or `Adapter`) and registering it in `ADAPTERS` in
+    `adapters/__init__.py`; `ADAPTERS` keys are the valid `supported-agents`
+    names
 - `tests/` — pytest suite (`uv run --extra dev pytest`)
 - `evals/` — golden-diff skill evals (`python evals/run_evals.py`, with
   `--repeat N` for pass rates and `--adapter` for non-Claude agents): fixtures
@@ -90,6 +102,11 @@ Skilldeck is a collection of skills for coding assistants to use mostly for secu
   authoritative sources (OWASP/CIS/vendor docs) cited in the skill body, and
   land with a golden-diff eval fixture under `evals/fixtures/` (ideally also a
   `-clean` one).
+- Review skills report in the shared shape of `docs/finding-output.md` and
+  inline its one-paragraph severity rubric word for word in `## Output`
+  (`tests/test_skill_structure.py` compares them); change the rubric in the doc
+  and every skill together. Respect its "Which skill owns what" table: a
+  defect is reported once, by its owning skill.
 
 ## Shipping
 - PRs squash-merge to main: `gh pr merge <n> --squash --delete-branch` after CI
