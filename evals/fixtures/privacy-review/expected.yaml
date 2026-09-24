@@ -10,6 +10,7 @@ plants:
   # member can read any other member's national ID, date of birth, home
   # address, and phone; only terms for over-returning data, not the sensitive
   # fields themselves, which a finding about scraping the directory also names
+  # (and not `SELECT *`, which get_user in the base code already runs)
   - file: app/directory.py
     keywords:
       - minimisation
@@ -41,7 +42,18 @@ plants:
       - all columns
       - every field
       - all fields
-      - SELECT *
+      - whole object
+      - entire object
+      - full object
+      - whole user object
+      - entire user object
+      - full user object
+      - complete record
+      - complete row
+      - full user record
+      - entire user record
+      - whole user record
+      - complete user record
       - subset
       - allow-list
       - allowlist
@@ -72,6 +84,9 @@ plants:
       - geolocation
       - GPS
       - coordinates
+      - latitude
+      - longitude
+      - location data
       - pseudonymous
       - pseudonym
       - pseudonymised

@@ -158,7 +158,7 @@ one area and own it:
 | Authentication depth — ASVS V6, V7, V9, V10 (passwords, MFA, sessions and cookies, tokens, OAuth/OIDC, SAML and LDAP sign-in) | `authentication-review` | `security-review` |
 | Security logging — ASVS V16 (events logged, secrets or PII in logs, log injection) | `logging` | `security-review`, `authentication-review` |
 | LLM and agent integrations — prompts, model output reaching sinks, tools and agent loops, MCP servers and config, RAG retrieval, model loading | `llm-integration-review` | `security-review` |
-| Personal-data handling — ASVS V14 privacy (minimisation, sharing with trackers and processors, consent-gated tracking, retention and deletion, sensitive data at rest, PII in URLs, caches and client storage); PII in logs stays with `logging`, in prompts with `llm-integration-review` | `privacy-review` | `security-review` |
+| Personal-data handling — ASVS V14 privacy, and 15.3.1 when the over-returned fields are personal data (minimisation, sharing with trackers and processors, consent-gated tracking, retention and deletion, sensitive data at rest, PII in URLs, caches and client storage); PII in logs stays with `logging`, in prompts with `llm-integration-review` | `privacy-review` | `security-review` (V14; 15.3.1 for personal data) |
 | Pipeline config — workflows, CI includes, job images, runners, CI variables and tokens | `ci-workflow-review` | `security-review`, `dependency-review` |
 | Supply chain — package manifests and lockfiles (advisories, provenance, malicious or unmaintained packages) | `dependency-review` | `security-review` (15.2.1, 15.2.4) |
 | Infrastructure config — Terraform/CloudFormation/Pulumi, Kubernetes/Helm, Dockerfiles, compose | `iac-review` | `security-review`, `dependency-review` |

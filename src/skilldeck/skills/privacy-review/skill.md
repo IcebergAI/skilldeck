@@ -59,8 +59,10 @@ team's privacy owner.
 ### Tracking without consent
 
 - Device or browser fingerprinting (canvas, font or sensor probing, hashed
-  headers and IP) — the user can't clear it (W3C) — or analytics cookies and
-  long-lived identifiers set before consent (CNIL sheet 16).
+  headers and IP) — the user can't clear it (W3C) — or cross-site or
+  third-party analytics cookies and long-lived identifiers set before consent
+  (CNIL sheet 16 exempts only narrow first-party audience measurement; leave
+  that call to the privacy owner).
 
 ### Retention and deletion (ASVS 14.2.7; P6)
 
@@ -85,8 +87,10 @@ team's privacy owner.
 ### PII in URL (ASVS 14.2.1, 3.4.5)
 
 - Emails, names, or identifiers in paths or query strings (GET forms,
-  redirects, emailed links): they reach access logs, browser history, and third
-  parties through `Referer`. Send them in the body and set a `Referrer-Policy`.
+  redirects, emailed links): they reach access logs, browser history, and
+  scripts that record the page URL, and `Referer` under a policy weaker than
+  the `strict-origin-when-cross-origin` default ([MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Referrer-Policy)).
+  Send them in the body and set an explicit `Referrer-Policy`.
 
 ### PII in cache or client storage (ASVS 14.2.2, 14.2.5, 14.3.1–14.3.3)
 
@@ -123,15 +127,14 @@ party without consent in routine operation, is **high**; contact details
 over-returned to signed-in users, a personal-data store with no deletion
 path, a rights gap, sensitive data in a plaintext column, or PII in a URL is
 **medium**; hygiene behind an unusual precondition (a missing `no-store` on a
-signed-in page, upload metadata) is **low**. The classifier is the concern
+signed-in page, author metadata on a private upload) is **low**. The classifier is the concern
 from the headings above, e.g. `Third-party sharing`. Order findings by
 severity, highest first, and keep one issue per finding. For example:
 
 - **[medium] PII in URL** — `app/signup.py:27`
   **Issue:** `redirect(url_for("verify", email=form.email, dob=form.dob))`
   puts the applicant's email and date of birth in the query string, so they
-  land in access logs, browser history, and the `Referer` sent to the page's
-  third-party scripts.
+  land in web-server and proxy access logs and in browser history.
   **Fix:** keep both in the server-side session and redirect to `/verify`
   with no personal data in the URL.
 

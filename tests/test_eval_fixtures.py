@@ -414,7 +414,8 @@ SAMPLE_REPORTS = {
                 "V8 Authorization",
                 "app/directory.py:14",
                 "member IDs are sequential and the route has no rate limit, so "
-                "a signed-in member can walk every ID and scrape the club's "
+                "a signed-in member can walk every ID through `get_user`'s "
+                "`SELECT * FROM users WHERE id = ?` and scrape the club's "
                 "national ID numbers and home addresses.",
                 "rate-limit the route per member.",
             ),

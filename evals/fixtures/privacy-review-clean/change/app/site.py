@@ -20,19 +20,20 @@ def record_page_view():
     """Feed the growth dashboard: one page event per request from a member.
 
     Like the race-entry event, it is sent only for members who consented to
-    analytics, keyed on their random analytics ID, and carries only the page.
+    analytics, keyed on their random analytics ID, and carries only the route
+    template, never the concrete path (which can hold another member's ID).
     """
     if "user_id" not in session or request.path.startswith("/static/"):
         return
     if not has_consent(session["user_id"], "analytics"):
         return
     user = get_user(session["user_id"])
-    if user is None:
+    if user is None or request.url_rule is None:
         return
     analytics.page(
         user_id=user["analytics_id"],
         name=request.endpoint,
-        properties={"path": request.path},
+        properties={"route": request.url_rule.rule},
     )
 
 

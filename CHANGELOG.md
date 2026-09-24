@@ -511,12 +511,15 @@ All notable changes to this project are documented here. The format is based on
   Protection Cheat Sheet, the CNIL GDPR Developer Guide, and the W3C
   fingerprinting guidance; it stays technical and gives no legal advice.
   Registered in `docs/finding-output.md` as the owner of personal-data
-  handling instead of `security-review`; PII in logs stays with `logging` and
-  PII in prompts with `llm-integration-review`. Ships with a planted eval
+  handling (V14, and 15.3.1 when the over-returned fields are personal data)
+  instead of `security-review`; PII in logs stays with `logging` and PII in
+  prompts with `llm-integration-review`. `security-review`'s own companion
+  list does not name `privacy-review` yet. Ships with a planted eval
   fixture (a member directory returning the whole user row, national ID
   included, and a page-view hook sending email and phone coordinates to
   Segment with no consent check) and a clean one (an explicit public-field
-  allow-list and a consent-gated hook keyed on a random analytics ID).
+  allow-list and a consent-gated hook keyed on a random analytics ID that
+  sends only the route template).
 - `skilldeck migrate --agent <agent>|all [--scope ...] [--force]` moves skills
   installed in an agent's old format (Codex custom prompts, Copilot prompt
   files, Cursor rules, Kiro steering files) to its `SKILL.md` folder: it

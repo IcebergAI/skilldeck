@@ -4,7 +4,8 @@
 # explicit allow-list of public fields: display name, bio, and avatar. The
 # hook follows the race-entry event's pattern: it sends nothing unless the
 # member has consented to analytics, identifies them by their random analytics
-# ID rather than their email, and carries only the page path. It sends personal
+# ID rather than their email, and carries only the route template (not the
+# concrete path, which would name the member looked up). It sends personal
 # data to a third party and touches sensitive records, so it looks risky, but
 # it is correct; a correct report says the change is clean.
 skill: privacy-review
