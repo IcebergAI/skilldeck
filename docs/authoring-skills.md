@@ -25,7 +25,10 @@ supported-agents:         # non-empty list; adapters skip skills they aren't in
 ```
 
 All five fields are required, and the loader (`skilldeck.registry`) rejects a
-`meta.yaml` that breaks any of these rules with an error naming the field:
+`meta.yaml` that breaks any of these rules with an error naming the field. A
+sixth field, `deprecated`, is optional (see
+[Deprecating a skill](#deprecating-a-skill)); any other key is an error, so a
+misspelt field fails loudly instead of being ignored.
 
 | Field | Rule |
 |-------|------|
@@ -50,6 +53,31 @@ format is a [SemVer](https://semver.org/) normal version.
 > Quoting every version (`version: "1.10.0"`) is simplest. A three-part version
 > such as `0.1.0` is already a string in YAML, so the bundled skills leave it
 > unquoted.
+
+### Deprecating a skill
+
+To retire a skill, keep it in the bundle for a while and mark it deprecated
+in its `meta.yaml`, bumping its `version` as for any change:
+
+```yaml
+version: 1.3.0
+deprecated:
+  since: 1.3.0              # the skill version that first carries this
+  replacement: other-skill  # optional; the skill to use instead
+  reason: Folded into other-skill, which also covers X.
+```
+
+Leave `deprecated` out for a skill that is not deprecated; `deprecated: false`
+or `null` is an error rather than a synonym. The loader also rejects an
+unknown key, a `since` that is not a `MAJOR.MINOR.PATCH` string or is later
+than the skill's `version`, a `reason` that is empty or spans lines (or runs
+past 1024 characters; a folded `reason: >` block is fine), and a
+`replacement` that is the skill itself, is not a bundled skill, is deprecated
+too, or lacks one of the deprecated skill's `supported-agents` (its users on
+that agent would have nothing to move to). `skilldeck list` and
+`skilldeck catalog` mark deprecated skills, `install` and `update` warn when
+they write one, and `skilldeck catalog --json` reports the record to tools
+(see [the skill catalog](catalog.md)).
 
 ## `skill.md`
 

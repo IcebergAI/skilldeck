@@ -48,9 +48,14 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
 - `src/skilldeck/skills/<name>/` — canonical, agent-neutral skills (`meta.yaml` +
   `skill.md`); inside the package so they're bundled into the wheel
 - `src/skilldeck/` — the installer package
-  - `cli.py` — `skilldeck list/show/install/uninstall/status/update/migrate`
-    and `provenance`
-  - `registry.py` — discovers and validates skills
+  - `cli.py` — `skilldeck list/show/install/uninstall/status/update/migrate`,
+    `provenance` and `catalog`
+  - `registry.py` — discovers and validates skills, including the optional
+    `deprecated` metadata
+  - `catalog.py` + `catalog.schema.json` — the public, schema-versioned
+    `skilldeck catalog --json` contract (the schema ships in the wheel);
+    change it only per the compatibility rules in `docs/catalog.md` (bump
+    `CATALOG_SCHEMA_VERSION` for breaking changes only)
   - `stamp.py` — install stamps (version + content hash on installed files)
   - `targets.py` — install scope, project base dir, and `UserDir` (an agent's
     user-level folder, with its env-var override)
@@ -71,8 +76,8 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
   `tests/test_eval_fixtures.py`, and unit-tests the scorer
   (`tests/test_eval_scoring.py`). See `evals/README.md`. New/changed skills
   should be run through them.
-- `docs/` — `authoring-skills.md`, `adapters.md`, `compatibility.md` (the
-  public agent compatibility matrix), `releasing.md`
+- `docs/` — `authoring-skills.md`, `adapters.md`, `catalog.md`, `compatibility.md`
+  (the public agent compatibility matrix), `releasing.md`
 - `tests/fixtures/adapter-contracts/` — each adapter's exact rendered file,
   paths and env-override behaviour for one synthetic skill; checked byte for
   byte by `tests/test_adapter_contracts.py`

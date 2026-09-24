@@ -149,7 +149,14 @@ skilldeck provenance --json
 
 # Re-hash the installed skills and fail if any differ from those build-time digests
 skilldeck provenance --verify
+
+# Machine-readable, schema-versioned skill catalog for tools (filters optional)
+skilldeck catalog --json
+skilldeck catalog --json --category security --agent claude
 ```
+
+`skilldeck catalog --json` is a stable contract for tools; see
+[docs/catalog.md](docs/catalog.md) for its schema and compatibility rules.
 
 Installed files carry a `skilldeck` stamp recording the skill version, so
 `status` can tell current, stale, and locally modified installs apart. Files you
