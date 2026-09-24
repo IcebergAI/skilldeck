@@ -62,7 +62,11 @@ def _resolve_skills(names: tuple[str, ...], select_all: bool) -> list[Skill]:
 
 
 def _resolve_adapters(
-    agents: tuple[str, ...], scope: Scope, everything: Collection[str] = ADAPTERS
+    agents: tuple[str, ...],
+    scope: Scope,
+    everything: Collection[str] = ADAPTERS,
+    *,
+    installing: bool = False,
 ) -> tuple[list[Adapter], bool]:
     """Turn ``--agent`` values into the adapters to run, deduped in order.
 
@@ -70,8 +74,10 @@ def _resolve_adapters(
     adapters) that can install at ``scope``; the rest are skipped with a note.
     An agent named explicitly that can't is reported as an error instead, even
     alongside ``all``. So is an agent whose location at ``scope`` can't be
-    resolved, such as a relative ``CLAUDE_CONFIG_DIR``. Returns the adapters
-    and whether an error was reported.
+    resolved, such as a relative ``CLAUDE_CONFIG_DIR``. ``installing`` lets
+    the error for an unsupported scope suggest another adapter (see
+    :meth:`Adapter.check_scope`). Returns the adapters and whether an error
+    was reported.
     """
     # dict.fromkeys dedupes, keeping order; a legacy adapter named alongside
     # ``all`` is not in ``everything`` but still runs
@@ -84,7 +90,7 @@ def _resolve_adapters(
     for name in names:
         adapter = ALL_ADAPTERS[name]
         try:
-            adapter.check_scope(scope)
+            adapter.check_scope(scope, installing=installing)
         except SkillError as exc:
             if name in agents:  # named explicitly
                 click.echo(f"error: {exc}", err=True)
@@ -399,7 +405,7 @@ def install(
     """Install one or more skills for the chosen agent(s)."""
     scope_enum = Scope(scope)
     skills = _resolve_skills(names, install_all)
-    adapters, failed = _resolve_adapters(agents, scope_enum)
+    adapters, failed = _resolve_adapters(agents, scope_enum, installing=True)
     installed: set[Skill] = set()
     for adapter in adapters:
         for skill in skills:

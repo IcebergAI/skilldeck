@@ -28,7 +28,9 @@ Every agent gets the same [Agent Skills](https://agentskills.io/specification)
 versions too old for skills, the earlier formats remain available as the
 `copilot-prompt`, `cursor-rule` and `kiro-steering` adapters. See
 [docs/adapters.md](docs/adapters.md) for each agent's locations and minimum
-version.
+version, and the [compatibility matrix](docs/compatibility.md) for how each
+adapter is invoked, which agent versions it was checked against, and how
+well.
 
 ## Claude Code: install as a plugin (no Python needed)
 
