@@ -56,6 +56,19 @@ where behavior differs (AWS/GCP/Azure defaults are not the same).
 - Kubernetes RBAC with wildcard verbs/resources, `cluster-admin` bindings for
   workloads, service-account tokens automounted where unused.
 - Cross-account/public sharing of images, snapshots, or key material.
+- CI OIDC trust wider than one repo and ref ([GitHub](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws)):
+  an AWS role trusting `token.actions.githubusercontent.com` with no `:sub`
+  condition (an `:aud` check alone admits any repository, since a workflow
+  [picks its audience](https://docs.github.com/en/actions/reference/security/oidc#customizing-the-audience-value)),
+  a `repo:org/repo:*` wildcard (any branch, PR ref, or environment), or a
+  `ForAllValues:` operator, true when the claim is absent ([AWS](https://github.com/aws-actions/configure-aws-credentials#claims-and-scoping-permissions));
+  a GCP pool with no [attribute condition](https://github.com/google-github-actions/auth#preferred-direct-workload-identity-federation);
+  an over-broad Azure [flexible credential](https://learn.microsoft.com/en-us/entra/workload-id/workload-identities-flexible-federated-identity-credentials) `matches`.
+- EC2 instances or launch templates without `http_tokens = "required"`
+  ([IMDSv2](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/instance);
+  [templates](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/launch_template)
+  default to `optional`), so an SSRF can read the role's credentials
+  ([OWASP SSRF](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html#imdsv2-in-aws)).
 
 ### Secrets & state
 
@@ -73,6 +86,12 @@ where behavior differs (AWS/GCP/Azure defaults are not the same).
   are the project norm); encryption in transit not enforced.
 - Backups, versioning, deletion protection, or access logging disabled on
   stateful or sensitive stores; public database snapshots.
+- Audit logging off or narrowed: a [CloudTrail](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudtrail)
+  trail stopped (`enable_logging = false`), single-region, without global
+  (IAM) events, or without log file validation; a GCP
+  [audit config](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/google_project_iam)
+  given new `exempted_members`; an Azure activity-log diagnostic setting
+  removed (without one, [90 days](https://learn.microsoft.com/en-us/azure/azure-monitor/fundamentals/activity-log) of retention).
 
 ### Containers & pods (PSS baseline/restricted)
 
@@ -126,8 +145,9 @@ anyone can reach); **low** — medium impact only under an unusual
 precondition, or low impact behind any precondition (most defense in depth
 and hygiene).
 Here: **critical** — internet-facing attack surface (a bucket or security group
-open to the world on a sensitive port), or a live credential committed in
-templates, variables, manifests, or image layers (the Fix must also
+open to the world on a sensitive port, a cloud role any GitHub repository can
+assume), or a live credential committed in templates, variables, manifests,
+or image layers (the Fix must also
 [revoke and rotate](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html)
 it); **high** — a privilege-escalation path or unencrypted/unprotected
 sensitive data; **medium** — a mutable pin (classified `Mutable pin`), or a
