@@ -14,8 +14,7 @@ guidance, and GitLab's [pipeline security](https://docs.gitlab.com/ci/pipeline_s
 [merge request pipelines](https://docs.gitlab.com/ci/pipelines/merge_request_pipelines/),
 [CI/CD job token](https://docs.gitlab.com/ci/jobs/ci_job_token/), and
 [runner security](https://docs.gitlab.com/runner/security/) guidance; the
-CICD-SEC categories apply to any CI system. Pair with `dependency-review` for
-the packages a build installs and `security-review` for application code.
+CICD-SEC categories apply to any CI system.
 
 Pipeline config is code that runs with credentials. Treat every value an
 outside contributor can influence — MR/PR titles and bodies, branch names,
@@ -31,9 +30,11 @@ the syntax differs).
 
 ## Scope
 
-1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`),
-   plus any uncommitted or untracked changes. If you are already on the base
-   branch, review the uncommitted changes instead.
+1. Determine the diff: `git fetch`, then `git diff origin/<base>...HEAD`
+   (default base: `main`/`master`; with no remote, the local base), plus
+   uncommitted changes (`git diff HEAD`) and untracked files
+   (`git ls-files --others --exclude-standard`; read them whole). If you are
+   already on the base branch, review the uncommitted changes instead.
 2. Focus on pipeline files: `.github/workflows/*`, action definitions
    (`action.yml`), reusable workflows, `.gitlab-ci.yml`, `Jenkinsfile`,
    `azure-pipelines.yml`, `.circleci/`, Buildkite/Tekton configs.
@@ -46,6 +47,11 @@ the syntax differs).
    branch/tag (so protected variables and runners are in reach) or in a merge
    request pipeline — which for a fork MR runs in the fork project unless a
    parent-project member starts it in the parent.
+5. This skill owns pipeline config, including its secrets and pins; the
+   packages a build installs belong to `dependency-review` and the
+   infrastructure it applies to `iac-review`. If the owner runs in the same
+   review, leave its area to it; in a combined report, give each defect once,
+   under the owner's classifier.
 
 ## What to look for (by CICD-SEC category)
 
@@ -146,9 +152,12 @@ the syntax differs).
   a pinned commit SHA — the only immutable reference; a compromised one sees
   every secret its job gets. GitHub: `uses: some/action@v3` / `@main`. GitLab:
   a project `include:` or CI/CD component with no `ref`/version or pinned to a
-  branch (pin a commit SHA or a protected tag), or a `remote:` URL include
-  (vendor a reviewed copy and `include: local`); also a container `image:`
-  pinned by tag rather than `@sha256:` digest, or assembled from a variable.
+  branch or tag (pin a commit SHA; a protected tag is enough only in a project
+  your own org controls, since that project's maintainers can
+  [delete and recreate](https://docs.gitlab.com/user/project/protected_tags/)
+  it), or a `remote:` URL include (vendor a reviewed copy and
+  `include: local`); also a container `image:` pinned by tag rather than
+  `@sha256:` digest, or assembled from a variable.
 - New third-party steps, reusable workflows, or `include:`d config from outside
   the org with no provenance check.
 
@@ -178,16 +187,30 @@ Report each finding as a single list item:
   GitLab: drop the `eval`/`sh -c` and quote the variable; drop the privileged
   trigger, pin the SHA, scope the token).
 
-`severity` reflects who can trigger it and what they get: **critical** — an
-outside contributor can run code with secrets or a write token (script
-injection in a fork-triggerable workflow or a protected-branch job,
-`pull_request_target` + head checkout); **high** — broad token or secret
-exposure, or an unpinned third-party step inside a privileged job;
-**medium** — hardening gaps exploitable only by collaborators; **low** —
-hygiene. The classifier is the
-CICD-SEC category (e.g. `CICD-SEC-4 Poisoned Pipeline Execution`). Order
-findings by severity, highest first, keeping one issue per finding.
-For example:
+Rate `severity` on the shared severity rubric, impact × likelihood:
+**critical** — high impact (code execution, auth bypass, stolen credentials or
+bulk data, data loss, an outage), readily triggered (by anyone who can reach
+it, or in routine operation); **high** — high impact behind a common
+precondition (an authenticated user, a collaborator, a routine failure), or
+medium impact (limited exposure, degraded service) readily triggered;
+**medium** — high impact only under an unusual precondition, medium impact
+behind a common one, or low impact readily triggered (a weakened defense
+anyone can reach); **low** — medium impact only under an unusual
+precondition, or low impact behind any precondition (most defense in depth
+and hygiene).
+Here: **critical** — an outside contributor can run code with secrets or a
+write token (script injection in a fork-triggerable workflow or a
+protected-branch job, `pull_request_target` + head checkout), or a live secret
+sits in pipeline config or is printed to job output others can read (the Fix
+must also
+[revoke and rotate](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html)
+it); **high** — an over-broad token, or secrets exposed to more jobs or
+triggers than need them; **medium** — a mutable pin (a tag, branch, or image
+tag instead of a commit SHA or digest, classified
+`CICD-SEC-3 Dependency Chain Abuse`), or a hardening gap only collaborators can
+exploit. The classifier is the CICD-SEC category (e.g.
+`CICD-SEC-4 Poisoned Pipeline Execution`). Order findings by severity, highest
+first, keeping one issue per finding. For example:
 
 - **[critical] CICD-SEC-4 Poisoned Pipeline Execution** — `.github/workflows/greet.yml:14`
   **Issue:** `run: echo "Thanks for ${{ github.event.pull_request.title }}"`
@@ -206,7 +229,6 @@ than ~10 survive, report the ones worth a human's time and summarize the rest
 in a line.
 
 Open the report with one line stating what was reviewed and the outcome, e.g.
-`Reviewed main..HEAD (2 workflows): 1 finding, critical.` If the diff touches
-no pipeline configuration, say so rather than reviewing application code. If
-the pipeline changes are sound, say so explicitly rather than manufacturing
-findings.
+`Reviewed origin/main...HEAD (2 workflows): 1 finding, critical.` If the diff
+touches no pipeline configuration, say so and stop. If the pipeline changes
+are sound, say so explicitly rather than manufacturing findings.

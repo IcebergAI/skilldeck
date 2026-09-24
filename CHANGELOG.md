@@ -116,6 +116,48 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- All review skills now rate severity on one shared rubric and agree on
+  shared defects (#103). `docs/finding-output.md` defines the rubric as
+  impact × likelihood, following the OWASP Risk Rating Methodology's severity
+  matrix. Every skill's `## Output` copies its one-paragraph form word for
+  word and keeps a short list of domain anchors. Critical now means only a
+  security exploit, data loss, or an outage: `code-smells` and `test-review`
+  top out at high (a missing test is no longer critical), and
+  `migration-review` and `resilience-review` use critical only for an outage
+  or data loss. A live credential committed to the repository or written to
+  logs or CI output that others can read is critical in `security-review`,
+  `logging`, `iac-review`, and `ci-workflow-review` alike, and its Fix must
+  revoke and rotate it (OWASP Secrets Management Cheat Sheet). A mutable pin (a
+  tag or branch instead of a SHA or digest, or an unlocked package range) is
+  medium everywhere, down from high for CI steps in privileged jobs; a GitLab
+  include or component pinned to a tag in a project outside your org now
+  counts as one. Each kind of pin has one owner: `ci-workflow-review` for CI
+  config (classified `CICD-SEC-3 Dependency Chain Abuse`), `iac-review` for
+  IaC and Kubernetes images and Terraform modules (it gains a Mutable pins
+  checklist citing the Kubernetes and Terraform docs), and `dependency-review`
+  for package manifests; the others defer to the owner.
+- A new "Which skill owns what" section in `docs/finding-output.md` names
+  the owner of each overlapping area: `authentication-review` for ASVS V6,
+  V7, V9, and V10, `logging` for V16, and `ci-workflow-review`,
+  `dependency-review`, and `iac-review` for pipeline, supply-chain, and
+  infrastructure config. Each overlapping skill says to leave the owner's area
+  to it when both run, and to report each defect once, under the owner's
+  classifier (#103).
+- Review skills share the same scope and report wording (#103). Each one
+  diffs against a freshly fetched remote base (`git fetch`, then
+  `git diff origin/<base>...HEAD`), lists untracked files with
+  `git ls-files --others --exclude-standard`, and uses the same three-dot
+  range in its report header. Each says to "say so and stop" when the change
+  touches nothing in its area. `logging` gains a proper `## Output` heading,
+  `dependency-review` gains the ~10-findings cap, and `docs/finding-output.md`
+  now lists `resilience-review` and `migration-review` and allows one or two
+  sentences for Issue/Fix. `tests/test_skill_structure.py` enforces the
+  Output heading, the findings cap, the rubric (compared to the doc), the
+  nothing-in-scope line, the fetch/untracked commands, three-dot ranges, and
+  the high cap. Skill versions: `security-review` 0.4.0,
+  `authentication-review` 0.2.0, `ci-workflow-review` 0.3.0, `code-smells`
+  0.3.0, `dependency-review` 0.3.0, `iac-review` 0.2.0, `logging` 0.3.0,
+  `migration-review` 0.3.0, `resilience-review` 0.3.0, `test-review` 0.3.0.
 - **Breaking:** the `codex`, `copilot`, `cursor` and `kiro` adapters now
   install [Agent Skills](https://agentskills.io/specification) folders, the
   format every supported agent reads today, instead of prompt, rule and
