@@ -676,6 +676,30 @@ All notable changes to this project are documented here. The format is based on
   positives. A structural test rejects plant keywords that appear verbatim in
   the planted file, and per-fixture sample reports check that a correct report
   passes and a finding about a neighbouring defect satisfies no plant.
+- Reproducible eval runs (#74): every `evals/run_evals.py` invocation writes
+  a provider-neutral, schema-versioned `run-record.json`
+  (`evals/run-record.schema.json`, sorted keys) to its work dir. It holds the
+  skilldeck version and git commit, each fixture's content digest (files,
+  exec bits and content), each skill's version, canonical digest and rendered
+  digest (the install stamp's hash), the harness, exact command template,
+  version and model, and one entry per planned run
+  (passed, failed, agent failure, timeout, error, or not run) with timing,
+  exit code, finding count and the scorer's reasons. Raw reports and stderr
+  stay in separate files it points to (`--include-reports` embeds them).
+  `--harness claude|codex|custom` presets pair each agent CLI's
+  non-interactive command with its adapter, and `--model` passes a model
+  through `{model}`. `--dry-run` validates the fixtures and prints the plan
+  without running anything; `--max-runs N` (default 50) refuses an oversized
+  plan before it starts; runs stay sequential. `--replay RECORD` re-runs a
+  record's configuration and refuses if any fixture, skill or prompt changed
+  since, or if its command is not a built-in preset's (unless
+  `--trust-record-command`). A missing agent command, a repo the adapter
+  can't install into, a scoring error, an interrupt or a runner bug is now
+  recorded instead of losing the record; a passing run keeps its record and
+  raw output (only the review repos are deleted). Agents now run with stdin
+  closed (`/dev/null`), so `codex exec` no longer waits on or ingests the
+  runner's stdin, and a review repo is built from exactly the fixture files
+  its digest covers (no `__pycache__` or `.DS_Store`).
 - `skilldeck provenance --verify` re-hashes each installed skill's `meta.yaml`
   and `skill.md` and exits 1, naming the skill, when one no longer matches its
   recorded canonical digest, is missing, or has unexpected files beside it.
