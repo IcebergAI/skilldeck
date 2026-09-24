@@ -470,9 +470,41 @@ def test_explicit_agent_without_the_scope_is_an_error(tmp_path, monkeypatch):
     )
     assert result.exit_code == 1
     assert "error: cursor-rule does not support --scope global" in result.output
-    # actionable: names the scope that works and the agent's native adapter
-    assert "Use --scope project, or --agent cursor (Agent Skills)" in result.output
+    # names the scope that works, but not another adapter: its status would
+    # be about different files
+    assert "for that scope. Use --scope project\n" in result.output
+    assert "--agent cursor" not in result.output
     assert "security-review" in result.output  # codex still reported
+
+
+@pytest.mark.parametrize("command", ["uninstall", "update"])
+def test_unsupported_scope_suggests_no_other_adapter_outside_install(
+    command, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    args = [command, *(["logging"] if command == "uninstall" else [])]
+    result = CliRunner().invoke(
+        cli, [*args, "--agent", "cursor-rule", "--scope", "global"]
+    )
+    assert result.exit_code == 1
+    assert "for that scope. Use --scope project\n" in result.output
+    assert "--agent cursor" not in result.output
+
+
+def test_unsupported_scope_on_install_suggests_the_native_adapter(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    result = CliRunner().invoke(
+        cli, ["install", "logging", "--agent", "cursor-rule", "--scope", "global"]
+    )
+    assert result.exit_code == 1
+    assert (
+        "error: cursor-rule does not support --scope global: it has no stable "
+        "file location for that scope. Use --scope project, or --agent cursor "
+        "(Agent Skills), which supports --scope global\n"
+    ) in result.output
+    assert not (tmp_path / ".cursor").exists()
 
 
 def test_explicit_agent_without_the_scope_is_an_error_even_with_all(

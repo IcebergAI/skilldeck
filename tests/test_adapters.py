@@ -734,13 +734,33 @@ def test_check_scope(skill):
         LEGACY_ADAPTERS["cursor-rule"].check_scope(Scope.GLOBAL)
 
 
+def _scope_error(adapter, scope, **kwargs):
+    with pytest.raises(SkillError) as excinfo:
+        adapter.check_scope(scope, **kwargs)
+    return str(excinfo.value)
+
+
+def test_scope_error_suggests_the_native_adapter_only_for_installs():
+    # another adapter installs the skill elsewhere; for status, uninstall or
+    # update it would act on different files from the ones asked about
+    rule = LEGACY_ADAPTERS["cursor-rule"]
+    assert _scope_error(rule, Scope.GLOBAL).endswith(
+        "for that scope. Use --scope project"
+    )
+    assert _scope_error(rule, Scope.GLOBAL, installing=True).endswith(
+        "Use --scope project, or --agent cursor (Agent Skills), which supports "
+        "--scope global"
+    )
+
+
 def test_scope_error_without_an_alternative(monkeypatch):
     # a project-only adapter whose agent has no global location either can
     # only point at the scope it does have
     monkeypatch.setattr(ADAPTERS["cursor"], "global_dir", None)
-    with pytest.raises(SkillError) as excinfo:
-        LEGACY_ADAPTERS["cursor-rule"].check_scope(Scope.GLOBAL)
-    assert str(excinfo.value).endswith("for that scope. Use --scope project")
+    message = _scope_error(
+        LEGACY_ADAPTERS["cursor-rule"], Scope.GLOBAL, installing=True
+    )
+    assert message.endswith("for that scope. Use --scope project")
 
 
 def test_write_atomic_writes_lf_on_every_platform(tmp_path):

@@ -102,10 +102,13 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
 - A skill's `meta.yaml` `name` must match its directory name; all metadata fields
   are required and validated by the registry.
 - Any change to an adapter's output format, paths or env handling must update
-  its contract fixtures, the matrix rows and `adapter-contract` digest in
-  `docs/compatibility.md`, and CHANGELOG (the contract tests enforce all three;
-  see `docs/compatibility.md#contract-tests`). Only state vendor behaviour a
-  primary source confirms; mark the rest *unverified*.
+  its contract fixtures, the `adapter-contract` digest and matrix rows in
+  `docs/compatibility.md`, and CHANGELOG. The contract tests enforce the
+  fixtures, the digest line, a digest mention in CHANGELOG, and the matrix's
+  path/"Moved by"/scope-error text. Status, minimum versions, dates and notes
+  are maintained by hand (see `docs/compatibility.md#contract-tests`). Only
+  state vendor behaviour a primary source confirms; mark the rest
+  *unverified*.
 - New skills follow the structural template (enforced by
   `tests/test_skill_structure.py`), ground their checklists in **fetched**
   authoritative sources (OWASP/CIS/vendor docs) cited in the skill body, and

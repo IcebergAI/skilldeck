@@ -157,16 +157,19 @@ class Adapter(ABC):
         worded for :meth:`check_scope`'s error; None if there is none."""
         return None
 
-    def check_scope(self, scope: Scope) -> None:
+    def check_scope(self, scope: Scope, *, installing: bool = False) -> None:
         """Raise :class:`SkillError` if this agent cannot install at ``scope``.
 
-        The message names what does work: this adapter's other scope, and
-        any other adapter for the same agent that has ``scope``.
+        The message names what does work: this adapter's other scope and,
+        when ``installing``, another adapter for the same agent that has
+        ``scope``. That suggestion is for installs only: for ``status``,
+        ``uninstall`` or ``update`` another adapter would act on different
+        files from the ones asked about.
         """
         if scope in self.scopes:
             return
         options = [f"--scope {other.value}" for other in self.scopes]
-        alternative = self.scope_alternative(scope)
+        alternative = self.scope_alternative(scope) if installing else None
         if alternative:
             options.append(alternative)
         hint = f". Use {', or '.join(options)}" if options else ""
@@ -239,6 +242,7 @@ class Adapter(ABC):
         *,
         force: bool = False,
     ) -> Path:
+        self.check_scope(scope, installing=True)
         dest = self.destination(skill, scope, project_root)
         mode = _entry_mode(dest)
         if mode is not None:

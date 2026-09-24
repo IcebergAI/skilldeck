@@ -1,6 +1,6 @@
 # Agent compatibility
 
-<!-- adapter-contract: sha256:b3cbf84dafa69e65d75f9ee4039734d223397215c58fec844affe14ded10295e -->
+<!-- adapter-contract: sha256:25b3bbad35d7b61fba7c89fae8217bd852da19faedcd59f5751dd9bd70e95875 -->
 
 This page lists what skilldeck installs for each agent and where it goes. It
 also covers how you then use a skill in that agent, the agent version it needs,
@@ -15,16 +15,22 @@ checked against a vendor source is marked *unverified*.
 
 - **tested**: the agent was run at the listed version and seen to load a
   skill installed at these locations.
-- **supported**: the vendor's own source code, shipped binary or documentation
-  at the listed version confirms the locations, format and variables. The
-  agent itself was not run against them.
-- **experimental**: skilldeck installs as described, but a vendor source
-  contradicts part of the row, or the format is deprecated or doesn't load on
-  some of the agent's surfaces. Read the notes before relying on it.
+- **supported**: the agent's own source code, shipped binary or vendor
+  documentation at the listed version confirms the locations, format and
+  variables. The agent itself was not run against them.
+- **experimental**: skilldeck installs as described, but one of these holds:
+  - a vendor source contradicts part of the row
+  - the format is deprecated, or doesn't load on some of the agent's surfaces
+  - the only evidence is a related vendor package, such as an SDK that
+    bundles the agent's loader, rather than the agent or its documentation
 
-Status covers the agent side. Every adapter's own side is tested the same way,
-whatever its status: CI checks the exact bytes, paths and stamp it writes on
-every pull request, on Linux, macOS and Windows (see
+  Read the notes before relying on it.
+
+Status covers the agent side, and is kept up to date by hand, like the
+minimum versions, the dates and the notes. Every adapter's own side is
+tested the same way, whatever its status: on every pull request, on Linux,
+macOS and Windows, CI checks the exact bytes, paths and stamp it writes, and
+checks this page's path, "Moved by" and scope-error text against them (see
 [Contract tests](#contract-tests)).
 
 ## Matrix
@@ -36,10 +42,10 @@ every pull request, on Linux, macOS and Windows (see
 | `claude` | tested | `.claude/skills/<name>/SKILL.md` | `~/.claude/skills/<name>/SKILL.md` | `CLAUDE_CONFIG_DIR`, to `$CLAUDE_CONFIG_DIR/skills`; an empty value is refused | Claude Code 2.0.20 (project skills fixed in 2.0.24) | 2026-09-23, Claude Code 2.1.281 |
 | `codex` | supported | `.agents/skills/<name>/SKILL.md` | `~/.agents/skills/<name>/SKILL.md` | nothing (`CODEX_HOME` doesn't move it) | Codex 0.95.0 | 2026-09-23, Codex source at `rust-v0.156.1` |
 | `copilot` | supported | `.github/skills/<name>/SKILL.md` | `~/.copilot/skills/<name>/SKILL.md` | `COPILOT_HOME`, to `$COPILOT_HOME/skills` (Copilot CLI only) | VS Code 1.109; Copilot CLI 0.0.371; the cloud agent and code review have no version | 2026-09-23, GitHub docs, VS Code source, Copilot CLI changelog up to 1.0.88 |
-| `cursor` | supported | `.cursor/skills/<name>/SKILL.md` | `~/.cursor/skills/<name>/SKILL.md` | nothing | *unverified* | 2026-09-23, the skills loader in `@cursor/sdk` 1.0.32 (the desktop app was not inspected) |
+| `cursor` | experimental | `.cursor/skills/<name>/SKILL.md` | `~/.cursor/skills/<name>/SKILL.md` | nothing in `@cursor/sdk`; the Cursor app and CLI are *unverified* | *unverified* | 2026-09-23, the skills loader in `@cursor/sdk` 1.0.32 only |
 | `kiro` | supported | `.kiro/skills/<name>/SKILL.md` | `~/.kiro/skills/<name>/SKILL.md` | `KIRO_HOME`, to `$KIRO_HOME/skills` (Kiro CLI; the IDE is *unverified*) | *unverified* | 2026-09-23, Kiro CLI 2.24.0 (binary and embedded docs); the IDE from Kiro's docs only |
 | `copilot-prompt` | experimental | `.github/prompts/<name>.prompt.md` | not supported | n/a | *unverified* | 2026-09-23, VS Code source and docs |
-| `cursor-rule` | supported | `.cursor/rules/<name>.mdc` | not supported | n/a | *unverified* | 2026-09-23, the rules loader in `@cursor/sdk` 1.0.32 |
+| `cursor-rule` | experimental | `.cursor/rules/<name>.mdc` | not supported | n/a | *unverified* | 2026-09-23, the rules loader in `@cursor/sdk` 1.0.32 only |
 | `kiro-steering` | experimental | `.kiro/steering/<name>.md` | `~/.kiro/steering/<name>.md` | `KIRO_HOME`, to `$KIRO_HOME/steering` (Kiro CLI; the IDE is *unverified*) | *unverified* | 2026-09-23, Kiro CLI 2.24.0 embedded docs; Kiro's docs mirror |
 
 The first five are the native adapters that `--agent all` selects. The last
@@ -47,15 +53,23 @@ three are opt-in [legacy adapters](adapters.md#legacy-adapters) for agent
 versions that predate skills.
 
 When a variable in the "Moved by" column is set, skilldeck needs an absolute
-path in it. It refuses a relative one, because the agent would resolve it against whatever
-directory it was started in. `COPILOT_HOME` and `KIRO_HOME` count as unset
+path in it. It refuses a relative one, because the agent would resolve it
+against whatever directory it was started in. `COPILOT_HOME` and `KIRO_HOME` count as unset
 when empty. See [Environment variables](adapters.md#environment-variables).
 
 Asking `copilot-prompt` or `cursor-rule` for `--scope global` fails, and the
-error names what works instead:
+error names what works instead. `install` also points at the agent's native
+adapter:
 
 ```text
 error: cursor-rule does not support --scope global: it has no stable file location for that scope. Use --scope project, or --agent cursor (Agent Skills), which supports --scope global
+```
+
+`status`, `uninstall` and `update` name only `--scope project`, because the
+native adapter's files are different ones:
+
+```text
+error: cursor-rule does not support --scope global: it has no stable file location for that scope. Use --scope project
 ```
 
 ## Using a skill in each agent
@@ -80,12 +94,16 @@ error: cursor-rule does not support --scope global: it has no stable file locati
 
 - **Invoked** by mentioning `$<name>` in a prompt or picking the skill from
   `/skills` in the TUI. Codex also uses a skill when the task clearly
-  matches its description. A plain `$name` resolves only when exactly one
-  enabled skill has that name, so install each skill at one scope only.
+  matches its description. Codex keeps every copy of a skill it finds, so
+  install each skill at one scope only. With two copies, a plain `$name`
+  may not resolve: one of Codex's two skill-selection paths requires the
+  name to be unique, and the other takes the first match. Which Codex
+  surfaces use which path is *unverified*.
 - **Evidence**: `openai/codex@17cd2834`, whose skill-loading files match
   tag `rust-v0.156.1`: `codex-rs/ext/skills/src/host_roots.rs` lines 95–108 and
   142–154, `codex-rs/skills/src/mentions.rs` line 41,
-  `codex-rs/skills/src/selection.rs` lines 188–190,
+  `codex-rs/skills/src/selection.rs` lines 188–190 (unique name required),
+  `codex-rs/ext/skills/src/selection.rs` lines 65–75 (first match),
   `codex-rs/ext/skills/src/catalog_prompt.rs` lines 3–8, and commits
   `39a6a84097` (`rust-v0.94.0`) and `e24058b7a8` (`rust-v0.95.0`).
 - **Unverified**: Codex's own skills documentation couldn't be fetched, and
@@ -112,17 +130,25 @@ error: cursor-rule does not support --scope global: it has no stable file locati
 
 ### `cursor`: Cursor
 
-- **Invoked**: Cursor offers each skill to the agent with its description,
-  and the agent decides when to use it. That choice is made on Cursor's
-  servers, so it is *unverified*. Cursor documents `/<name>` only for skills
-  installed from a plugin; for skills in `.cursor/skills` it is *unverified*.
+- **Invoked**: in the SDK's loader, each skill is offered to the agent with
+  its description, and the agent decides when to use it. That choice is made
+  on Cursor's servers, so it is *unverified*. Cursor documents `/<name>` only
+  for skills installed from a plugin; for skills in `.cursor/skills` it is
+  *unverified*.
+- **Experimental** because all the evidence comes from Cursor's
+  `@cursor/sdk` package, which bundles Cursor's own skills loader, and from
+  Cursor's SDK cookbook. Nobody checked that the Cursor app and the
+  `cursor-agent` CLI load skills from the same folders, or that no
+  environment variable moves them there. The SDK itself loads project and
+  user skills only when its `settingSources` option asks for them (none by
+  default).
 - **Evidence**: npm `@cursor/sdk` 1.0.32 `dist/esm/34.js` (the bundled skills
   loader's folder table, byte offset 552915); `cursor/cookbook@6733ef81`
-  `sdk/dag-task-runner/README.md` lines 146–152.
+  `sdk/dag-task-runner/README.md` lines 146–152. The only Cursor variable
+  found, `CURSOR_DATA_DIR`, moves `~/.cursor/projects`, not skills.
 - **Unverified**: Cursor's docs and changelog couldn't be reached, so the
-  first release with skills is unknown. Nobody checked that the desktop app
-  and the `cursor-agent` CLI use the SDK's loader unchanged. Cursor was not
-  run.
+  first release with skills is unknown, and so is the app's own behaviour.
+  Cursor was not run.
 
 ### `kiro`: Kiro
 
@@ -161,15 +187,19 @@ error: cursor-rule does not support --scope global: it has no stable file locati
 
 ### `cursor-rule`: Cursor rules (legacy)
 
-- **Invoked** when the agent asks for it: a rule with a `description` and
-  `alwaysApply: false` is pulled in when the description matches the task.
+- **Invoked** when the agent asks for it: the SDK's loader treats a rule with
+  a `description` and `alwaysApply: false` as one the agent may request, and
+  offers it with its description. When the agent pulls it in is decided on
+  Cursor's servers, so it is *unverified*.
+- **Experimental** for the same reason as `cursor`: the evidence comes from
+  `@cursor/sdk` only, not the Cursor app.
 - **Evidence**: npm `@cursor/sdk` 1.0.32 `dist/esm/34.js`, which loads
   `.cursor/rules/**/*.mdc` and reads `.mdc` frontmatter one line at a time
   (byte offset 565213). Running that reader showed that a folded description
   is cut off, which is why this adapter writes it on one line.
-- **Unverified**: the minimum Cursor version, and whether the desktop app's
-  `.mdc` reader matches the SDK's. No vendor source deprecates `.mdc` rules,
-  but none rules it out either.
+- **Unverified**: the minimum Cursor version, whether the Cursor app loads
+  rules the same way, and whether its `.mdc` reader matches the SDK's. No
+  vendor source deprecates `.mdc` rules, but none rules it out either.
 
 ### `kiro-steering`: Kiro steering files (legacy)
 
@@ -197,21 +227,35 @@ The full list of sources, with paths and line numbers, is in
 - `skill/contract-demo/` is a small synthetic skill. Its description needs
   YAML quoting and folding, and its body has non-ASCII text.
 - `contracts.json` gives each adapter's project and global paths, the text
-  its `--scope global` error must contain if it is project-only, and its
-  expected frontmatter. It also says where a global install goes when each
-  environment variable is set to an absolute path, left empty, or set to a
-  relative path.
+  its `--scope global` error must contain if it is project-only (for
+  `install` and for other commands), and its expected frontmatter. It also
+  says where a global install goes when each environment variable is set to
+  an absolute path, left empty, or set to a relative path.
 - `<adapter>/` holds the exact file the adapter installs, stamp included.
 
-`tests/test_adapter_contracts.py` installs the skill with every adapter into
-temporary directories and checks the result against these fixtures byte for
-byte. The fixtures are committed with LF line endings (`.gitattributes`),
-so the comparison is exact on Windows too.
+The directory must hold exactly these files, and nothing else.
+
+`tests/test_adapter_contracts.py` enforces the following:
+
+- It installs the skill with every adapter into temporary directories and
+  checks the results against these fixtures byte for byte. The fixtures are
+  committed with LF line endings (`.gitattributes`), so the comparison is
+  exact on Windows too.
+- It checks each matrix row's project and global cells against the contract,
+  and "not supported" and "n/a" for a project-only adapter.
+- The "Moved by" cell must name exactly the variables that move the global
+  install, each with its target, and must mention any variable the contract
+  says doesn't move it.
+- The quoted scope errors must match the real messages.
+
+It doesn't check status, minimum versions, the dates or the per-agent notes.
+Those are kept up to date by hand.
 
 The `adapter-contract` comment at the top of this page is a SHA-256 digest of
-the fixture directory. When an adapter's format or location changes, the
-fixtures must change, and then the test fails until this page and
-`CHANGELOG.md` are updated:
+the contract files: the expected files, the synthetic skill, and
+`contracts.json` without its `_about` notes. When an adapter's format or
+location changes, the fixtures must change, and then the test fails until
+this page and `CHANGELOG.md` are updated:
 
 1. Regenerate the expected files with
    `SKILLDECK_UPDATE_CONTRACTS=1 uv run --locked --extra dev pytest tests/test_adapter_contracts.py`,
@@ -220,7 +264,10 @@ fixtures must change, and then the test fails until this page and
    and agent version they were checked against.
 3. Replace the `adapter-contract` line with the one the test prints.
 4. Add a CHANGELOG entry under `[Unreleased]` that mentions the first 12
-   characters of the digest (`sha256:<12 hex>`). The test checks for it.
+   characters of the digest (`sha256:<12 hex>`). The test looks for it in
+   `[Unreleased]` or in the newest dated section. The newest dated section
+   counts because cutting a release moves the entry there and leaves
+   `[Unreleased]` empty. An older section doesn't count.
 
 ## When a vendor changes a location or format
 

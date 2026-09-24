@@ -1,13 +1,14 @@
 {
   "_about": [
     "The adapter contract: what installing skill/contract-demo writes for each adapter, and where.",
-    "project: path under the project root. global: path under ~, or null if the adapter is project-only,",
-    "in which case global_error lists text the --scope global error must contain.",
+    "project: path under the project root. global: path under ~, or null if the adapter is project-only.",
+    "global_error (project-only adapters): text the --scope global error must contain when installing,",
+    "and for other commands (status, uninstall, update), which must not suggest another --agent.",
     "env: per variable, where a global install goes when it is set to an absolute path ($VAR is its value),",
     "to an empty string, or to a relative path; \"error\" means skilldeck refuses.",
     "frontmatter: the rendered file's frontmatter, parsed as YAML.",
     "The expected file is <adapter>/<file name of project>, byte for byte, stamp included.",
-    "Changing anything here changes the digest in docs/compatibility.md; see that page."
+    "The digest in docs/compatibility.md covers everything here except _about; see that page."
   ],
   "skill": "contract-demo",
   "adapters": {
@@ -83,11 +84,17 @@
     "copilot-prompt": {
       "project": ".github/prompts/contract-demo.prompt.md",
       "global": null,
-      "global_error": [
-        "copilot-prompt does not support --scope global",
-        "--scope project",
-        "--agent copilot"
-      ],
+      "global_error": {
+        "install": [
+          "copilot-prompt does not support --scope global",
+          "Use --scope project",
+          "--agent copilot (Agent Skills), which supports --scope global"
+        ],
+        "other": [
+          "copilot-prompt does not support --scope global",
+          "Use --scope project"
+        ]
+      },
       "env": {},
       "frontmatter": {
         "description": "Contract fixture: a synthetic review skill that pins every adapter's rendered bytes, long enough that YAML folds it onto a second line.",
@@ -97,11 +104,17 @@
     "cursor-rule": {
       "project": ".cursor/rules/contract-demo.mdc",
       "global": null,
-      "global_error": [
-        "cursor-rule does not support --scope global",
-        "--scope project",
-        "--agent cursor"
-      ],
+      "global_error": {
+        "install": [
+          "cursor-rule does not support --scope global",
+          "Use --scope project",
+          "--agent cursor (Agent Skills), which supports --scope global"
+        ],
+        "other": [
+          "cursor-rule does not support --scope global",
+          "Use --scope project"
+        ]
+      },
       "env": {},
       "frontmatter": {
         "description": "Contract fixture: a synthetic review skill that pins every adapter's rendered bytes, long enough that YAML folds it onto a second line.",

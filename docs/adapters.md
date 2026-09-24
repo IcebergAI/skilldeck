@@ -116,10 +116,12 @@ So one skill can be found more than once:
 - **Cursor** always reads `.agents/skills`, and also `.claude/skills` when
   third-party extensibility is on. It keeps the first copy per name, in the
   order `.cursor`, `.claude`, `.codex`, `.grok`, `.agents`.
-- **Codex** keeps every copy it finds, and a plain `$name` mention only
-  resolves when exactly one enabled skill has that name. Installing a skill
+- **Codex** keeps every copy it finds. A plain `$name` mention may then not
+  resolve: one of Codex's two skill-selection paths accepts it only when
+  exactly one enabled skill has that name, and the other takes the first
+  match. Which Codex surfaces use which path is unverified. Installing a skill
   for Codex at both project and global scope (or next to a copy of your own
-  in `.codex/skills` or `~/.codex/skills`) breaks `$name` for it.
+  in `.codex/skills` or `~/.codex/skills`) can break `$name` for it.
 - **An old format next to a skill** is not merged at all: VS Code lists a
   Copilot prompt file and a skill of the same name as two `/name` commands,
   and Cursor loads both the rule and the skill.
