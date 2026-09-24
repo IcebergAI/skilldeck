@@ -204,8 +204,17 @@ def test_validator_rejects_malformed_catalogs():
 # --- the command --------------------------------------------------------------
 
 
+def _runner():
+    # Click < 8.2 mixes stderr into stdout unless told not to; 8.2 dropped the
+    # flag and always captures the streams separately
+    try:
+        return CliRunner(mix_stderr=False)  # type: ignore[call-arg]
+    except TypeError:
+        return CliRunner()
+
+
 def _invoke(*args):
-    result = CliRunner().invoke(cli, list(args))
+    result = _runner().invoke(cli, list(args))
     assert result.exit_code == 0, result.output
     return result
 
@@ -413,7 +422,7 @@ def _bundle_copy(tmp_path, monkeypatch):
 
 
 def _fails(*args):
-    result = CliRunner().invoke(cli, list(args))
+    result = _runner().invoke(cli, list(args))
     assert result.exit_code == 1
     assert result.stdout == ""
     assert "do not match the content manifest" in result.stderr
