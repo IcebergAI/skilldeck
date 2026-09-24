@@ -32,37 +32,79 @@ Unless told otherwise, review to **L2**.
 
 ## What to look for (by ASVS category)
 
-- **V1 Encoding & Sanitization** — output encoding for the right context (HTML,
-  JS, SQL, OS command, LDAP); injection from untrusted input; path traversal.
-- **V2 Validation & Business Logic** — input validated against an allow-list;
-  business-logic limits, sequencing, and anti-automation enforced server-side.
-- **V3 Web Frontend Security** — XSS, CSP, clickjacking, CSRF protections,
-  unsafe handling of untrusted content in the browser.
-- **V4 API & Web Service** — REST/GraphQL authz per endpoint, mass assignment,
-  content-type and method enforcement, rate limiting.
-- **V5 File Handling** — upload validation, type/size limits, safe storage paths,
-  SSRF via file/URL fetches, deserialization of untrusted data.
-- **V6 Authentication** — credential handling, password storage, MFA, secure
-  recovery and lockout; no auth bypass. (See the `authentication-review` skill
-  for depth on V6, V7, V9, and V10, plus SAML and LDAP sign-in.)
-- **V7 Session Management** — secure session creation, rotation on privilege
-  change, timeout, secure/HttpOnly cookies, invalidation on logout.
-- **V8 Authorization** — missing or weakened access checks, privilege escalation,
-  IDOR; enforce least privilege server-side, never trust client claims.
+Numbers in parentheses are ASVS 5.0 requirement IDs
+(`<chapter>.<section>.<requirement>`), for orientation — classify findings by
+chapter.
+
+- **V1 Encoding & Sanitization** — output encoding for the right context to
+  prevent XSS (HTML, URL, JavaScript/JSON; 1.2.1–1.2.3); parameterized
+  SQL/NoSQL queries and OS commands (1.2.4, 1.2.5) and other interpreter
+  injection (LDAP, XPath; 1.2.6, 1.2.7); no `eval()`/dynamic code execution
+  or templates built from untrusted input (1.3.2, 1.3.7); **SSRF** —
+  untrusted data used to call another service validated against an allowlist
+  of protocols, domains, paths, and ports (1.3.6); **safe deserialization** —
+  XML parsers with external entities disabled (XXE, 1.5.1) and no insecure
+  deserializers on untrusted input (1.5.2).
+- **V2 Validation & Business Logic** — input validated against an allow-list
+  at a trusted service layer (2.2.1, 2.2.2); business-logic sequence, limits,
+  and all-or-nothing transactions enforced server-side (2.3); anti-automation
+  and rate limiting of abusable functions (2.4.1).
+- **V3 Web Frontend Security** — untrusted text rendered with safe DOM APIs,
+  not as markup (DOM XSS: `textContent`, not `innerHTML`; 3.2.2); cookie
+  `Secure`, `HttpOnly`, `SameSite`, and `__Host-` prefix (3.3); CSP, HSTS,
+  `nosniff`, clickjacking protection via `frame-ancestors`, and CORS origin
+  handling (3.4); CSRF and other cross-origin request protections (3.5); open
+  redirects (3.7.2).
+- **V4 API & Web Service** — correct response `Content-Type` and only
+  intended HTTP methods (4.1.1, 4.1.4); headers set by a proxy (e.g.
+  `X-Forwarded-For`) not overridable by clients (4.1.3); request smuggling
+  and header injection (4.2); GraphQL depth/cost limits and introspection off
+  in production (4.3); WebSocket origin checks (4.4.2). Per-endpoint access
+  control is V8.
+- **V5 File Handling** — upload size, extension, and content validation
+  (5.2.1, 5.2.2); archive size, file-count, and symlink limits (5.2.3,
+  5.2.5); uploads never executed as server-side code (5.3.1); **path
+  traversal** — file paths built from internal or trusted data, not
+  user-submitted filenames, which also blocks LFI/RFI and SSRF through file
+  paths (5.3.2); zip slip (5.3.3); download filenames validated and encoded
+  (5.4.1, 5.4.2).
+- **V6 Authentication** — credential handling, brute-force and
+  credential-stuffing defenses (6.3.1), MFA, secure recovery; no auth bypass.
+  (See the `authentication-review` skill for depth on V6, V7, V9, and V10,
+  plus SAML and LDAP sign-in.)
+- **V7 Session Management** — new session token on authentication (7.2.4),
+  inactivity and absolute timeouts (7.3), sessions terminated on logout and
+  account disablement, with the option to end other sessions after a factor
+  change (7.4), re-authentication before sensitive account changes (7.5.1).
+- **V8 Authorization** — missing or weakened function-, object- (IDOR), and
+  field-level checks (8.2.1–8.2.3), enforced at a trusted service layer
+  rather than trusting client claims (8.3.1), and cross-tenant isolation
+  (8.4.1).
 - **V9 Self-contained Tokens** — JWT/token signature verification, algorithm
-  confusion, expiry and audience/issuer validation.
-- **V10 OAuth & OIDC** — correct flow, state/PKCE, redirect-URI validation,
-  scope handling.
-- **V11 Cryptography** — strong algorithms, no static IVs/salts, authenticated
-  encryption, secure (CSPRNG) randomness, proper key management.
-- **V12 Secure Communication** — TLS enforced, certificate validation not
-  disabled, no cleartext transport of sensitive data.
-- **V13 Configuration** — secure defaults, no debug/verbose modes in prod,
-  hardened headers, dependency and secrets configuration.
-- **V14 Data Protection** — sensitive data minimized, encrypted at rest where
-  required, not exposed in responses, caches, or URLs.
-- **V15 Secure Coding & Architecture** — unsafe deserialization, dangerous
-  language/runtime features, risky newly-added dependencies with known CVEs.
+  allow-list (no algorithm confusion), trusted key sources, and expiry and
+  audience validation (9.1, 9.2).
+- **V10 OAuth & OIDC** — correct flow, `state`/PKCE, redirect-URI exact
+  matching, scope handling.
+- **V11 Cryptography** — approved algorithms and modes (no ECB), authenticated
+  encryption, no reused nonces/IVs (11.3); passwords stored with an approved
+  password-hashing KDF (11.4.2); CSPRNG for anything non-guessable (11.5.1);
+  proper key management.
+- **V12 Secure Communication** — TLS enforced with no cleartext fallback
+  (12.2.1, 12.3.1), certificate validation not disabled (12.3.2).
+- **V13 Configuration** — backend connections authenticated with
+  least-privilege, non-default credentials (13.2.1–13.2.3); outbound
+  destinations allow-listed (13.2.4); secrets from a secrets manager, not
+  source or config files (13.3.1); no debug modes, exposed `.git`, directory
+  listings, or unintended docs/monitoring endpoints in production (13.4).
+- **V14 Data Protection** — sensitive data minimized in responses (14.2.6),
+  kept out of URLs (14.2.1) and caches (14.2.2, 14.3.2), not sent to
+  untrusted third parties (14.2.3), and protected at rest per its
+  classification.
+- **V15 Secure Coding & Architecture** — risky or outdated components and
+  dependency confusion (15.2.1, 15.2.4; see `dependency-review`); whole
+  objects returned instead of the needed fields (15.3.1) and mass assignment
+  (15.3.3); type juggling, prototype pollution, and HTTP parameter pollution
+  (15.3.5–15.3.7); race conditions and TOCTOU (15.4).
 - **V16 Security Logging & Error Handling** — security events logged, no secrets
   or sensitive data in logs, no stack traces or internal detail leaked to users.
   (See the `logging` skill for depth.)

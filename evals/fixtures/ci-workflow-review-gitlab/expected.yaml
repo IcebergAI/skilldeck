@@ -1,7 +1,10 @@
 skill: ci-workflow-review
 plants:
+  # announce-release: `sh -c` re-parses the commit title (the MR title after a
+  # squash merge) as shell in a default-branch job with protected variables
   - file: .gitlab-ci.yml
-    keywords: [injection, CI_MERGE_REQUEST_TITLE, untrusted]
+    keywords: [injection, eval, re-pars, arbitrary command]
+  # build-image: MR pipelines routed to a privileged docker-in-docker runner
   - file: .gitlab-ci.yml
-    keywords: [privileged, dind, docker-in-docker, runner]
+    keywords: [docker-in-docker, privileged mode, privileged runner, container escape, root access]
 max-findings: 6

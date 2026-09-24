@@ -6,9 +6,13 @@ the ways a pipeline can be hijacked or made to leak credentials. Findings are
 classified against the
 [OWASP Top 10 CI/CD Security Risks](https://owasp.org/www-project-top-10-ci-cd-security-risks/)
 (CICD-SEC-1–10). The concrete patterns come from GitHub's
-[security hardening for GitHub Actions](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions)
-and GitLab's [pipeline security](https://docs.gitlab.com/ee/ci/pipelines/pipeline_security.html),
-[CI/CD job token](https://docs.gitlab.com/ee/ci/jobs/ci_job_token.html), and
+[secure use reference](https://docs.github.com/en/actions/reference/security/secure-use),
+[script injections](https://docs.github.com/en/actions/concepts/security/script-injections),
+and [securely using `pull_request_target`](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target)
+guidance, and GitLab's [pipeline security](https://docs.gitlab.com/ci/pipeline_security/),
+[CI/CD variable security](https://docs.gitlab.com/ci/variables/#cicd-variable-security),
+[merge request pipelines](https://docs.gitlab.com/ci/pipelines/merge_request_pipelines/),
+[CI/CD job token](https://docs.gitlab.com/ci/jobs/ci_job_token/), and
 [runner security](https://docs.gitlab.com/runner/security/) guidance; the
 CICD-SEC categories apply to any CI system. Pair with `dependency-review` for
 the packages a build installs and `security-review` for application code.
@@ -16,9 +20,9 @@ the packages a build installs and `security-review` for application code.
 Pipeline config is code that runs with credentials. Treat every value an
 outside contributor can influence — MR/PR titles and bodies, branch names,
 commit messages, author names, issue text — as attacker-controlled input that
-must never reach a shell or a privileged context unquoted. Exploitability
-hinges on **who can trigger the pipeline** and **what the job can reach**:
-establish both before judging severity.
+may reach a shell only as quoted data, never as code. Exploitability hinges
+on **who can trigger the pipeline** and **what the job can reach**: establish
+both before judging severity.
 
 The checklist below names both GitHub and GitLab mechanics for each pattern;
 map them to whatever CI system the diff actually uses (the injection,
@@ -39,27 +43,69 @@ the syntax differs).
 4. For each changed job, establish the trigger surface: can a fork MR/PR, an
    issue event, or an unauthenticated actor cause it to run, and with which
    token and secrets? On GitLab, note whether the job runs on a protected
-   branch/tag (so protected variables and runners are in reach) or in a fork
-   MR pipeline (which executes the fork's `.gitlab-ci.yml`).
+   branch/tag (so protected variables and runners are in reach) or in a merge
+   request pipeline — which for a fork MR runs in the fork project unless a
+   parent-project member starts it in the parent.
 
 ## What to look for (by CICD-SEC category)
 
 ### Poisoned pipeline execution & injection (CICD-SEC-4, CICD-SEC-1)
 
-- **Untrusted interpolation into scripts** — attacker-controlled text expanded
-  into a shell step becomes shell. GitHub: `${{ github.event.pull_request.title }}`,
-  `.body`, branch/commit/author fields inside `run:`. GitLab: predefined
-  variables like `$CI_MERGE_REQUEST_TITLE`, `$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME`,
-  or `$CI_COMMIT_MESSAGE` inside `script:`. Route the value through an `env:`
-  var and reference it quoted (`"$TITLE"`), or pass it as an argument — never
-  inline the raw expression.
-- **Privileged trigger + untrusted code** — GitHub: `pull_request_target` or
-  `workflow_run` combined with a checkout of the PR head
-  (`ref: github.event.pull_request.head.sha`) runs attacker code with secrets
-  and a write token. GitLab: a fork MR pipeline runs the fork's edited
-  `.gitlab-ci.yml`, so any protected variable or runner reachable from fork
-  MRs is exposed — check `rules:`/`only:` that let MR pipelines touch
-  protected resources.
+- **Untrusted interpolation into scripts** — the two systems differ, so judge
+  by the one the diff uses:
+  - GitHub: `${{ }}` expressions are substituted into the generated script
+    *before* the shell runs, so `${{ github.event.pull_request.title }}`,
+    `.body`, `head_ref`, commit messages, or author names inside `run:`
+    become shell code. Fix: route the value through `env:` and reference it
+    quoted (`"$TITLE"`), or pass it to an action as an input.
+  - GitLab: CI/CD variables reach the job as environment variables, and the
+    shell expands them in `script:`
+    ([where variables can be used](https://docs.gitlab.com/ci/variables/where_variables_can_be_used/))
+    once — command substitution inside the value is not run, so a quoted
+    `"$CI_MERGE_REQUEST_TITLE"` in an ordinary command is data, not an
+    injection. The sinks are **re-evaluation** — `eval`, `sh -c "… $VAR"`,
+    `bash -c`, or an `ssh` command line, each of which parses the value again
+    as shell; **unquoted `$VAR`** — word splitting and globbing turn it into
+    several arguments, and a leading `-` is read as an option
+    ([SC2086](https://github.com/koalaman/shellcheck/wiki/SC2086),
+    [SC2035](https://github.com/koalaman/shellcheck/wiki/SC2035)); and
+    **generated files** — the value written into a script that is later
+    sourced or run, or into a `dotenv` report, where a newline starts another
+    `KEY=value` entry and dotenv entries override job `variables:` in later
+    jobs. Untrusted sources are the MR title, description, and source branch
+    (`$CI_MERGE_REQUEST_*`, `$CI_COMMIT_REF_NAME`) and commit text
+    (`$CI_COMMIT_MESSAGE`, `_TITLE`, `_AUTHOR`); the default
+    [merge and squash commit templates](https://docs.gitlab.com/user/project/merge_requests/commit_templates/)
+    copy the MR title into the commit message, so a protected-branch
+    pipeline after a merge carries an outside contributor's text next to
+    protected variables. Fix (the GitHub `env:` indirection does not apply —
+    the value is already an environment variable): quote every expansion,
+    put it after `--` where the tool supports that, drop the `eval`/`sh -c`
+    or pass the value as a positional parameter
+    (`sh -c 'notify "$1"' _ "$CI_COMMIT_TITLE"`), and use
+    `$CI_COMMIT_REF_SLUG` or an allow-list check where only an identifier is
+    needed.
+- **Privileged trigger + untrusted code** — GitHub: `pull_request_target`
+  with a checkout of the PR head
+  (`ref: ${{ github.event.pull_request.head.sha }}`, `refs/pull/<n>/merge`,
+  or `repository:` set to the fork), or a `workflow_run` job that checks out
+  the triggering run's commit
+  (`ref: ${{ github.event.workflow_run.head_sha }}`, or its `head_branch`
+  from `workflow_run.head_repository`), then builds, tests, or installs from
+  it — attacker code runs with secrets and a write token. Artifacts a
+  `workflow_run` job downloads from that run are untrusted data too.
+  `allow-unsafe-pr-checkout: true` switches off `actions/checkout`'s guard
+  against fork PR refs; treat it as this finding unless the checkout is only
+  read. GitLab: a fork MR pipeline runs in the fork project by default, with
+  the fork's own variables and runners, and protected variables and runners
+  reach only protected refs (MR pipelines only when both branches are
+  protected, in the same project, and the project opts in). The exposure is a
+  pipeline run *in the parent project* for a fork MR — started by a parent
+  member, with no warning when triggered through the API or `/rebase` — which
+  executes the fork's `.gitlab-ci.yml` with the parent's non-protected
+  variables and runners. Flag secrets stored as non-protected variables and
+  privileged or deploy-capable runners not limited to protected refs:
+  whoever gets such a pipeline started can reach them.
 - Executing files an outside contributor can modify (build scripts, Makefiles,
   `package.json` lifecycle hooks) inside a privileged job.
 - Deploy or release jobs newly reachable without a required review,
@@ -77,8 +123,9 @@ the syntax differs).
   arguments (visible in logs and process lists); derived/transformed secrets
   that will not be masked; a whole JSON credential blob where one field is
   needed. GitLab: CI/CD variables that should be **masked** and **protected**
-  (restricted to protected branches/tags) but are not, especially any variable
-  reachable from a fork MR pipeline.
+  (restricted to protected branches/tags) but are not — a non-protected
+  variable reaches every branch and MR pipeline, including a parent-project
+  pipeline for a fork MR.
 - Secrets or privileged runners newly exposed to jobs that fork MRs/PRs can
   trigger.
 - Long-lived cloud keys stored as secrets where short-lived OIDC federation
@@ -89,8 +136,10 @@ the syntax differs).
 - Third-party build blocks referenced by **mutable tag or branch** instead of
   a pinned commit SHA — the only immutable reference; a compromised one sees
   every secret its job gets. GitHub: `uses: some/action@v3` / `@main`. GitLab:
-  remote `include:` (or CI/CD Catalog components) pinned to a branch/tag rather
-  than a commit; also container `image:` pinned by tag rather than digest.
+  a project `include:` or CI/CD component with no `ref`/version or pinned to a
+  branch (pin a commit SHA or a protected tag), or a `remote:` URL include
+  (vendor a reviewed copy and `include: local`); also a container `image:`
+  pinned by tag rather than `@sha256:` digest, or assembled from a variable.
 - New third-party steps, reusable workflows, or `include:`d config from outside
   the org with no provenance check.
 
@@ -116,15 +165,17 @@ Report each finding as a single list item:
 
 - **[severity] CICD-SEC category** — `file:line`
   **Issue:** who can trigger it, what they control, and what they gain.
-  **Fix:** the concrete change (quote via `env:`, drop the privileged trigger,
-  pin the SHA, scope `permissions:`).
+  **Fix:** the concrete change (GitHub: move the expression into `env:`;
+  GitLab: drop the `eval`/`sh -c` and quote the variable; drop the privileged
+  trigger, pin the SHA, scope the token).
 
 `severity` reflects who can trigger it and what they get: **critical** — an
 outside contributor can run code with secrets or a write token (script
-injection in a fork-triggerable workflow, `pull_request_target` + head
-checkout); **high** — broad token or secret exposure, or an unpinned
-third-party step inside a privileged job; **medium** — hardening gaps
-exploitable only by collaborators; **low** — hygiene. The classifier is the
+injection in a fork-triggerable workflow or a protected-branch job,
+`pull_request_target` + head checkout); **high** — broad token or secret
+exposure, or an unpinned third-party step inside a privileged job;
+**medium** — hardening gaps exploitable only by collaborators; **low** —
+hygiene. The classifier is the
 CICD-SEC category (e.g. `CICD-SEC-4 Poisoned Pipeline Execution`). Order
 findings by severity, highest first, keeping one issue per finding.
 For example:
