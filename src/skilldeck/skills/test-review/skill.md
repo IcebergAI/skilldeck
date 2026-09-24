@@ -6,6 +6,15 @@ regression — not merely whether tests exist or coverage numbers moved. This is
 testing-quality review; pair it with `code-smells` for production-code
 maintainability and `security-review` for vulnerabilities.
 
+The checklist follows the *Tests* section of Google's code-review guide,
+[What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
+— will the tests fail when the code is broken, without false positives when
+it changes beneath them? — and *Software Engineering at Google* on
+[test suites](https://abseil.io/resources/swe-book/html/ch11.html) (hermetic,
+deterministic tests; coverage shows a line ran, not that it was checked),
+[unit testing](https://abseil.io/resources/swe-book/html/ch12.html), and
+[test doubles](https://abseil.io/resources/swe-book/html/ch13.html).
+
 ## Scope
 
 1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`),
@@ -34,21 +43,27 @@ maintainability and `security-review` for vulnerabilities.
 - **Assertion-free tests** — exercises code but asserts nothing (or only that it
   "doesn't throw").
 - **Tautological / trivial** — asserts a mock returns what it was told to, or
-  re-implements the code under test.
-- **Over-mocking** — so much is stubbed the test no longer verifies real behavior.
-- **Testing implementation, not behavior** — brittle to harmless refactors.
+  re-implements the code under test (loops, branches, or computed expected
+  values in the test instead of obvious literals).
+- **Over-mocking** — so much is stubbed the test no longer verifies real
+  behavior; prefer the real implementation or a fake where practical.
+- **Testing implementation, not behavior** — reaching past the public API, or
+  asserting which internal calls were made rather than the resulting state;
+  brittle to harmless refactors.
 - **Wrong/loose assertions** — checks length but not contents, truthiness instead
   of value, or swallows the case it claims to cover.
 
 ### Reliability
 - **Flaky patterns** — real time/`sleep`, network/filesystem without isolation,
-  randomness without a fixed seed, order-dependent or shared mutable state.
+  randomness without a fixed seed, order-dependent or shared mutable state
+  (tests should be hermetic).
 - **Slow by construction** — avoidable I/O or sleeps that belong behind fakes.
 
 ### Hygiene
-- Unclear test names that don't state the scenario and expected outcome.
-- Duplicated setup that should be a fixture/helper; giant tests asserting many
-  unrelated things.
+- Unclear test names that don't state the behavior and expected outcome.
+- Shared setup that hides the values a test's assertions depend on, or
+  copy-paste that buries what each test varies — prefer descriptive (DAMP)
+  over DRY in tests; giant tests asserting many unrelated behaviors.
 - Skipped/`xfail`/commented-out tests added or left without justification.
 
 ## Output

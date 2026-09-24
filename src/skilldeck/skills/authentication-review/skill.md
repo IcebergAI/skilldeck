@@ -213,7 +213,7 @@ judging severity.
 - `RelayState` used as a URL is allow-listed (open redirect); IdP-initiated
   SSO disallowed or given dedicated replay/validation handling.
 
-### LDAP sign-in (V6.2)
+### LDAP sign-in (V6.3)
 
 - Empty or whitespace passwords rejected **before** the bind: most directories
   treat an empty-password simple bind as anonymous/unauthenticated and return
