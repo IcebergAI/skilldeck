@@ -1,13 +1,23 @@
 skill: code-smells
 plants:
-  # generate_invoice validates, prices, discounts, taxes, renders and delivers
-  # in one function. Keywords name the smell, not a refactoring: "Extract" also
-  # fits the fix for a magic-number finding in the same function.
-  - file: billing/invoice.py
+  # quote_total re-implements invoice_total line for line (subtotal, loyalty
+  # discount, tax, rounding) instead of calling it, so the next pricing rule
+  # has to be made twice and the two totals drift apart when it isn't. The
+  # smell is Duplicate Code, not the Long Method of the skill's worked example.
+  # Keywords name the smell, not a refactoring: "Extract" and "reuse" also fit
+  # the fix for other findings. No min-severity: the skill rates this medium or
+  # high, and one step below medium is already the floor.
+  - file: billing/quotes.py
     keywords:
-      - Long Method
-      - long function
-      - too long
-      - too many responsibilities
-      - single responsibility
-max-findings: 6
+      - Duplicate Code
+      - duplicate
+      - duplicated
+      - duplicates
+      - duplication
+      - copy
+      - copied
+      - copy-paste
+      - copy-pasted
+      - re-implements
+      - reimplements
+max-findings: 4

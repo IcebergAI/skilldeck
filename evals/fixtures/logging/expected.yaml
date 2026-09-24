@@ -1,7 +1,24 @@
 skill: logging
 plants:
-  # the bearer token is interpolated into a warning
+  # The failed-login warning writes the submitted username, which anyone can
+  # set, into the message unescaped: a CR/LF in it forges extra log lines (a
+  # fake "login succeeded" for another user, say). Log injection, not the
+  # token-in-a-log of the skill's worked example. The skill rates log injection
+  # from user-controlled input high; one step below catches it buried as low.
   - file: auth/session.py
-    keywords: [secret, secrets, credential, credentials, sensitive]
-    min-severity: high
+    keywords:
+      - log injection
+      - log forging
+      - forge
+      - forged
+      - forges
+      - forging
+      - CRLF
+      - CR/LF
+      - newline
+      - newlines
+      - line break
+      - line breaks
+      - control characters
+    min-severity: medium
 max-findings: 4

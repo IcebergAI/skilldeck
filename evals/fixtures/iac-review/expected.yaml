@@ -1,7 +1,25 @@
 skill: iac-review
 plants:
-  # SSH ingress open to every address
-  - file: infra/network.tf
-    keywords: [internet, world, anywhere, open security group]
-    min-severity: high
+  # The app role only needs to write objects to the exports bucket, but its
+  # policy grants every S3 action on every resource: whoever compromises the
+  # app (RCE, SSRF to the instance metadata service) can read, overwrite or
+  # delete every bucket in the account and rewrite bucket policies or public
+  # access blocks. Wildcard IAM, not the open security group of the skill's
+  # worked example. Bulk data behind an app compromise rates high (medium if
+  # the reviewer weighs the compromise as an unusual precondition); a medium
+  # floor still catches it buried as low.
+  - file: infra/iam.tf
+    keywords:
+      - wildcard
+      - wildcards
+      - least privilege
+      - least-privilege
+      - over-broad
+      - overly broad
+      - overly permissive
+      - over-permissive
+      - every bucket
+      - all buckets
+      - any bucket
+    min-severity: medium
 max-findings: 4

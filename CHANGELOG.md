@@ -38,18 +38,20 @@ All notable changes to this project are documented here. The format is based on
   Docker/DinD and shell executors). Classified against the OWASP Top 10 CI/CD
   Security Risks (CICD-SEC-1–10) with patterns from GitHub's Actions hardening
   guide and GitLab's pipeline/job-token/runner security guidance. Ships with
-  GitHub and GitLab eval fixtures (fork-triggerable title injection; a
-  privileged DinD runner plus MR-title injection in a fork-reachable job).
+  GitHub and GitLab eval fixtures (`workflow_run` artifact poisoning through
+  `$GITHUB_ENV` plus a tag-pinned third-party action; a privileged DinD runner
+  plus MR-title injection in a fork-reachable job).
 - `iac-review` skill (0.1.0) — reviews infrastructure-as-code changes
   (Terraform, CloudFormation, Kubernetes/Helm, Dockerfiles) for network
   exposure, wildcard IAM, secrets in code/state, missing encryption, container
   hardening per the Kubernetes Pod Security Standards and the OWASP Docker
   cheat sheet, and stateful-resource change safety; anchored to CIS benchmark
-  baselines. Ships with an eval fixture (security group open to the world).
+  baselines. Ships with an eval fixture (wildcard S3 policy on an app role).
 - Golden-diff eval harness (`evals/`) (#32): seven fixtures — one per skill —
-  each a tiny repo whose diff contains a planted defect (IDOR, non-concurrent
-  index, assertion-free test, missing timeout, token in a log, git-fork
-  dependency, long method). `python evals/run_evals.py` builds each repo,
+  each a tiny repo whose diff contains a planted defect (path traversal,
+  one-step column rename, assertion-free test, retry without backoff on a
+  non-idempotent POST, log injection, dependency confusion, duplicate code).
+  `python evals/run_evals.py` builds each repo,
   installs the skill, invokes an agent (default: Claude CLI), and scores the
   report: plants must be found and total findings must stay under a cap. Runs
   manually (paid API); CI validates fixture structure only.
@@ -305,15 +307,34 @@ All notable changes to this project are documented here. The format is based on
   package, per pip's install docs) instead of an npm package in
   `requirements.txt`; `migration-review` gains PostgreSQL/table-size context
   (`config/database.yml`, `db/schema.rb`, a hot ~200M-row `events` table);
-  `authentication-review`'s email-keyed identity and `ci-workflow-review`'s
-  `pull_request_target` head checkout become intentional second plants, so a
-  report can't pass on the other defect alone. Every fixture's keywords now
+  `authentication-review`'s email-keyed identity becomes an intentional second
+  plant, so a report can't pass on the other defect alone. Every fixture's keywords now
   describe the defect instead of echoing the planted code or naming a
   category or fix that also fits a neighbouring defect (the SAML `unverified`,
   resilience `hang`, code-smells `Extract`, dependency `public index`, and
   CI `CICD-SEC-4` keywords are gone; the GitLab fixture's stems become whole
-  words), and plants with a clear rubric level (all but `code-smells` and the
-  GitLab variant) set a `min-severity` one step below it (#106).
+  words), and plants the rubric clearly rates above medium (all but the
+  GitLab variant's) set a `min-severity` one step below that level; the rest,
+  where one step below is already the floor, need none (#106).
+- Eval fixtures no longer plant their skill's own worked example (#107), so
+  they test the checklist rather than recall of the example. Each of the seven
+  fixtures that did now plants a different checklist item of the same skill,
+  in the same small codebase: `code-smells` a `quote_total` that duplicates
+  `invoice_total` (Duplicate Code, not Long Method); `iac-review` an app role
+  granted `s3:*` on `*` (wildcard IAM, not `0.0.0.0/0` on port 22); `logging`
+  a failed-login warning that writes the submitted username unescaped (log
+  injection, not a token in the log); `migration-review` a one-step
+  `rename_column` on `events` while the old release still writes the column
+  (backward-incompatible change, not a non-concurrent index);
+  `resilience-review` an immediate, unbacked-off retry loop around a
+  shipment-creating POST with no idempotency key (two plants, not a missing
+  timeout); `security-review` an owner-scoped PATCH route that passes the whole
+  request body to the update as columns (mass assignment, not IDOR); and
+  `ci-workflow-review` a `workflow_run` job that writes the PR run's artifact
+  into `$GITHUB_ENV` (artifact poisoning, replacing both the PR-title echo and
+  the `pull_request_target` head checkout) plus a third-party action pinned by
+  tag. Their `expected.yaml` keywords, severity floors and sample reports are
+  updated to match.
 
 ### Fixed
 

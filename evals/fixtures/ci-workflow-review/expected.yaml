@@ -1,21 +1,55 @@
 skill: ci-workflow-review
 plants:
-  # attacker-controlled PR title expanded into a shell step of a
-  # fork-triggerable, privileged workflow (script injection). The CICD-SEC-4
-  # classifier is not a keyword: the head checkout below is CICD-SEC-4 too.
-  - file: .github/workflows/greet.yml
-    keywords: [injection, PR title, pull request title]
-    min-severity: high
-  # pull_request_target checks out the fork's head commit and runs its
-  # scripts/welcome.sh with the base repository's token and secrets
-  - file: .github/workflows/greet.yml
+  # Artifact poisoning through the environment file. The workflow_run job runs
+  # in the base repository with a pull-requests write token, but the artifact
+  # it downloads comes from the CI run of the pull request, whose workflow and
+  # Makefile a fork author controls. Each file's content is written to
+  # $GITHUB_ENV unchecked, and a newline in it starts another NAME=value entry,
+  # so the fork sets any environment variable for the later steps: BASH_ENV
+  # pointing at a script shipped in the artifact (extracted into the
+  # workspace) runs it in the next bash step, with GH_TOKEN in its environment.
+  # Not the PR-title interpolation of the skill's worked example. The skill
+  # rates an outside contributor running code with a write token critical; one
+  # step below still catches it buried as medium or low. Bare "injection",
+  # "untrusted artifact" and "artifact poisoning" are not keywords: they also
+  # fit a finding that the artifact's PR number or coverage text is trusted.
+  # The keywords name the environment-file sink instead ("GITHUB_ENV
+  # injection" is a phrase the planted code never contains).
+  - file: .github/workflows/coverage-report.yml
     keywords:
-      - head checkout
-      - PR head
-      - pull request head
-      - fork's code
-      - fork code
-      - untrusted code
-      - pwn request
+      - environment file
+      - environment injection
+      - environment variable injection
+      - env injection
+      - env var injection
+      - variable injection
+      - GITHUB_ENV injection
+      - arbitrary environment variables
+      - arbitrary environment variable
+      - arbitrary env vars
+      - arbitrary variables
+      - set environment variables
+      - set env vars
+      - inject environment variables
+      - inject env vars
+      - BASH_ENV
+      - LD_PRELOAD
+      - newline
+      - newlines
     min-severity: high
+  # A third-party action referenced by a mutable tag, running in a job that
+  # holds a pull-requests write token; its publisher (or whoever compromises
+  # it) can repoint the tag. The shared rubric rates a mutable pin medium; no
+  # min-severity, since one step below medium is already the floor.
+  - file: .github/workflows/coverage-report.yml
+    keywords:
+      - mutable
+      - unpinned
+      - not pinned
+      - pin
+      - pinned
+      - pinning
+      - commit SHA
+      - full-length SHA
+      - Dependency Chain Abuse
 max-findings: 5

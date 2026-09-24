@@ -1,16 +1,43 @@
 skill: resilience-review
 plants:
-  # outbound HTTP call with no timeout on the request path. A bare "hang" is
-  # not a keyword: a graceful-degradation finding on the same call says the
-  # service "errors or hangs" without reporting the missing timeout.
+  # The new call has a timeout (the skill's worked example is a missing one);
+  # its retry loop is the problem, in two independent ways.
+  #
+  # 1. It retries at once, with no backoff or jitter: when the shipping service
+  #    struggles, every caller fires five back-to-back attempts, multiplying
+  #    the load on a dependency that is trying to recover (a retry storm). The
+  #    skill rates a failure that cascades from a routine dependency failure
+  #    high, so the floor is one step below: medium. Bare "immediately" is not
+  #    a keyword: it also fits a finding that a 5xx is raised, not retried.
   - file: services/client.py
     keywords:
-      - missing timeout
-      - no timeout
-      - no explicit timeout
-      - without a timeout
-      - without timeout
-      - never times out
-      - indefinitely
+      - backoff
+      - back-off
+      - back off
+      - jitter
+      - retry storm
+      - thundering herd
+      - hammer
+      - hammers
     min-severity: medium
+  # 2. It retries a POST that creates a shipment, with no idempotency key: a
+  #    read timeout after the service has created the shipment sends the same
+  #    request again, so one order ships twice. The skill rates duplicated side
+  #    effects under failure medium; no min-severity, since one step below
+  #    medium is already the floor. Bare "twice" and "double" are not keywords:
+  #    they also fit a backoff finding ("double the delay").
+  - file: services/client.py
+    keywords:
+      - idempotent
+      - non-idempotent
+      - idempotency
+      - duplicate
+      - duplicated
+      - duplicates
+      - ships twice
+      - shipped twice
+      - created twice
+      - double shipment
+      - double shipments
+      - at-least-once
 max-findings: 5
