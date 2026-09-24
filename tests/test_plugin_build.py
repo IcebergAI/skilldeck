@@ -27,10 +27,12 @@ def test_committed_plugin_tree_is_current():
 
 def test_manifests_are_valid_and_consistent():
     marketplace = json.loads(
-        (_ROOT / ".claude-plugin" / "marketplace.json").read_text()
+        (_ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8")
     )
     plugin = json.loads(
-        (_ROOT / "claude-plugin" / ".claude-plugin" / "plugin.json").read_text()
+        (_ROOT / "claude-plugin" / ".claude-plugin" / "plugin.json").read_text(
+            encoding="utf-8"
+        )
     )
     assert marketplace["name"] == build_plugin.MARKETPLACE_NAME
     assert marketplace["owner"]["name"]
@@ -59,9 +61,13 @@ def test_plugin_provenance_matches_python_distribution():
     from skilldeck.registry import discover_skills
 
     plugin_provenance = json.loads(
-        (_ROOT / "claude-plugin" / ".skilldeck" / "content-manifest.json").read_text()
+        (_ROOT / "claude-plugin" / ".skilldeck" / "content-manifest.json").read_text(
+            encoding="utf-8"
+        )
     )
-    package_text = (_ROOT / "src" / "skilldeck" / "_content_manifest.json").read_text()
+    package_text = (_ROOT / "src" / "skilldeck" / "_content_manifest.json").read_text(
+        encoding="utf-8"
+    )
     assert package_text == canonical_json(plugin_provenance)
     assert plugin_provenance == content_manifest(build_plugin.project_version())
 
@@ -69,5 +75,5 @@ def test_plugin_provenance_matches_python_distribution():
     for record in plugin_provenance["skills"]:
         rendered = (
             _ROOT / "claude-plugin" / "skills" / record["name"] / "SKILL.md"
-        ).read_text()
+        ).read_text(encoding="utf-8")
         assert rendered.endswith(by_name[record["name"]].body)

@@ -35,9 +35,11 @@ from __future__ import annotations
 
 import argparse
 import functools
+import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -565,6 +567,27 @@ def prepare_repo(
     return repo
 
 
+def remove_tree(path: Path) -> None:
+    """Delete ``path`` recursively, including read-only files.
+
+    Git writes its object files read-only, which Windows refuses to delete, so
+    a plain ``rmtree`` would leave every review repo behind there. Best effort:
+    anything still undeletable is left in place rather than failing a run.
+    """
+
+    def clear_readonly_and_retry(func: object, target: str, _exc: object) -> None:
+        os.chmod(target, stat.S_IWRITE)
+        func(target)  # type: ignore[operator]
+
+    try:
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(path, onexc=clear_readonly_and_retry)
+        else:
+            shutil.rmtree(path, onerror=clear_readonly_and_retry)
+    except OSError:
+        pass
+
+
 def _text(output: str | bytes | None) -> str:
     # TimeoutExpired carries captured output as bytes even with text=True
     if isinstance(output, bytes):
@@ -576,7 +599,13 @@ def run_agent(agent_cmd: str, prompt: str, repo: Path, timeout: int) -> AgentRun
     cmd = [part.replace("{prompt}", prompt) for part in shlex.split(agent_cmd)]
     try:
         result = subprocess.run(
-            cmd, cwd=repo, capture_output=True, text=True, timeout=timeout
+            cmd,
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
         )
     except FileNotFoundError:
         raise SystemExit(
@@ -683,7 +712,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.keep or failed:
         print(f"reports kept in {workdir}")
     else:
-        shutil.rmtree(workdir, ignore_errors=True)
+        remove_tree(workdir)
     return 1 if failed else 0
 
 

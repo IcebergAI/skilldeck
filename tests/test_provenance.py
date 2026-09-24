@@ -16,10 +16,11 @@ def _skill(tmp_path: Path, name: str) -> Skill:
     root.mkdir()
     (root / "meta.yaml").write_text(
         f"name: {name}\ndescription: Example\ncategory: review\n"
-        "version: 1.2.3\nsupported-agents:\n  - claude\n"
+        "version: 1.2.3\nsupported-agents:\n  - claude\n",
+        encoding="utf-8",
     )
     body = f"# {name}\n\nReview carefully.\n"
-    (root / "skill.md").write_text(body)
+    (root / "skill.md").write_text(body, encoding="utf-8")
     return Skill(
         name=name,
         description="Example",

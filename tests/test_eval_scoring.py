@@ -4,6 +4,7 @@ Synthetic reports and a stand-in agent only -- no paid API calls.
 """
 
 import shlex
+import stat
 import subprocess
 import sys
 import textwrap
@@ -689,3 +690,15 @@ def test_main_reports_a_failing_agent_with_its_stderr(monkeypatch, tmp_path, cap
 def test_main_rejects_an_unknown_fixture(capsys):
     assert run_evals.main(["--skill", "no-such-skill"]) == 2
     assert "no fixture for 'no-such-skill'" in capsys.readouterr().err
+
+
+def test_remove_tree_deletes_read_only_files(tmp_path):
+    # git writes its object files read-only; Windows refuses to delete those
+    # unless the read-only bit is cleared first
+    tree = tmp_path / "work" / "repo" / ".git" / "objects" / "ab"
+    tree.mkdir(parents=True)
+    obj = tree / "cdef"
+    obj.write_text("blob", encoding="utf-8")
+    obj.chmod(stat.S_IREAD)
+    run_evals.remove_tree(tmp_path / "work")
+    assert not (tmp_path / "work").exists()

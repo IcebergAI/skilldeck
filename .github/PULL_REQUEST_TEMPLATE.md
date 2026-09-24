@@ -16,7 +16,7 @@ Closes #
 
 ## Checklist
 
-- [ ] Ran `uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`
+- [ ] Ran `uv run --extra dev ruff check . && uv run --extra dev ruff format --check . && uv run --extra dev mypy && uv run --extra dev pytest`
 - [ ] Added or updated tests
 - [ ] Updated docs where relevant
 - [ ] Added a `CHANGELOG.md` entry under `## [Unreleased]`

@@ -1,10 +1,16 @@
 # Keeps the SHA-pinned actions and dev dependencies current.
+#
+# `cooldown` holds back version updates until a release is a week old, so a
+# compromised or broken release has time to be yanked before it is proposed
+# here. It never delays security updates.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
   # uv (not pip): the project's Python deps live in pyproject.toml/uv.lock,
   # and the pip ecosystem would also scan the requirements.txt files inside
   # evals/fixtures/, which are test data with deliberately planted issues.
@@ -12,3 +18,5 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7

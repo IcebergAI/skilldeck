@@ -15,9 +15,18 @@ Skilldeck is a collection of skills for coding assistants to use mostly for secu
   `uv run --extra dev ruff check . && uv run --extra dev ruff format --check . && uv run --extra dev mypy && uv run --extra dev pytest`
   (always pass `--extra dev` — bare `uv run` re-syncs the venv without extras
   and uninstalls the dev tools)
-- CI (`.github/workflows/ci.yml`) runs lint, types, and a 3.10–3.14 pytest matrix
-  on every PR; tagged `v*` releases publish to PyPI via Trusted Publishing
-  (`release.yml`)
+- CI (`.github/workflows/ci.yml`) runs lint, types, a 3.10–3.14 pytest matrix,
+  Windows/macOS test legs, a lowest-direct dependency-floor job (3.10 and 3.14),
+  zizmor on `.github/`, and a build (plus a build with the hatchling floor) +
+  sdist smoke test on every PR; all CI/release `uv run`/`uv sync` calls pass
+  `--locked` (except the floor job). Tagged `v*` releases publish to PyPI via
+  Trusted Publishing (`release.yml`), gated on the tag commit being on `main`
+  and passing the checks (a guard against mis-tagging; the tag ruleset and
+  `pypi` environment reviewer in repo settings are the real controls)
+- Tests run on Windows too: pass `encoding="utf-8"` to every text read/write
+  and create symlinks via the `symlink` fixture (`tests/conftest.py`)
+- Scripts read the package version only via `scripts/_pyproject.py`
+  (`[project].version`); don't add another parser
 - Distribution: it's a CLI app, not a library — recommend isolated installs
   (`uvx skilldeck`, `uv tool install`, `pipx`); `pip install` is a fallback only.
   Don't document bare `pip install` as the primary path.

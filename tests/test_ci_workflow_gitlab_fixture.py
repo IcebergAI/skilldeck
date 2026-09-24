@@ -75,7 +75,9 @@ FINDINGS = {
 
 
 def _script_lines():
-    ci = yaml.safe_load((FIXTURE / "change" / ".gitlab-ci.yml").read_text())
+    ci = yaml.safe_load(
+        (FIXTURE / "change" / ".gitlab-ci.yml").read_text(encoding="utf-8")
+    )
     return [
         line
         for job in ci.values()
@@ -100,7 +102,13 @@ def _runs_attacker_text(line, workdir):
     return False
 
 
-needs_sh = pytest.mark.skipif(shutil.which("sh") is None, reason="needs sh")
+# These run script lines the way a GitLab runner's POSIX shell would. On Windows
+# any `sh` on PATH is Git for Windows' MSYS shell, not that shell, so Windows
+# skips them; the Linux and macOS legs run them.
+needs_sh = pytest.mark.skipif(
+    sys.platform == "win32" or shutil.which("sh") is None,
+    reason="needs a POSIX sh (GitLab runner shell)",
+)
 
 
 @pytest.mark.parametrize("plant", EXPECTED["plants"], ids=lambda p: p["keywords"][0])

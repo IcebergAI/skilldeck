@@ -17,9 +17,10 @@ def _write_skill(root, name, *, agents="[claude, codex, kiro]", body="hi"):
             version: 0.1.0
             supported-agents: {agents}
             """
-        ).strip()
+        ).strip(),
+        encoding="utf-8",
     )
-    (skill_dir / "skill.md").write_text(body)
+    (skill_dir / "skill.md").write_text(body, encoding="utf-8")
     return skill_dir
 
 
@@ -50,7 +51,8 @@ def test_name_must_match_directory(tmp_path):
         "description: x\n"
         "category: y\n"
         "version: 1\n"
-        "supported-agents: [claude]\n"
+        "supported-agents: [claude]\n",
+        encoding="utf-8",
     )
     with pytest.raises(SkillError, match="does not match"):
         load_skill(skill_dir)
@@ -63,9 +65,9 @@ def test_non_mapping_meta_rejected(tmp_path):
     skill_dir = tmp_path / "demo"
     skill_dir.mkdir()
     (skill_dir / "meta.yaml").write_text(
-        "name description category version supported-agents"
+        "name description category version supported-agents", encoding="utf-8"
     )
-    (skill_dir / "skill.md").write_text("body")
+    (skill_dir / "skill.md").write_text("body", encoding="utf-8")
     with pytest.raises(SkillError, match="must be a YAML mapping"):
         load_skill(skill_dir)
 
@@ -73,8 +75,8 @@ def test_non_mapping_meta_rejected(tmp_path):
 def test_missing_field_raises(tmp_path):
     skill_dir = tmp_path / "demo"
     skill_dir.mkdir()
-    (skill_dir / "meta.yaml").write_text("name: demo\n")
-    (skill_dir / "skill.md").write_text("body")
+    (skill_dir / "meta.yaml").write_text("name: demo\n", encoding="utf-8")
+    (skill_dir / "skill.md").write_text("body", encoding="utf-8")
     with pytest.raises(SkillError, match="missing fields"):
         load_skill(skill_dir)
 
@@ -117,9 +119,9 @@ def _write_meta(root, name="demo", **overrides):
     skill_dir = root / name
     skill_dir.mkdir()
     (skill_dir / "meta.yaml").write_text(
-        "".join(f"{key}: {value}\n" for key, value in fields.items())
+        "".join(f"{key}: {value}\n" for key, value in fields.items()), encoding="utf-8"
     )
-    (skill_dir / "skill.md").write_text("body")
+    (skill_dir / "skill.md").write_text("body", encoding="utf-8")
     return skill_dir
 
 
@@ -244,6 +246,6 @@ def test_duplicate_supported_agents_rejected(tmp_path):
 
 def test_invalid_yaml_is_a_clean_error(tmp_path):
     skill_dir = _write_meta(tmp_path)
-    (skill_dir / "meta.yaml").write_text("name: [unclosed\n")
+    (skill_dir / "meta.yaml").write_text("name: [unclosed\n", encoding="utf-8")
     with pytest.raises(SkillError, match="not valid YAML"):
         load_skill(skill_dir)
