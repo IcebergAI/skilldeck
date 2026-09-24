@@ -384,6 +384,67 @@ SAMPLE_REPORTS = {
             )
         ],
     ),
+    "privacy-review": (
+        [
+            _finding(
+                "high",
+                "Data minimisation",
+                "app/directory.py:17",
+                "`jsonify(member)` returns the full row, so any signed-in member "
+                "can read another member's national ID number, date of birth, "
+                "home address, and phone.",
+                "return only what the directory shows (display name, bio, avatar).",
+            ),
+            _finding(
+                "high",
+                "Third-party sharing",
+                "app/site.py:28",
+                "every page view sends the member's email and the phone's "
+                "precise location to Segment without checking consent, unlike "
+                "the race-entry event.",
+                "gate the call on `has_consent(..., 'analytics')`, key it on "
+                "`analytics_id`, and drop the email and coordinates.",
+            ),
+        ],
+        [
+            # the directory's other defects name the same sensitive fields:
+            # they must not pass for the over-returned record
+            _finding(
+                "medium",
+                "V8 Authorization",
+                "app/directory.py:14",
+                "member IDs are sequential and the route has no rate limit, so "
+                "a signed-in member can walk every ID and scrape the club's "
+                "national ID numbers and home addresses.",
+                "rate-limit the route per member.",
+            ),
+            _finding(
+                "low",
+                "Data subject rights",
+                "app/directory.py:12",
+                "members are listed in the directory by default with no way to "
+                "hide themselves from other members.",
+                "add a setting that removes a member from lookups.",
+            ),
+            _finding(
+                "medium",
+                "Resilience",
+                "app/site.py:27",
+                "`get_user` returns `None` for an account deleted while its "
+                "session lives on, so `user['email']` raises and every request "
+                "from that browser fails with a 500.",
+                "return early when the user no longer exists.",
+            ),
+            _finding(
+                "low",
+                "Performance",
+                "app/site.py:27",
+                "the hook loads the member's row from the database on every "
+                "request, adding a round trip to each API call.",
+                "load it once per request and reuse it in the views.",
+            ),
+        ],
+    ),
     "resilience-review": (
         [
             _finding(

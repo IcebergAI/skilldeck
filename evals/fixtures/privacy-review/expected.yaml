@@ -1,0 +1,82 @@
+# A running club's site adds a member directory, so members can look each
+# other up to arrange group runs, and a page-view hook that feeds the growth
+# dashboard through Segment. The users table holds contact details, date of
+# birth, and a national ID number collected for race-entry insurance; the
+# existing race-entry event shows the house pattern: consent-gated, keyed on a
+# random analytics ID.
+skill: privacy-review
+plants:
+  # the directory returns the whole users row (SELECT *), so any signed-in
+  # member can read any other member's national ID, date of birth, home
+  # address, and phone; only terms for over-returning data, not the sensitive
+  # fields themselves, which a finding about scraping the directory also names
+  - file: app/directory.py
+    keywords:
+      - minimisation
+      - minimization
+      - minimise
+      - minimize
+      - minimum
+      - excessive
+      - excess
+      - over-exposure
+      - overexposure
+      - over-exposes
+      - overexposes
+      - over-sharing
+      - oversharing
+      - over-shares
+      - overshares
+      - over-returns
+      - over-broad
+      - overbroad
+      - full record
+      - entire record
+      - whole record
+      - full row
+      - entire row
+      - whole row
+      - raw row
+      - every column
+      - all columns
+      - every field
+      - all fields
+      - SELECT *
+      - subset
+      - allow-list
+      - allowlist
+      - allow list
+      - public fields
+      - explicit fields
+    # the rubric rates sensitive fields readable by any signed-in user high;
+    # one step below, so a high/medium split passes but a buried low fails
+    min-severity: medium
+  # every page view sends the member's email (as the user ID and a property)
+  # and the phone's precise coordinates to the analytics vendor with no
+  # consent check, unlike the race-entry event beside it
+  - file: app/site.py
+    keywords:
+      - consent
+      - consented
+      - opt-in
+      - opt in
+      - opted in
+      - opted-in
+      - third party
+      - third-party
+      - third parties
+      - tracker
+      - trackers
+      - precise location
+      - exact location
+      - geolocation
+      - GPS
+      - coordinates
+      - pseudonymous
+      - pseudonym
+      - pseudonymised
+      - pseudonymized
+    # the rubric rates personal data sent to a third party without consent in
+    # routine operation high
+    min-severity: medium
+max-findings: 4
