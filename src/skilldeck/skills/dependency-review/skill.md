@@ -2,10 +2,14 @@
 
 Review the **dependency changes on the current branch** — packages added,
 upgraded, downgraded, or removed — for known vulnerabilities and supply-chain
-risk. This covers OWASP Top 10
-[A06:2021 Vulnerable and Outdated Components](https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/)
-and ASVS V15 (Secure Coding & Architecture); pair it with `security-review` for
-the rest of the application surface.
+risk. This covers the third-party-component side of OWASP Top 10:2025
+[A03:2025 Software Supply Chain Failures](https://owasp.org/Top10/2025/A03_2025-Software_Supply_Chain_Failures/)
+— vulnerable, unmaintained, or untrusted components, direct and transitive,
+and malicious changes arriving through them — and ASVS 5.0 V15.1–V15.2
+(component inventory from trusted repositories, remediation time frames,
+dependency confusion). A03 also spans the build and distribution pipeline:
+pair with `ci-workflow-review` for that and with `security-review` for the
+rest of the application surface.
 
 ## Scope
 
@@ -30,13 +34,16 @@ the rest of the application surface.
   resolved version fall in the affected range? Is the fix available in a later
   release?
 - **Outdated / unmaintained** — a pinned version far behind upstream, or a
-  package with no recent releases and no active maintainers.
+  package with no recent releases, no active maintainers, or no security
+  fixes for the line in use (end-of-life).
 - **Supply-chain red flags**:
   - **Typosquatting / confusion** — a name suspiciously close to a popular
     package, or an internal name resolvable from a public index (dependency
     confusion).
-  - **Provenance** — source switched to a fork, a git URL, or a non-canonical
-    registry; install/postinstall scripts newly introduced.
+  - **Provenance** — source switched to a fork, a git URL, a non-canonical
+    registry, or a plain-HTTP index; signature or attestation checks
+    dropped; install/postinstall scripts newly introduced (the entry point
+    of the 2025 Shai-Hulud npm worm).
   - **Trust footprint** — a new direct dependency that pulls a large transitive
     tree, or a tiny utility added for trivial functionality.
 - **Version hygiene** — unpinned or loosened ranges (`*`, `latest`, `^`/`~`

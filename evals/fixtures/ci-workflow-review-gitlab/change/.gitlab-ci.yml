@@ -1,6 +1,7 @@
 stages:
   - test
   - build
+  - release
 
 unit-tests:
   stage: test
@@ -21,6 +22,13 @@ build-image:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   script:
-    - echo "Building for MR: $CI_MERGE_REQUEST_TITLE"
     - docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" .
     - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+
+announce-release:
+  stage: release
+  image: alpine:3.20
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - sh -c "./ci/notify-chat.sh 'Released $CI_COMMIT_TITLE'"
