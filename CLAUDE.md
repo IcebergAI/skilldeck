@@ -68,7 +68,10 @@ Skilldeck is a collection of skills for coding assistants to use mostly for secu
   `version` string changes, so that version is derived from the plugin
   content: exactly the project version for the content recorded in
   `claude-plugin/.skilldeck/release.json` when the version was bumped, else
-  `X.Y.(Z+1)-dev.sha256-<12 hex>` (see `docs/releasing.md`)
+  `X.Y.(Z+1)-dev.sha256-<12 hex>` (see `docs/releasing.md`). Never restore or
+  edit that record outside an unmerged release PR:
+  `scripts/check_release_consistency.py` fails a record change without a
+  version bump, or one that differs from its release tag's copy
 - `src/skilldeck/_content_manifest.json` +
   `claude-plugin/.skilldeck/content-manifest.json` — identical generated
   canonical and rendered-skill identities; regenerated with the plugin tree,

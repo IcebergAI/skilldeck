@@ -124,13 +124,16 @@ All notable changes to this project are documented here. The format is based on
   with "no attestations found", so a network or auth error fails it; the
   checksum half of that check, which only showed that SHA-256 notices
   appended bytes, is gone. `verify_distribution_identity.py` compares the
-  distributions with the tagged commit (`git archive HEAD`): the sdist must
+  distributions with the tagged commit (`git archive` of the expected commit,
+  which must be the checkout's `HEAD`): the sdist must
   be exactly the committed files plus `PKG-INFO`, and the wheel exactly the
   committed `src/skilldeck` files plus its `.dist-info`, with every file
-  correctly hashed in `RECORD` and `METADATA` requirements, `entry_points.txt`,
-  and the `WHEEL` tag matching `pyproject.toml`, so an extra module or `.pth`
-  file, changed code, or an added dependency fails. Its suffix matching is
-  anchored at `/` path boundaries.
+  correctly hashed in `RECORD` and `METADATA` requirements (environment
+  markers included), extras, `entry_points.txt`, and the `WHEEL` tag matching
+  `pyproject.toml`, so an extra module or `.pth` file, changed code, or an
+  added, dropped, or re-scoped dependency fails. Its suffix matching is
+  anchored at `/` path boundaries. `verify_pypi_release.py` retries a
+  download cut short mid-read as well as connection errors.
 
 ### Changed
 
@@ -336,6 +339,11 @@ All notable changes to this project are documented here. The format is based on
   workflow refuses a tag whose plugin is a development snapshot
   (`verify_distribution_identity.py --release-plugin`), and
   `build_plugin.py` refuses a project version older than the record.
+  `check_release_consistency.py` keeps the record honest: it must equal the
+  copy at its `v<version>` tag once that exists, and with `--base` (run by
+  CI's `lint` job on pull requests) it fails a record change without a
+  version bump and a release PR whose plugin drifted to a development version
+  after `prepare_release.py`.
 
 ### Removed
 

@@ -242,7 +242,8 @@ VERSION = "1.2.3"
 DIST_INFO = f"skilldeck-{VERSION}.dist-info"
 CONTRACT = identity.PackageContract(
     requires_python=">=3.10",
-    requirements=frozenset({("click>=8.1", None), ("pytest>=9.0", "dev")}),
+    requirements=frozenset({("click>=8.1", ""), ("pytest>=9.0", "extra == 'dev'")}),
+    extras=frozenset({"dev"}),
     scripts={"skilldeck": "skilldeck.cli:main"},
     license_files=("LICENSE",),
 )
@@ -344,6 +345,28 @@ def test_wheel_built_from_the_commit_passes():
             {f"{DIST_INFO}/METADATA": METADATA.replace(b"1.2.3", b"1.2.4")},
             "version",
         ),
+        # a marker that drops a runtime dependency everywhere...
+        (
+            {
+                f"{DIST_INFO}/METADATA": METADATA.replace(
+                    b"click>=8.1\n", b'click>=8.1; python_version < "3"\n'
+                )
+            },
+            "requirements",
+        ),
+        # ...or turns a dev-only dependency into a runtime one
+        (
+            {
+                f"{DIST_INFO}/METADATA": METADATA.replace(
+                    b"extra == 'dev'", b"extra == 'dev' or python_version >= \"3\""
+                )
+            },
+            "requirements",
+        ),
+        (
+            {f"{DIST_INFO}/METADATA": METADATA.replace(b"Provides-Extra: dev\n", b"")},
+            "extras",
+        ),
     ],
 )
 def test_wheel_contents_that_differ_from_the_commit_fail(extra, message):
@@ -424,12 +447,26 @@ def test_one_suffix_matches_only_whole_path_components():
         )
 
 
-def test_requirements_are_compared_by_normalised_name_and_extra():
+def test_requirements_are_compared_by_normalised_name_and_marker():
     assert identity._normalise_requirement('types-PyYAML >= 6.0 ; extra == "dev"') == (
         "types-pyyaml>=6.0",
-        "dev",
+        "extra == 'dev'",
     )
-    assert identity._normalise_requirement("Foo_Bar.baz>=1") == ("foo-bar-baz>=1", None)
+    assert identity._normalise_requirement("Foo_Bar.baz>=1") == ("foo-bar-baz>=1", "")
+    # hatchling's spelling of a marked optional dependency matches pyproject's
+    assert identity._normalise_requirement(
+        "tomli; (python_version<'3.11') and extra == 'dev'"
+    ) == ("tomli", identity._extra_marker('python_version < "3.11"', "dev"))
+    # a changed marker is a different requirement
+    assert identity._normalise_requirement(
+        "pytest; extra == 'dev' or python_version >= '3'"
+    ) != identity._normalise_requirement("pytest; extra == 'dev'")
+
+
+@pytest.mark.parametrize("marker", ["x @ y", 'os_name == "a\'b"', "a == 'open"])
+def test_unparseable_markers_are_rejected(marker):
+    with pytest.raises(identity.VerificationError, match="marker"):
+        identity._normalise_requirement(f"pkg; {marker}")
 
 
 needs_tomllib = pytest.mark.skipif(
@@ -440,8 +477,9 @@ needs_tomllib = pytest.mark.skipif(
 @needs_tomllib
 def test_package_contract_reads_the_committed_pyproject():
     contract = identity.package_contract((_ROOT / "pyproject.toml").read_bytes())
-    assert ("click>=8.1", None) in contract.requirements
-    assert ("types-pyyaml>=6.0", "dev") in contract.requirements
+    assert ("click>=8.1", "") in contract.requirements
+    assert ("types-pyyaml>=6.0", "extra == 'dev'") in contract.requirements
+    assert contract.extras == {"dev"}
     assert contract.scripts == {"skilldeck": "skilldeck.cli:main"}
     assert contract.license_files == ("LICENSE",)
 
@@ -450,9 +488,11 @@ def test_package_contract_reads_the_committed_pyproject():
 
 
 def _git_tree():
+    """The repository's committed tree and its ``HEAD`` commit."""
     try:
-        return identity.read_committed_tree(_ROOT)
-    except identity.VerificationError as exc:
+        commit = identity._git(_ROOT, "rev-parse", "HEAD").decode().strip()
+        return identity.read_committed_tree(_ROOT, commit), commit
+    except (OSError, subprocess.CalledProcessError, identity.VerificationError) as exc:
         pytest.skip(f"not a git checkout: {exc}")
 
 
@@ -476,10 +516,17 @@ def test_committed_tree_is_read_from_head_not_the_working_tree(tmp_path):
     # a build step editing the checkout changes neither what was committed...
     (tmp_path / "src" / "code.py").write_bytes(b"edited")
     (tmp_path / "src" / "injected.py").write_bytes(b"new")
-    assert identity.read_committed_tree(tmp_path) == {"src/code.py": b"committed"}
+    head = identity._git(tmp_path, "rev-parse", "HEAD").decode().strip()
+    assert identity.read_committed_tree(tmp_path, head) == {"src/code.py": b"committed"}
     # ...nor can a directory without a commit stand in for one
     with pytest.raises(identity.VerificationError, match="committed tree"):
-        identity.read_committed_tree(tmp_path / "src" / "missing")
+        identity.read_committed_tree(tmp_path / "src" / "missing", head)
+    # ...nor a checkout of some other commit than the expected one
+    git("commit", "-q", "--allow-empty", "-m", "later")
+    with pytest.raises(identity.VerificationError, match="not the expected commit"):
+        identity.read_committed_tree(tmp_path, head)
+    with pytest.raises(identity.VerificationError, match="invalid expected commit"):
+        identity.read_committed_tree(tmp_path, "HEAD")
 
 
 def _canonical_skills(root: Path) -> dict[str, dict[str, str]]:
@@ -592,12 +639,12 @@ def _write_tar(path: Path, files: dict[str, bytes]) -> Path:
 
 @needs_tomllib
 def test_verify_accepts_distributions_of_the_commit_and_rejects_a_pth(tmp_path):
-    committed = _git_tree()
+    committed, commit = _git_tree()
     contract = identity.package_contract(committed["pyproject.toml"])
     version = identity.tomllib.loads(committed["pyproject.toml"].decode())["project"][
         "version"
     ]
-    ref, commit = f"refs/tags/v{version}", "a" * 40
+    ref = f"refs/tags/v{version}"
     stamped = json.dumps(
         {
             "schema_version": 1,
@@ -610,12 +657,13 @@ def test_verify_accepts_distributions_of_the_commit_and_rejects_a_pth(tmp_path):
         [
             f"Metadata-Version: 2.4\nName: skilldeck\nVersion: {version}\n",
             f"Requires-Python: {contract.requires_python}\n",
+            *(f"Provides-Extra: {extra}\n" for extra in sorted(contract.extras)),
             *(
                 f"Requires-Dist: {requirement}"
-                + (f"; extra == '{extra}'" if extra else "")
+                + (f"; {marker}" if marker else "")
                 + "\n"
-                for requirement, extra in sorted(
-                    contract.requirements, key=lambda item: (item[1] or "", item[0])
+                for requirement, marker in sorted(
+                    contract.requirements, key=lambda item: (item[1], item[0])
                 )
             ),
             "\nDescription.\n",

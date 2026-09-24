@@ -49,7 +49,13 @@ state of the repo (nothing is tagged or on PyPI yet).
    `uv.lock` and exits non-zero.
 3. Run the full check suite:
    `uv run --extra dev ruff check . && uv run --extra dev ruff format --check . && uv run --extra dev mypy && uv run --extra dev pytest`
-4. Open a `Release x.y.z` PR and merge it once CI is green.
+4. Open a `Release x.y.z` PR and merge it once CI is green. If the PR's plugin
+   content changes after `prepare_release.py` ran (for example
+   `gh pr update-branch` merges a skill change from `main`), `plugin.json`
+   drops back to a development version and the `lint` job fails the PR;
+   re-record the final content before merging:
+   `git checkout origin/main -- claude-plugin/.skilldeck/release.json`, then
+   `python scripts/build_plugin.py`, and commit.
 
 At this point the version is **prepared**. To actually **publish**:
 
@@ -158,6 +164,15 @@ Consumer verification is documented in
 - `pyproject` version **==** the newest dated CHANGELOG version — run on every PR
   by the `lint` job, and also by `tests/test_release_consistency.py` under
   `pytest`.
+- the plugin release record (`claude-plugin/.skilldeck/release.json`) is
+  the copy committed at its `v<version>` tag whenever that tag exists, so a
+  released plugin version string never gets new content. On a pull request
+  the `lint` job also passes `--base origin/<target branch>` (it checks out
+  with `fetch-depth: 0` for the branches and tags), which fails a record
+  change without a project version bump, and a version bump whose plugin is
+  not exactly the new version (a release PR whose content drifted after
+  `prepare_release.py`). The tag check also runs under `pytest` in a checkout
+  that has the release tags.
 - on a tag push, the tag (minus the `v`) **==** the `pyproject` version — run by
   the release workflow before it builds or publishes. Only an exact `vX.Y.Z` or
   `refs/tags/vX.Y.Z` (no leading zeros) is accepted; anything else (for
@@ -231,9 +246,15 @@ under that version string, so the record starts with no content for `0.3.0`
 and the plugin is on a development version until the first release, which
 must therefore be newer than `0.3.0`. If a release PR changes the plugin
 content after `prepare_release.py` ran, the plugin drops back to a
-development version; before merging, restore the old record with
-`git checkout origin/main -- claude-plugin/.skilldeck/release.json` and re-run
-`python scripts/build_plugin.py` to record the final content.
+development version and CI fails the PR; before merging, restore the old
+record with `git checkout origin/main -- claude-plugin/.skilldeck/release.json`
+and re-run `python scripts/build_plugin.py` to record the final content.
+This applies **only to an unmerged release PR** (one that bumps the project
+version). Anywhere else, restoring or editing the record would relabel new
+content with a version string users may already hold, which is the bug this
+scheme exists to prevent, so `check_release_consistency.py` rejects a record
+change without a version bump and any change to a record whose release tag
+exists.
 
 ## Generated trust files
 
@@ -247,14 +268,16 @@ development version; before merging, restore the old record with
   `refs/tags/vX.Y.Z` plus full commit only inside the authorized tag workflow.
 - `scripts/verify_distribution_identity.py` fails closed on archive traversal,
   links, duplicate members, malformed manifests, missing/orphaned skills, or
-  any wheel/sdist/plugin digest mismatch. It reads the expected files from
-  the checkout's `HEAD` with `git archive`, not from the working tree a build
-  step could have edited, and requires the sdist to be exactly those files
-  plus `PKG-INFO`, and the wheel exactly the `src/skilldeck` files plus
-  `METADATA`, `WHEEL`, `entry_points.txt`, `RECORD`, and the license, with
-  every file hashed correctly in `RECORD` and the requirements, entry point,
-  and tag matching `pyproject.toml`. An added module or `.pth` file, changed
-  code, or an added dependency fails it. Only the stamped
+  any wheel/sdist/plugin digest mismatch. It reads the expected files of
+  `--expected-commit` with `git archive` (and fails unless that commit is the
+  checkout's `HEAD`), not from the working tree a build step could have
+  edited, and requires the sdist to be exactly those files plus `PKG-INFO`,
+  and the wheel exactly the `src/skilldeck` files plus `METADATA`, `WHEEL`,
+  `entry_points.txt`, `RECORD`, and the license, with every file hashed
+  correctly in `RECORD` and the requirements (with their environment
+  markers), extras, entry point, and tag matching `pyproject.toml`. An added
+  module or `.pth` file, changed code, or an added, dropped, or re-scoped
+  dependency fails it. Only the stamped
   `_build_metadata.json` may differ from the commit.
 - `scripts/write_checksums.py` accepts exactly one wheel, one source
   distribution, and one SPDX document. It streams verification and rejects

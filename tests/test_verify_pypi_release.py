@@ -1,6 +1,7 @@
 """Tests for scripts/verify_pypi_release.py (post-upload PyPI readback, #109)."""
 
 import hashlib
+import http.client
 import importlib.util
 import io
 import json
@@ -96,6 +97,29 @@ def test_waits_for_the_listing_to_catch_up():
 def test_gives_up_when_pypi_never_lists_the_release():
     with pytest.raises(pypi.PyPIError, match="gave up after 3 attempts"):
         _verify(FakePyPI(_not_found()))
+
+
+@pytest.mark.parametrize(
+    "hiccup",
+    [
+        http.client.IncompleteRead(b"partial", 10),
+        ConnectionResetError("reset by peer"),
+        TimeoutError("timed out"),
+    ],
+)
+def test_retries_a_download_cut_short(hiccup):
+    class Flaky(FakePyPI):
+        failed = False
+
+        def __call__(self, url, limit):
+            if url == _url(WHEEL) and not self.failed:
+                self.failed = True
+                raise hiccup
+            return super().__call__(url, limit)
+
+    fake = Flaky(_listing())
+    assert len(_verify(fake)) == 2
+    assert fake.requests.count(_url(WHEEL)) == 1  # the failed call isn't recorded
 
 
 def test_rejects_bytes_that_differ_from_the_build():

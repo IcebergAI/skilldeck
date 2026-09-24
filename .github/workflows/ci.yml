@@ -18,6 +18,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # all branches and tags: the plugin release record is checked
+          # against the PR's base branch and any release tag
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
@@ -28,8 +31,15 @@ jobs:
         run: uv run --locked --extra dev ruff format --check .
       - name: Mypy
         run: uv run --locked --extra dev mypy
-      - name: Release consistency (version matches CHANGELOG)
-        run: python scripts/check_release_consistency.py
+      - name: Release consistency (version, CHANGELOG, plugin release record)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            python scripts/check_release_consistency.py --base "origin/$BASE_REF"
+          else
+            python scripts/check_release_consistency.py
+          fi
 
   test:
     runs-on: ubuntu-latest

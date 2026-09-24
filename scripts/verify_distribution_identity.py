@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """Verify wheel, sdist, and Claude plugin share one exact release identity.
 
-Everything is compared with the files committed at ``HEAD`` of the source
-checkout (read with ``git archive``, so a build step that edited the working
-tree cannot vouch for itself):
+Everything is compared with the files of the expected commit, which must be
+the source checkout's ``HEAD`` (read with ``git archive``, so a build step that
+edited the working tree cannot vouch for itself):
 
 * the sdist holds exactly the committed files plus ``PKG-INFO``, byte for byte;
 * the wheel holds exactly the committed ``src/skilldeck`` files, byte for byte,
   plus ``METADATA``, ``WHEEL``, ``entry_points.txt``, ``RECORD`` and the
   license, with every file correctly hashed in ``RECORD`` and the metadata
-  matching the committed ``pyproject.toml`` -- so an extra module, a ``.pth``
-  file, changed code, or an added dependency fails;
+  matching the committed ``pyproject.toml`` (requirements with their
+  environment markers) -- so an extra module, a ``.pth`` file, changed code,
+  or an added, dropped, or re-scoped dependency fails;
 * both carry the same content manifest and stamped build identity, and every
   bundled skill hashes to its manifest record;
 * the committed Claude plugin renders from those skills and carries the
@@ -74,7 +75,11 @@ PACKAGE_SOURCE = f"src/{PACKAGE}/"
 BUILD_METADATA = "_build_metadata.json"
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
-_EXTRA_MARKER_RE = re.compile(r"""extra\s*==\s*['"]([^'"]+)['"]""")
+# A PEP 508 marker's tokens: quoted strings, comparison operators, parentheses,
+# and words (variables, ``and``/``or``/``not``/``in``, unquoted versions).
+_MARKER_TOKEN_RE = re.compile(
+    r"""\s*(?:('[^']*'|"[^"]*")|(===|[<>=!~]=|[<>]|[()])|([A-Za-z0-9_.*+-]+))"""
+)
 _NAME_RE = re.compile(r"^([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)(.*)$", re.S)
 
 
@@ -162,21 +167,35 @@ def _read_tar_stream(stream: IO[bytes], mode: str) -> dict[str, bytes]:
     return files
 
 
-def read_committed_tree(source_dir: Path) -> dict[str, bytes]:
-    """Return every file committed at ``HEAD`` of the git checkout ``source_dir``."""
+def _git(source_dir: Path, *args: str) -> bytes:
+    return subprocess.run(
+        ["git", "-C", str(source_dir), *args], capture_output=True, check=True
+    ).stdout
+
+
+def read_committed_tree(source_dir: Path, commit: str) -> dict[str, bytes]:
+    """Return every file of ``commit``, which must be ``source_dir``'s ``HEAD``.
+
+    The plugin is read from the checkout's working tree, so a checkout of any
+    other commit would compare the distributions against the wrong files.
+    """
+    if not _COMMIT_RE.fullmatch(commit):
+        raise VerificationError(f"invalid expected commit: {commit!r}")
     try:
-        result = subprocess.run(
-            ["git", "-C", str(source_dir), "archive", "--format=tar", "HEAD"],
-            capture_output=True,
-            check=True,
-        )
+        head = _git(source_dir, "rev-parse", "--verify", "HEAD^{commit}")
+        if head.decode("ascii", "replace").strip() != commit:
+            raise VerificationError(
+                f"{source_dir} has {head.decode('ascii', 'replace').strip()} "
+                f"checked out, not the expected commit {commit}"
+            )
+        archive = _git(source_dir, "archive", "--format=tar", commit)
     except (OSError, subprocess.CalledProcessError) as exc:
         detail = getattr(exc, "stderr", b"") or b""
         raise VerificationError(
             f"cannot read the committed tree of {source_dir}: {exc} "
             f"{detail.decode('utf-8', 'replace').strip()}"
         ) from exc
-    return _read_tar_stream(io.BytesIO(result.stdout), "r|")
+    return _read_tar_stream(io.BytesIO(archive), "r|")
 
 
 def _one_suffix(files: dict[str, bytes], suffix: str) -> tuple[str, bytes]:
@@ -205,21 +224,51 @@ class PackageContract(NamedTuple):
     """What the committed ``pyproject.toml`` says the built metadata must hold."""
 
     requires_python: str
-    requirements: frozenset[tuple[str, str | None]]
+    requirements: frozenset[tuple[str, str]]
+    extras: frozenset[str]
     scripts: Mapping[str, str]
     license_files: tuple[str, ...]
 
 
-def _normalise_requirement(text: str) -> tuple[str, str | None]:
-    """``(requirement, extra)`` with the PEP 503 name and no whitespace."""
+def _normalise_marker(marker: str) -> str:
+    """A PEP 508 marker as single-spaced tokens with single-quoted strings.
+
+    Spelling differences a build backend may introduce (spacing, quote style)
+    vanish; anything that changes what the marker selects does not.
+    """
+    tokens: list[str] = []
+    position = 0
+    marker = marker.strip()
+    while position < len(marker):
+        match = _MARKER_TOKEN_RE.match(marker, position)
+        if not match or match.end() == position:
+            raise VerificationError(f"unparseable environment marker: {marker!r}")
+        string, operator, word = match.groups()
+        if string is not None:
+            if "'" in string[1:-1]:
+                raise VerificationError(f"unsupported marker string: {string!r}")
+            tokens.append(f"'{string[1:-1]}'")
+        else:
+            tokens.append(operator or word)
+        position = match.end()
+    return " ".join(tokens)
+
+
+def _extra_marker(marker: str, extra: str) -> str:
+    """The marker a build backend writes for ``marker`` under ``extra``."""
+    clause = f"extra == '{extra}'"
+    return _normalise_marker(f"({marker}) and {clause}" if marker else clause)
+
+
+def _normalise_requirement(text: str) -> tuple[str, str]:
+    """``(requirement, marker)``: PEP 503 name, no spaces, normalised marker."""
     requirement, _, marker = text.partition(";")
     match = _NAME_RE.match(requirement.strip())
     if not match:
         raise VerificationError(f"unparseable requirement: {text!r}")
     name = re.sub(r"[-_.]+", "-", match.group(1)).lower()
     rest = "".join(match.group(2).split()).lower()
-    extra = _EXTRA_MARKER_RE.search(marker)
-    return name + rest, extra.group(1) if extra else None
+    return name + rest, _normalise_marker(marker)
 
 
 def package_contract(pyproject: bytes) -> PackageContract:
@@ -232,11 +281,15 @@ def package_contract(pyproject: bytes) -> PackageContract:
         requirements = {
             _normalise_requirement(item) for item in project.get("dependencies", [])
         }
-        for extra, items in project.get("optional-dependencies", {}).items():
-            requirements |= {(_normalise_requirement(item)[0], extra) for item in items}
+        optional = project.get("optional-dependencies", {})
+        for extra, items in optional.items():
+            for item in items:
+                requirement, marker = _normalise_requirement(item)
+                requirements.add((requirement, _extra_marker(marker, extra)))
         return PackageContract(
             requires_python="".join(project["requires-python"].split()),
             requirements=frozenset(requirements),
+            extras=frozenset(optional),
             scripts=dict(project.get("scripts", {})),
             license_files=(license_file,),
         )
@@ -329,9 +382,11 @@ def _validate_wheel_metadata(
         or "".join(str(metadata.get("Requires-Python", "")).split())
         != contract.requires_python
         or requirements != contract.requirements
+        or set(metadata.get_all("Provides-Extra", [])) != contract.extras
     ):
         raise VerificationError(
-            "wheel METADATA name, version, or requirements do not match pyproject.toml"
+            "wheel METADATA name, version, requirements, or extras do not match "
+            "pyproject.toml"
         )
 
 
@@ -642,7 +697,7 @@ def verify(
         raise VerificationError(f"unexpected wheel filename: {wheel.name}")
     if sdist.name != f"{PACKAGE}-{version}.tar.gz":
         raise VerificationError(f"unexpected sdist filename: {sdist.name}")
-    committed = read_committed_tree(source_dir)
+    committed = read_committed_tree(source_dir, source_commit)
     if "pyproject.toml" not in committed:
         raise VerificationError("the committed tree has no pyproject.toml")
     contract = package_contract(committed["pyproject.toml"])
@@ -694,7 +749,7 @@ def main() -> int:
         "--source-dir",
         type=Path,
         default=ROOT,
-        help="git checkout whose HEAD the distributions were built from",
+        help="git checkout of --expected-commit the distributions were built from",
     )
     parser.add_argument(
         "--release-plugin",

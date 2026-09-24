@@ -128,9 +128,12 @@ skilldeck status --agent all
 # Refresh installed skills after upgrading skilldeck
 skilldeck update --agent claude
 
-# Inspect the package source identity and bundled skill digests
+# Show the source identity and skill digests recorded at build time (claims only)
 skilldeck provenance
 skilldeck provenance --json
+
+# Re-hash the installed skills and fail if any differ from those build-time digests
+skilldeck provenance --verify
 ```
 
 Installed files carry a `skilldeck` stamp recording the skill version, so

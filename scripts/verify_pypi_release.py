@@ -22,6 +22,7 @@ import argparse
 import functools
 import hashlib
 import hmac
+import http.client
 import json
 import sys
 import time
@@ -108,11 +109,16 @@ def read_listing(
 def _retrying(
     action: Callable[[], T], attempts: int, delay: float, sleep: Callable[[float], None]
 ) -> T:
-    """Run ``action``, retrying while PyPI lags or the network hiccups."""
+    """Run ``action``, retrying while PyPI lags or the network hiccups.
+
+    ``OSError`` covers ``URLError`` (including HTTP errors), timeouts, and
+    reset connections; ``HTTPException`` covers a body cut short mid-read
+    (``IncompleteRead``).
+    """
     for attempt in range(1, attempts + 1):
         try:
             return action()
-        except (NotYetListed, urllib.error.URLError, TimeoutError) as exc:
+        except (NotYetListed, OSError, http.client.HTTPException) as exc:
             if attempt == attempts:
                 raise PyPIError(f"gave up after {attempts} attempts: {exc}") from exc
             print(f"waiting for PyPI ({exc}); retrying in {delay:g}s", file=sys.stderr)
@@ -172,7 +178,12 @@ def main() -> int:
     try:
         digests = write_checksums.parse_digests(args.expected_digests)
         lines = verify(args.version, digests, attempts=args.attempts, delay=args.delay)
-    except (OSError, PyPIError, write_checksums.ChecksumError) as exc:
+    except (
+        OSError,
+        http.client.HTTPException,
+        PyPIError,
+        write_checksums.ChecksumError,
+    ) as exc:
         parser.error(str(exc))
     for line in lines:
         print(f"ok: PyPI serves {line}")

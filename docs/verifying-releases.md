@@ -105,8 +105,10 @@ canonical metadata, skill bodies, and rendered Claude files from the wheel,
 source distribution, and tagged plugin tree before publication.
 
 The plugin's `version` in `claude-plugin/.claude-plugin/plugin.json` is exactly
-the release version (`X.Y.Z`) only at a release tag. Between releases the
-marketplace serves `main`, whose plugin carries a development version such as
+the release version (`X.Y.Z`) only for the content prepared for that release,
+which includes the tagged commit (and `main` from the moment the release PR
+merges until the next plugin content change). Otherwise the marketplace
+serves `main` with a development version such as
 `X.Y.(Z+1)-dev.sha256-<12 hex digits>` derived from its content digest, so
 Claude Code offers every content change as an update. The release workflow
 refuses to publish a tag whose plugin is a development snapshot. See
