@@ -14,8 +14,6 @@ infrastructure. The checklists follow the hardening baselines of the
 [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/)
 (baseline/restricted profiles), and the OWASP
 [Docker Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Docker_Security_Cheat_Sheet.html).
-Pair with `ci-workflow-review` for the pipelines that apply this code and
-`security-review` for the application itself.
 
 Judge by blast radius and environment: a permissive rule in an isolated dev
 sandbox is not a production exposure — but config has a habit of being copied
@@ -24,9 +22,11 @@ where behavior differs (AWS/GCP/Azure defaults are not the same).
 
 ## Scope
 
-1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`),
-   plus any uncommitted or untracked changes. If you are already on the base
-   branch, review the uncommitted changes instead.
+1. Determine the diff: `git fetch`, then `git diff origin/<base>...HEAD`
+   (default base: `main`/`master`; with no remote, the local base), plus
+   uncommitted changes (`git diff HEAD`) and untracked files
+   (`git ls-files --others --exclude-standard`; read them whole). If you are
+   already on the base branch, review the uncommitted changes instead.
 2. Focus on infrastructure files: `*.tf`/`*.tfvars`, CloudFormation/CDK
    templates, `k8s/`/`manifests/`/`charts/` YAML, `Dockerfile*`,
    `docker-compose*`, Ansible playbooks, and the variables/values files that
@@ -37,6 +37,11 @@ where behavior differs (AWS/GCP/Azure defaults are not the same).
 4. If the project already runs an IaC scanner (Checkov, tfsec/Trivy,
    kube-score, conftest/OPA, kics), don't re-flag what it enforces; focus on
    what it can't see (intent, environment, blast radius).
+5. This skill owns infrastructure config, including its secrets and its image
+   and module pins; pipeline files belong to `ci-workflow-review` and package
+   manifests to `dependency-review`. If the owner runs in the same review,
+   leave its area to it; in a combined report, give each defect once, under
+   the owner's classifier.
 
 ## What to look for (by category)
 
@@ -83,8 +88,20 @@ where behavior differs (AWS/GCP/Azure defaults are not the same).
 - Missing `runAsNonRoot`/`USER` (container runs as root),
   `allowPrivilegeEscalation` not `false`, root filesystem not read-only where
   it could be, seccomp/AppArmor defaults disabled.
-- No CPU/memory limits (noisy-neighbor and DoS surface); mutable `:latest`
-  image tags; bloated base images where minimal ones fit.
+- No CPU/memory limits (noisy-neighbor and DoS surface); bloated base images
+  where minimal ones fit.
+
+### Mutable pins
+
+- Third-party images by tag (none means `:latest`) rather than `@sha256:`
+  digest — tags can be moved, digests are fixed
+  ([Kubernetes images](https://kubernetes.io/docs/concepts/containers/images/));
+  third-party registry modules without an exact `version` (none, or a range —
+  the lock file records providers, not modules)
+  ([module version](https://developer.hashicorp.com/terraform/language/modules/syntax#version),
+  [lock file](https://developer.hashicorp.com/terraform/language/files/dependency-lock)),
+  or git module sources whose `ref` is not a commit SHA
+  ([selecting a revision](https://developer.hashicorp.com/terraform/language/modules/sources#selecting-a-revision)).
 
 ### Change safety
 
@@ -103,15 +120,27 @@ Report each finding as a single list item:
   **Fix:** the concrete configuration change (restrict the CIDR, drop the
   capability, scope the policy, move the secret).
 
-`severity` reflects exposure and blast radius: **critical** — internet-facing
-attack surface or leaked credential (a bucket or security group open to the
-world on a sensitive port, a secret in code); **high** — a privilege-escalation
-path or unencrypted/unprotected sensitive data; **medium** — a hardening
-regression contained inside the cluster or network boundary; **low** —
-hygiene. The classifier is the misconfiguration kind (e.g. `Open security
-group`, `Wildcard IAM`, `Privileged container`, `Secret in code`). Order
-findings by severity, highest first, keeping one issue per finding.
-For example:
+Rate `severity` on the shared severity rubric, impact × likelihood:
+**critical** — high impact (code execution, auth bypass, stolen credentials or
+bulk data, data loss, an outage), readily triggered (by anyone who can reach
+it, or in routine operation); **high** — high impact behind a common
+precondition (an authenticated user, a collaborator, a routine failure), or
+medium impact (limited exposure, degraded service) readily triggered;
+**medium** — high impact only under an unusual precondition, medium impact
+behind a common one, or low impact readily triggered (a weakened defense
+anyone can reach); **low** — medium impact only under an unusual
+precondition, or low impact behind any precondition (most defense in depth
+and hygiene).
+Here: **critical** — internet-facing attack surface (a bucket or security group
+open to the world on a sensitive port), or a live credential committed in
+templates, variables, manifests, or image layers (the Fix must also
+[revoke and rotate](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html)
+it); **high** — a privilege-escalation path or unencrypted/unprotected
+sensitive data; **medium** — a mutable pin (classified `Mutable pin`), or a
+hardening regression contained inside the cluster or network boundary. The
+classifier is the misconfiguration kind (e.g. `Open security group`,
+`Wildcard IAM`, `Privileged container`, `Secret in code`). Order findings by
+severity, highest first, keeping one issue per finding. For example:
 
 - **[critical] Open security group** — `infra/network.tf:23`
   **Issue:** the new ingress rule allows `0.0.0.0/0` on port 22, exposing SSH
@@ -128,7 +157,6 @@ more than ~10 survive, report the ones worth a human's time and summarize the
 rest in a line.
 
 Open the report with one line stating what was reviewed and the outcome, e.g.
-`Reviewed main..HEAD (3 files): 1 finding, critical.` If the diff touches no
-infrastructure code, say so rather than reviewing application code. If the
-infrastructure changes are sound, say so explicitly rather than manufacturing
-findings.
+`Reviewed origin/main...HEAD (3 files): 1 finding, critical.` If the diff
+touches no infrastructure code, say so and stop. If the infrastructure changes
+are sound, say so explicitly rather than manufacturing findings.

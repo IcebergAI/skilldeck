@@ -3,44 +3,44 @@
   "schema_version": 1,
   "skills": [
     {
-      "body_sha256": "sha256:056ce037a60a81d9dece856b0520feee3fa0fd1b6fcd550e400e660773bf8259",
-      "canonical_sha256": "sha256:6238e2387b3d986ccaa4caebb47ac0a833a02ad7dee7f4b94cccc41f1fe2d283",
-      "claude_rendered_sha256": "sha256:53395849c5c11a79bfced3f82f37e19511bb8aba797bb40c04be03a6fcecad3b",
-      "meta_sha256": "sha256:d619f6725f71dffe651328786842ad4d19ce90d61fc7d7648dd1c8ceae3d6e74",
+      "body_sha256": "sha256:366ffcaa3183fd009c3c59953b1e571ab88bdc426f277584b60198b2d8d47ab8",
+      "canonical_sha256": "sha256:e45d275cd8fd659af6b6503430812da86c7222726bf189c0cb457fa3bea391f9",
+      "claude_rendered_sha256": "sha256:43aa9cb65459b19211fa2349e5b4f9362f90638f23884ec159e709cbdd3109e4",
+      "meta_sha256": "sha256:faf1d1d2f3f630a6efce7f5df11e3290b9f4124ab9562d96a980fe89dfc242ab",
       "name": "authentication-review",
-      "version": "0.1.1"
+      "version": "0.2.0"
     },
     {
-      "body_sha256": "sha256:7ef33a06e4bf544d4b5bb88fd5057194b626ce6d67779fff59633172d0e718e4",
-      "canonical_sha256": "sha256:66e1b11a86e954c97b6d57aafdc7afc70d5e869b66b13fda67cd0f352fb9479d",
-      "claude_rendered_sha256": "sha256:dcec8f843fdba88b1ea03db5ff2d2b10e4a76c17ad70c6907ff16effdbb31bcd",
-      "meta_sha256": "sha256:1aa0866bd107481ac13414ff98333b4de966c924b3d9c1ad8de342367bc8fc90",
+      "body_sha256": "sha256:351472b55c207be9b147de44996bffeef98dd85decfbc97544aa83c528f9e0da",
+      "canonical_sha256": "sha256:eb171f9d92fd4c63ce4613f56b4da825b8763e8748bb3d357b0a36b9be25d7f0",
+      "claude_rendered_sha256": "sha256:c8faffedfdb51aaa009d169146020f731e2b87d2f560ff0b6d1bb3722ef7bb67",
+      "meta_sha256": "sha256:90f118ce2b9a1a57bf9e592b624e34bea9b998e758b6e54b4fb2b6f576ffbb08",
       "name": "ci-workflow-review",
-      "version": "0.2.1"
+      "version": "0.3.0"
     },
     {
-      "body_sha256": "sha256:1a40a16b2afc5fae7940a6d1b2e4b218c46171d74916683c6651582b92f46387",
-      "canonical_sha256": "sha256:604df1564c70febf7d147218a4325e46e3184df87f612880abfea67ab7880881",
-      "claude_rendered_sha256": "sha256:fe580e51da98d73ec079af315d95334f6a332b2b1342eb23427b40d2b2543ada",
-      "meta_sha256": "sha256:9b1ccd5172280cfcec8430801239d44e5a4955f7d4a8aad7ff25e8253303aad1",
+      "body_sha256": "sha256:bf082cd5c84b729d6c3412fb83d4d771e7dd4d1e30bba11bdb2b58fc3208dd3f",
+      "canonical_sha256": "sha256:e4dcbee8ff34424923afdfb40cf0966c6cf2f388e086142d4e3208b7ce8e5e7d",
+      "claude_rendered_sha256": "sha256:aa4f2b00ce2a7d44f66689064a5acfdde873a2d45d292a8d50bf53ef9d2033df",
+      "meta_sha256": "sha256:d289c63d3178f50e004fa6f1eec3489f2a3bd0236e37b778af45d086c327f32a",
       "name": "code-smells",
-      "version": "0.2.1"
+      "version": "0.3.0"
     },
     {
-      "body_sha256": "sha256:da1a3305417c4865494321e0e7f7513e7964f694058414d004b2eba029770e6d",
-      "canonical_sha256": "sha256:7abce07d1e55122c1156a03dd7ed3182fcf8c2372ba60fd341b30ff5acbfb865",
-      "claude_rendered_sha256": "sha256:b34a55d5dac6a74456c47912f643b449061506a14cb067ebb5eb973e1f267fb8",
-      "meta_sha256": "sha256:52e1d29ec9d32ff6cc1e23ef86b8f52433129697329c0f48949d539489eb8aeb",
+      "body_sha256": "sha256:75dc5e489a139b4b7e901b87786d1ded8f817f1a3976287b9d81dc85574d7b39",
+      "canonical_sha256": "sha256:b3a6cf001814e536b05d6dcf4e65ff7fbf4b75c98668ae72f2226ec9db36fadb",
+      "claude_rendered_sha256": "sha256:ac2d8dad99a837fb12936d1c2144c3eda606377dc70902a6e50611ccc2095a80",
+      "meta_sha256": "sha256:65fc87353782a474d116fe58805dfe46fd9459ee568b7fc1dd9cbe73b64e5199",
       "name": "dependency-review",
-      "version": "0.2.3"
+      "version": "0.3.0"
     },
     {
-      "body_sha256": "sha256:18bf52096e596422434d0536db59cf3a06ee75f264e2951925a251fd1b6def64",
-      "canonical_sha256": "sha256:8e2cf5f056673cf89173d1f564090d448c30d61d81c3e6c53dc70f09db9a2c99",
-      "claude_rendered_sha256": "sha256:4bcde77df9bc3aa34d18c16872e88fff3d5b70ce7237ed16411959c88a51f183",
-      "meta_sha256": "sha256:b08a37404286edf6f8426bb35023d13f95dced3f62d03edf638de3ebf25ec90b",
+      "body_sha256": "sha256:474ac126525955c1ddc6e4583f373a547c04e8735b920ad7593bbc4022fe763b",
+      "canonical_sha256": "sha256:723f8e676e70c8614aff6862135cacaebb39ba4e0cd41dd6fff8d300f58363ae",
+      "claude_rendered_sha256": "sha256:01c6502043b9a0b4ee079255fcabdc99646b97e35b5d1850d38692ef2265025c",
+      "meta_sha256": "sha256:b830cd869d67c57d5a5a5d35ba85a16fca4dc36a800bc6963dc25d39b6ca61ae",
       "name": "iac-review",
-      "version": "0.1.0"
+      "version": "0.2.0"
     },
     {
       "body_sha256": "sha256:01d886be59d7ca956aceb989cda8098f94ed2beba2947354e77ed2f8973d3840",
@@ -51,44 +51,44 @@
       "version": "0.1.0"
     },
     {
-      "body_sha256": "sha256:c1dc5d41396e4757f4d83f1bafeee57b5faae2ec1dfd6cafd1424e016e2ef168",
-      "canonical_sha256": "sha256:b3bdb8524872d1ea6c5a3e613bb846a3255999f5aafcf41b6c5dbb2b589a228e",
-      "claude_rendered_sha256": "sha256:dbda296679e4ab283b60319d69be37f6bde7153b1743f0f72c2cbfb024580519",
-      "meta_sha256": "sha256:792a7147a855a1d0723e625e00f800ebe1a543370a9ba93e6d9b5ae279f059a7",
+      "body_sha256": "sha256:7e407631107275697b6c090de6a68af8389fd8b4141bd0253a47e9688098c4b9",
+      "canonical_sha256": "sha256:31e1bc83cb9811b7f606890b740f7e514a4544a31240b40924547248d7537acf",
+      "claude_rendered_sha256": "sha256:ae40c0fbec5bf3fc24c81b9ad6c404ddab545001d20bc4d0c50082012d922120",
+      "meta_sha256": "sha256:52549724d30304bf9a59ae919d9d630e75f553b485d5d44ed183462d21a2c7c6",
       "name": "logging",
-      "version": "0.2.1"
+      "version": "0.3.0"
     },
     {
-      "body_sha256": "sha256:da723ff2f114ec22ca316c25323272398349c39d07ebb303d7c96cbc74ad6c5d",
-      "canonical_sha256": "sha256:c3feb88053c1ea2c49775f4926c55362d8a1e102e722e0918ed5672dbf89ea7c",
-      "claude_rendered_sha256": "sha256:4d2c8be475467890a06380836239ef40bdb15c87d7f466aa33c36593ce7821d5",
-      "meta_sha256": "sha256:b734d846c2b777e43beaa06a4660f30c8814edbaf44c3635d8a52847cc64bbe8",
+      "body_sha256": "sha256:4c7444d7a81a922d45cc35bdc4a7fce6456302baa1ce7e100b828b3e8fa92092",
+      "canonical_sha256": "sha256:65d917075deb53a559aab697a90decedd688649ab329c9f8ebb2e11d8c8524ac",
+      "claude_rendered_sha256": "sha256:8b6a773259baac556b6afdbdb1cf3909806dc2d7618b7e3278810f08fafaf469",
+      "meta_sha256": "sha256:c34acd9d3ef6b542ad86e741b57c818fc46554978da86b52932309b979292401",
       "name": "migration-review",
-      "version": "0.2.1"
+      "version": "0.3.0"
     },
     {
-      "body_sha256": "sha256:d4f858b08536c4a7a011e28bcd099f44c044981bc2bd2b1c72bff28df715e03b",
-      "canonical_sha256": "sha256:b17a68d643eb66ba7a279b14a0e3e419850ea30c0a5676346b2725635ccd3836",
-      "claude_rendered_sha256": "sha256:204996856a605b57cf5424473ba7939d8ea10e00170bc207508ac4e4a81d9787",
-      "meta_sha256": "sha256:d7a52f983ab69b6bbb13631e7f5062bfbfbb24d78e727c760c2a3d7b01613fae",
+      "body_sha256": "sha256:3a063e1f8e93f442e622c6da68eeb0196c33d16d1a7b114b85ae18d48e4222bc",
+      "canonical_sha256": "sha256:2c1e1682efcb2e62296711cd1e0a143a33228600498d70a6fee5a20fdb0f5a9c",
+      "claude_rendered_sha256": "sha256:8df93b79fceab51ff41d49996253e07c3b9c50c0ea132487e32a233dc5bc770d",
+      "meta_sha256": "sha256:33ef3b93f0720a661cc686854b5a9f60e67cd5195a706aee97af125fb06e02a2",
       "name": "resilience-review",
-      "version": "0.2.1"
+      "version": "0.3.0"
     },
     {
-      "body_sha256": "sha256:a9da8f248861aecca5dad8ae1b47a48de116e316b7c839afd08b1129510a288a",
-      "canonical_sha256": "sha256:30ee39e9be8a4ba1ca5c315472f4fbc1475001d47bc6af793e86f61217614f7e",
-      "claude_rendered_sha256": "sha256:dc2621e7ab2965f63ff5ac4748d7d2e420c7e4b913332a9a7a2ddb5c7ffa0641",
-      "meta_sha256": "sha256:c825b8050c522183aba587217a41c0175d6f6bbe4754166085dc0e11975cc68a",
+      "body_sha256": "sha256:4a461fe715826d948655dd9fc3f50db24016e944935d98ccb289fb9e058dbbae",
+      "canonical_sha256": "sha256:c3649c2df6c35e787a651150be9981247a0aededf8b8604ff41aea9769a76765",
+      "claude_rendered_sha256": "sha256:5b6b78685b41526669dbd85ac6b3df457332d286fa1ca098b0f8a18ea6c15669",
+      "meta_sha256": "sha256:4778a9578f85bd65d76fcc74fa9e803141a3326c5248f6cbf2cfa4b833305b1f",
       "name": "security-review",
-      "version": "0.3.3"
+      "version": "0.4.0"
     },
     {
-      "body_sha256": "sha256:c783804e0c792c530be4542c9ab6f474864e14e2c696f7d97455acb159da4a32",
-      "canonical_sha256": "sha256:d8cb4ac84f92a0aecc1d59155594f0de4148ac128bc125ffc1ee2bc29fdbe4ab",
-      "claude_rendered_sha256": "sha256:f93592668a0352995ef94674e990f0a287b8161cf828985eedc087c0ea904d4d",
-      "meta_sha256": "sha256:feb5442d38b058be5d09650d487706a54b9bc47dfb7f4f1165e32acf7b4d257d",
+      "body_sha256": "sha256:49215350ea63412ec0c5cc0aad38d74546002014abaeb0327f60f65f8082a4af",
+      "canonical_sha256": "sha256:91137c7fd8927f8cae795444a6382252d65a7e6e828467b9d39ad194b72e1bee",
+      "claude_rendered_sha256": "sha256:bd0f9978ce38fd191bdc98030e000e6bf50ba965de6691bc700a9044851eb415",
+      "meta_sha256": "sha256:5aac68078cf57dc41c4b76faad23aa4fd4a00380acedfbb510733ea612629a6f",
       "name": "test-review",
-      "version": "0.2.2"
+      "version": "0.3.0"
     }
   ]
 }

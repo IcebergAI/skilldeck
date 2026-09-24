@@ -22,9 +22,11 @@ comments are not a *Comments* smell.
 
 ## Scope
 
-1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`),
-   plus any uncommitted or untracked changes. If you are already on the base
-   branch, review the uncommitted changes instead.
+1. Determine the diff: `git fetch`, then `git diff origin/<base>...HEAD`
+   (default base: `main`/`master`; with no remote, the local base), plus
+   uncommitted changes (`git diff HEAD`) and untracked files
+   (`git ls-files --others --exclude-standard`; read them whole). If you are
+   already on the base branch, review the uncommitted changes instead.
 2. Review only changed files and the code paths they touch — but read the whole
    function or class around each hunk, not just the diff, so you judge the
    construct in its real context.
@@ -84,12 +86,24 @@ Report each finding as a single list item:
   **Fix:** the refactoring that addresses it (e.g. Extract Method, Introduce
   Parameter Object, Replace Conditional with Polymorphism).
 
-`severity` reflects maintainability cost now: **critical** — actively misleading
-or already forcing error-prone duplicate edits; **high** — will make the next
-change to this code noticeably harder; **medium** — worth fixing when this code
-is next touched; **low** — cosmetic. The classifier is the smell and its group
-(e.g. `Long Method (Bloaters)`). Order findings by severity, highest first, and
-keep one smell per finding. For example:
+Rate `severity` on the shared severity rubric, impact × likelihood:
+**critical** — high impact (code execution, auth bypass, stolen credentials or
+bulk data, data loss, an outage), readily triggered (by anyone who can reach
+it, or in routine operation); **high** — high impact behind a common
+precondition (an authenticated user, a collaborator, a routine failure), or
+medium impact (limited exposure, degraded service) readily triggered;
+**medium** — high impact only under an unusual precondition, medium impact
+behind a common one, or low impact readily triggered (a weakened defense
+anyone can reach); **low** — medium impact only under an unusual
+precondition, or low impact behind any precondition (most defense in depth
+and hygiene).
+A smell makes defects likelier but causes none itself, so findings here top
+out at **high** — actively misleading, or already forcing error-prone
+duplicate edits; **medium** — will make the next change to this code
+noticeably harder; **low** — worth fixing when next touched, or cosmetic.
+The classifier is the smell and its group (e.g. `Long Method (Bloaters)`).
+Order findings by severity, highest first, and keep one smell per finding.
+For example:
 
 - **[medium] Long Method (Bloaters)** — `billing/invoice.py:42`
   **Issue:** `generate_invoice` is ~120 lines mixing tax lookup, discount rules,
@@ -104,5 +118,6 @@ is worth fixing now — prefer the few that matter; if more than ~10 survive,
 report the ones worth a human's time and summarize the rest in a line.
 
 Open the report with one line stating what was reviewed and the outcome, e.g.
-`Reviewed main..HEAD (4 files): 3 findings, worst high.` If the change is clean,
-say so rather than manufacturing findings.
+`Reviewed origin/main...HEAD (4 files): 3 findings, worst high.` If the diff
+touches no code (e.g. docs or config only), say so and stop. If the change is
+clean, say so rather than manufacturing findings.

@@ -1,28 +1,19 @@
 """Kiro adapter.
 
-Kiro picks up steering documents from ``.kiro/steering/<name>.md`` (project) or
-``~/.kiro/steering/<name>.md`` (global). Steering files are included in every
-interaction by default, which is wrong for on-demand review prompts, so the
-rendered document carries ``inclusion: manual`` frontmatter — the user pulls it
-in explicitly (e.g. ``#<name>`` in chat) instead of it steering every turn.
+Kiro's default agent loads skills from ``.kiro/skills/<name>/SKILL.md``
+(workspace) and ``~/.kiro/skills/<name>/SKILL.md`` (global). ``KIRO_HOME``
+moves the whole ``~/.kiro`` directory for Kiro CLI; like Kiro, skilldeck
+treats an empty ``KIRO_HOME`` as unset. The older steering-file format is the
+``kiro-steering`` adapter.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from ..registry import Skill
-from .base import Adapter
+from ..targets import UserDir
+from .skill_md import SkillMdAdapter
 
 
-class KiroAdapter(Adapter):
+class KiroAdapter(SkillMdAdapter):
     name = "kiro"
-    installed_glob = ".kiro/steering/*.md"
-
-    def relative_path(self, skill: Skill) -> Path:
-        return Path(".kiro/steering") / f"{skill.name}.md"
-
-    def render(self, skill: Skill) -> str:
-        # Static frontmatter — no skill fields are interpolated, so there is
-        # no injection surface here.
-        return f"---\ninclusion: manual\n---\n\n{skill.body}"
+    project_dir = ".kiro/skills"
+    global_dir = UserDir(".kiro", "skills", env="KIRO_HOME")

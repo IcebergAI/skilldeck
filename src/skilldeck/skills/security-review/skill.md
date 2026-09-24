@@ -12,9 +12,11 @@ Unless told otherwise, review to **L2**.
 
 ## Scope
 
-1. Determine the diff: `git diff <base>...HEAD` (default base: `main`/`master`),
-   plus any uncommitted or untracked changes. If you are already on the base
-   branch, review the uncommitted changes instead.
+1. Determine the diff: `git fetch`, then `git diff origin/<base>...HEAD`
+   (default base: `main`/`master`; with no remote, the local base), plus
+   uncommitted changes (`git diff HEAD`) and untracked files
+   (`git ls-files --others --exclude-standard`; read them whole). If you are
+   already on the base branch, review the uncommitted changes instead.
 2. Review only changed files and the code paths they touch — but read the whole
    function or file around each hunk, not just the diff: a guard or mitigation
    may sit just outside it.
@@ -23,6 +25,11 @@ Unless told otherwise, review to **L2**.
 4. For injection findings, trace the tainted value from an attacker-controlled
    source to the sink; if you cannot identify attacker-controlled input,
    downgrade or drop the finding.
+5. Companion skills own some areas: `authentication-review` V6, V7, V9, and
+   V10; `logging` V16; `ci-workflow-review` pipeline config; `dependency-review`
+   package manifests; `iac-review` infrastructure config. If the owner runs in
+   the same review, leave its area to it; in a combined report, give each
+   defect once, under the owner's classifier.
 
 ## What to look for (by ASVS category)
 
@@ -65,8 +72,6 @@ report those only when the change gives them a concrete exploit path.
   encoded (5.4.1, 5.4.2).
 - **V6 Authentication** — credential handling, brute-force and
   credential-stuffing defenses (6.3.1), MFA, secure recovery; no auth bypass.
-  (See the `authentication-review` skill for depth on V6, V7, V9, and V10,
-  plus SAML and LDAP sign-in.)
 - **V7 Session Management** — new session token on authentication (7.2.4),
   inactivity and absolute timeouts (7.3), sessions terminated on logout and
   account disablement, with the option to end other sessions after a factor
@@ -102,7 +107,6 @@ report those only when the change gives them a concrete exploit path.
   (15.3.5–15.3.7); race conditions and TOCTOU (15.4, L3).
 - **V16 Security Logging & Error Handling** — security events logged, no secrets
   or sensitive data in logs, no stack traces or internal detail leaked to users.
-  (See the `logging` skill for depth.)
 - **V17 WebRTC** — only if the change touches WebRTC: TURN/STUN server abuse,
   signalling authentication, SDP and ICE handling, media-channel confidentiality.
 
@@ -117,12 +121,23 @@ Report each finding as a single list item:
   **Issue:** the vulnerability and how it could be exploited.
   **Fix:** the concrete change that resolves it.
 
-`severity` reflects exploitability and impact: **critical** — exploitable by an
-unauthenticated attacker, or direct compromise of data or accounts; **high** —
-exploitable by an authenticated user or behind a common precondition;
-**medium** — limited impact or unusual preconditions; **low** — defense-in-depth
-hardening. The classifier is the ASVS category (e.g. `V8 Authorization`). Order
-findings by severity, highest first, and keep one issue per finding. For example:
+Rate `severity` on the shared severity rubric, impact × likelihood:
+**critical** — high impact (code execution, auth bypass, stolen credentials or
+bulk data, data loss, an outage), readily triggered (by anyone who can reach
+it, or in routine operation); **high** — high impact behind a common
+precondition (an authenticated user, a collaborator, a routine failure), or
+medium impact (limited exposure, degraded service) readily triggered;
+**medium** — high impact only under an unusual precondition, medium impact
+behind a common one, or low impact readily triggered (a weakened defense
+anyone can reach); **low** — medium impact only under an unusual
+precondition, or low impact behind any precondition (most defense in depth
+and hygiene).
+Here, a live credential committed to the repository or written to logs others
+can read is always **critical**, and its Fix must also
+[revoke and rotate](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html)
+it. The classifier is the ASVS category (e.g. `V8 Authorization`;
+`V13 Configuration` for secrets in code). Order findings by severity, highest
+first, and keep one issue per finding. For example:
 
 - **[high] V8 Authorization** — `api/orders.py:88`
   **Issue:** `GET /orders/<id>` loads the order by ID without checking it
@@ -137,6 +152,9 @@ concrete exploit path. Prefer the few findings that matter — if more than ~10
 survive, report the ones worth a human's time and summarize the rest in a line.
 
 Open the report with one line stating what was reviewed and the outcome, e.g.
-`Reviewed main..HEAD (4 files): 2 findings, worst high.` If no security-relevant
-issues are found, say the change is clean explicitly rather than padding the
-report. Do not flag stylistic issues — that is the job of code review.
+`Reviewed origin/main...HEAD (4 files): 2 findings, worst high.` If the diff
+touches nothing security-relevant (e.g. docs or comments only, once you have
+checked them for pasted credentials), say so and stop. If no
+security-relevant issues are found, say the change is clean
+explicitly rather than padding the report. Do not flag stylistic issues — that
+is the job of code review.
