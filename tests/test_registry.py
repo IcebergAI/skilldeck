@@ -197,6 +197,26 @@ def test_description_must_be_a_single_line(tmp_path):
         load_skill(skill_dir)
 
 
+@pytest.mark.parametrize(
+    "escape", ["\\n", "\\r", "\\x0b", "\\x0c", "\\x85", "\\u2028", "\\u2029"]
+)
+def test_description_rejects_every_line_break(tmp_path, escape):
+    # A double-quoted YAML escape can smuggle in any line boundary that
+    # str.splitlines() (and so the one-line `skilldeck list`) honours.
+    skill_dir = _write_meta(tmp_path, description=f'"one{escape}two"')
+    with pytest.raises(SkillError, match="single line"):
+        load_skill(skill_dir)
+
+
+@pytest.mark.parametrize("filename", ["meta.yaml", "skill.md"])
+def test_non_utf8_skill_files_are_a_clean_error(tmp_path, filename):
+    skill_dir = _write_meta(tmp_path)
+    path = skill_dir / filename
+    path.write_bytes(path.read_bytes() + b"\xe9\n")
+    with pytest.raises(SkillError, match=f"{filename} is not valid UTF-8"):
+        load_skill(skill_dir)
+
+
 def test_description_length_is_capped(tmp_path):
     assert load_skill(_write_meta(tmp_path, description="x" * 1024))
     skill_dir = _write_meta(tmp_path, name="other", description="x" * 1025)

@@ -73,6 +73,8 @@ def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> 
 
     try:
         meta = yaml.safe_load(meta_path.read_text(encoding="utf-8")) or {}
+    except UnicodeDecodeError as exc:
+        raise SkillError(f"{skill_dir}: meta.yaml is not valid UTF-8: {exc}") from exc
     except yaml.YAMLError as exc:
         raise SkillError(f"{skill_dir}: meta.yaml is not valid YAML: {exc}") from exc
     if not isinstance(meta, dict):
@@ -95,7 +97,10 @@ def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> 
         )
 
     description = _require_str(skill_dir, meta, "description")
-    if "\n" in description or "\r" in description:
+    # Any line boundary ``str.splitlines`` knows, not just \n and \r: YAML
+    # double-quoted escapes such as "\u2028" or "\x85" also break the one-line
+    # ``skilldeck list`` output.
+    if description.splitlines() != [description]:
         raise SkillError(f"{skill_dir}: meta.yaml description must be a single line")
     if len(description) > MAX_DESCRIPTION_LENGTH:
         raise SkillError(
@@ -140,13 +145,18 @@ def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> 
                 f"{', '.join(unknown)}"
             )
 
+    try:
+        body = body_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise SkillError(f"{skill_dir}: skill.md is not valid UTF-8: {exc}") from exc
+
     return Skill(
         name=name,
         description=description,
         category=category,
         version=raw_version,
         supported_agents=tuple(agents),
-        body=body_path.read_text(encoding="utf-8"),
+        body=body,
         path=skill_dir,
     )
 

@@ -42,12 +42,24 @@ decides how the file at an install path is treated:
 |-------|---------|----------------------|-------------|
 | up to date / stale | stamped and unedited | overwritten | deleted |
 | modified | stamped, edited since install | only with `--force` | only with `--force` |
-| unmanaged | no stamp, not UTF-8, a directory or other non-regular file, or a symlink | `install --force` only (never a symlink or directory); `update` skips it | only with `--force` |
+| unmanaged file | a regular file with no stamp, or not UTF-8 | `install --force` only; `update` skips it | only with `--force` |
+| symlink | see [Symlinks](#symlinks) | never | only with `--force`, which removes the link, not its target |
+| directory or special file | a directory, FIFO, socket or device | never | never |
+
+Files installed by skilldeck 0.3.0 or earlier have no stamp, so they count as
+unmanaged: after upgrading, run `install --force` once to adopt them (or
+`uninstall --force` to remove them).
+
+`uninstall --force` doesn't read the file, so it can also remove one that
+skilldeck can't read. `install` and `update` refuse to replace a file you have
+made read-only, even with `--force`, as a plain write would; make it writable
+first.
 
 `install` writes to a temporary file in the same directory and renames it
 over the destination (`os.replace`). An interrupted install leaves the old file
 or the new one, never a half-written one. A new file gets the permissions a
-normal write would, and an overwritten file keeps its own.
+normal write would. An overwritten file keeps its own, except that the owner
+is always given read access, so the agent can read the skill.
 
 `status` also reports **orphans**: files matching an adapter's
 `installed_glob` that carry a skilldeck stamp but belong to no bundled skill

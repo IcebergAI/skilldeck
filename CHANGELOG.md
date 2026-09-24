@@ -84,7 +84,8 @@ All notable changes to this project are documented here. The format is based on
   modifications — or one skilldeck didn't write — is refused unless `--force`
   is given; `update` likewise skips modified installs without `--force` (#28).
   Note: installs made by skilldeck ≤ 0.3.0 carry no stamp, so the first
-  reinstall over them needs `--force` once.
+  reinstall over them needs `--force` once, and so does uninstalling them
+  (#95).
 - Structural lint tests (`tests/test_skill_structure.py`) asserting every
   bundled skill body carries the standardized elements: a Scope section with
   the uncommitted-changes fallback, severity anchors, a worked example, the
@@ -98,12 +99,15 @@ All notable changes to this project are documented here. The format is based on
 - `--agent all` now means every agent that supports the chosen `--scope`. With
   `--scope global`, the project-only agents (Copilot, Cursor) are skipped with
   a note, where `install` used to report an error for each skill. Naming a
-  project-only agent explicitly with `--scope global` is still an error (#98).
+  project-only agent explicitly with `--scope global` is still an error, even
+  alongside `all` (#98).
 - Installs are atomic. The file is written to a temporary file in the same
   directory and then renamed into place with `os.replace`, so an interrupted
   install can't leave a half-written skill behind. The temporary file is
   removed if anything fails, a new file gets the usual umask-based
-  permissions, and an overwritten file keeps its own (#98).
+  permissions, and an overwritten file keeps its own, plus owner read access
+  so the agent can always read it. A destination you have made read-only is
+  refused, even with `--force`, as a plain write would be (#98).
 - Passing skill names together with `--all` to `install` or `uninstall` is now
   a usage error. Previously the names were silently ignored (#98).
 - `docs/adapters.md` now says that symlinked parent directories of an install
@@ -135,15 +139,20 @@ All notable changes to this project are documented here. The format is based on
 
 - `uninstall` no longer deletes files that skilldeck didn't write or that have
   local edits. Like `install`, it refuses unless the new `uninstall --force` is
-  given. It also reports per-skill errors, carries on, and exits 1 at the end
-  (#95).
+  given. It also reports per-skill errors, carries on, and exits 1 at the end.
+  The error for an unstamped file says it may be an install from skilldeck
+  0.3.0 or earlier. `--force` doesn't read the file, so it also removes one
+  skilldeck can't read (#95).
 - A symlink at an install path is no longer followed when skilldeck checks
   that path. It counts as unmanaged, so a link to a stamped file elsewhere
   can't pass for an install here. `uninstall --force` removes only the link,
   never its target (#95).
 - A non-UTF-8 file, a directory, or a FIFO at an install path now counts as
   unmanaged. Before, the non-UTF-8 file and the directory crashed the command
-  with a traceback, and reading the FIFO blocked it indefinitely (#95, #96).
+  with a traceback, and reading the FIFO blocked it indefinitely. `install`
+  and `uninstall` refuse a directory or other special file with a clear error,
+  even with `--force`, and `status`/`update` no longer suggest
+  `install --force` for one (#95, #96).
 - `status` lists a file as an orphan only when it carries a skilldeck stamp. It
   no longer reports your own prompts, rules, or skills that share an install
   directory. Unreadable entries in those directories are skipped instead of
@@ -153,13 +162,16 @@ All notable changes to this project are documented here. The format is based on
   `category` must be non-empty strings. `name` must follow the Agent Skills
   rules: at most 64 characters of `a-z`, `0-9` and `-`, with no leading,
   trailing, or doubled hyphen. `description` must be a single line of at most
-  1024 characters. `version` must be a YAML string of the form
+  1024 characters, with no line break of any kind (including YAML escapes
+  such as `\u2028`). `version` must be a YAML string of the form
   `MAJOR.MINOR.PATCH`. An unquoted `version: 1.10`, which YAML reads as the
   number `1.1`, used to be recorded as `"1.1"`; it is now rejected with a
   message to quote it. `supported-agents` must be a list of strings with no
-  repeats. Invalid YAML now gives a clean error instead of a traceback.
+  repeats. Invalid YAML, or a `meta.yaml` or `skill.md` that isn't UTF-8, now
+  gives a clean error instead of a traceback.
 - `update` no longer stops at the first failure. It reports the error for that
-  skill, updates the rest, and exits 1 at the end (#98).
+  skill, updates the rest, and exits 1 at the end, without also claiming
+  "nothing to update" (#98).
 - `status` and `provenance` no longer crash when there are no skills to list
   (#98).
 - A `meta.yaml` that parses to something other than a YAML mapping now fails

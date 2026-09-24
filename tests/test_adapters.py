@@ -162,7 +162,7 @@ def test_install_refuses_to_clobber_unmanaged_file(skill, tmp_path):
 
     state, _ = adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path)
     assert state is InstallState.UNMANAGED
-    with pytest.raises(SkillError, match="not written by skilldeck"):
+    with pytest.raises(SkillError, match="no skilldeck stamp"):
         adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
 
     adapter.install(skill, Scope.PROJECT, project_root=tmp_path, force=True)
@@ -276,7 +276,9 @@ def test_uninstall_refuses_unmanaged_file_unless_forced(skill, tmp_path):
     dest.parent.mkdir(parents=True)
     dest.write_text("my own rule\n")
 
-    with pytest.raises(SkillError, match="not written by skilldeck.*--force"):
+    with pytest.raises(
+        SkillError, match="no skilldeck stamp.*0.3.0 or earlier.*--force"
+    ):
         adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path)
     assert dest.read_text() == "my own rule\n"
 
@@ -352,9 +354,9 @@ def test_non_utf8_file_is_unmanaged_not_a_crash(skill, tmp_path):
     assert adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path)[0] is (
         InstallState.UNMANAGED
     )
-    with pytest.raises(SkillError, match="not written by skilldeck"):
+    with pytest.raises(SkillError, match="no skilldeck stamp"):
         adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
-    with pytest.raises(SkillError, match="not written by skilldeck"):
+    with pytest.raises(SkillError, match="no skilldeck stamp"):
         adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path)
     assert dest.read_bytes() == b"\xff\xfe binary rule"
 
@@ -367,9 +369,13 @@ def test_directory_at_destination_is_never_removed(skill, tmp_path):
     assert adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path)[0] is (
         InstallState.UNMANAGED
     )
-    with pytest.raises(SkillError, match="cannot uninstall"):
+    with pytest.raises(SkillError, match="is a directory, which skilldeck never del"):
         adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path, force=True)
+    # nor replaced: a clean refusal, not an os.replace error naming a temp file
+    with pytest.raises(SkillError, match="is a directory, which skilldeck never rep"):
+        adapter.install(skill, Scope.PROJECT, project_root=tmp_path, force=True)
     assert (dest / "keep.txt").read_text() == "keep"
+    assert _leftovers(dest.parent) == []
 
 
 @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs POSIX FIFOs")
@@ -381,6 +387,30 @@ def test_inspect_does_not_block_on_a_fifo(skill, tmp_path):
     assert adapter.inspect(skill, Scope.PROJECT, project_root=tmp_path)[0] is (
         InstallState.UNMANAGED
     )
+    for action in (adapter.install, adapter.uninstall):
+        with pytest.raises(SkillError, match="is a special file"):
+            action(skill, Scope.PROJECT, project_root=tmp_path, force=True)
+    assert stat.S_ISFIFO(dest.lstat().st_mode)
+
+
+def test_uninstall_force_removes_a_file_it_cannot_read(skill, tmp_path, monkeypatch):
+    # Deleting needs only the directory entry, so --force must not be blocked
+    # by a read failure -- install --force can already replace such a file.
+    adapter = ADAPTERS["cursor"]
+    dest = adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+    real_read_text = Path.read_text
+
+    def unreadable(self, *args, **kwargs):
+        if self == dest:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", unreadable)
+    with pytest.raises(SkillError, match="cannot read"):
+        adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path)
+    assert dest.exists()
+    assert adapter.uninstall(skill, Scope.PROJECT, project_root=tmp_path, force=True)
+    assert not dest.exists()
 
 
 def _leftovers(directory):
@@ -436,8 +466,33 @@ def test_install_file_modes(skill, tmp_path):
         dest.chmod(0o600)
         adapter.install(skill, Scope.PROJECT, project_root=tmp_path, force=True)
         assert stat.S_IMODE(dest.stat().st_mode) == 0o600
+        # ... but never leaves a skill its owner (the agent) can't read
+        dest.chmod(0o220)
+        adapter.install(skill, Scope.PROJECT, project_root=tmp_path, force=True)
+        assert stat.S_IMODE(dest.stat().st_mode) == 0o620
+        assert parse_stamp(dest.read_text()) is not None
     finally:
         os.umask(old_umask)
+
+
+def test_install_refuses_a_read_only_destination(skill, tmp_path, monkeypatch):
+    # os.replace only needs the directory to be writable, so without this check
+    # a file the user made read-only would be silently replaced. (Patched
+    # rather than chmod'ed: root may write to any file.)
+    adapter = ADAPTERS["codex"]
+    dest = adapter.install(skill, Scope.PROJECT, project_root=tmp_path)
+    before = dest.read_text()
+    newer = dataclasses.replace(skill, version="0.2.0", body="NEW BODY")
+    real_access = os.access
+    monkeypatch.setattr(
+        base.os,
+        "access",
+        lambda path, mode: False if Path(path) == dest else real_access(path, mode),
+    )
+    with pytest.raises(SkillError, match="is read-only"):
+        adapter.install(newer, Scope.PROJECT, project_root=tmp_path, force=True)
+    assert dest.read_text() == before
+    assert _leftovers(dest.parent) == []
 
 
 def test_check_scope(skill):

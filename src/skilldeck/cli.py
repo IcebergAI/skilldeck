@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import stat
 from itertools import groupby
 
 import click
@@ -56,32 +57,43 @@ def _resolve_adapters(
 
     ``all`` means every agent that can install at ``scope``; the rest are
     skipped with a note. An agent named explicitly that can't is reported as an
-    error instead. Returns the adapters and whether an error was reported.
+    error instead, even alongside ``all``. Returns the adapters and whether an
+    error was reported.
     """
+    # dict.fromkeys dedupes explicit names, keeping their order
+    names = sorted(ADAPTERS) if "all" in agents else list(dict.fromkeys(agents))
     selected: list[Adapter] = []
-    if "all" in agents:
-        for name in sorted(ADAPTERS):
-            if scope in ADAPTERS[name].scopes:
-                selected.append(ADAPTERS[name])
-            else:
-                click.echo(f"skip {name}: no --scope {scope.value} support", err=True)
-        return selected, False
     failed = False
-    for name in dict.fromkeys(agents):  # dedupe, keep order
+    for name in names:
         try:
             ADAPTERS[name].check_scope(scope)
         except SkillError as exc:
-            click.echo(f"error: {exc}", err=True)
-            failed = True
+            if name in agents:  # named explicitly
+                click.echo(f"error: {exc}", err=True)
+                failed = True
+            else:
+                click.echo(f"skip {name}: no --scope {scope.value} support", err=True)
             continue
         selected.append(ADAPTERS[name])
     return selected, failed
 
 
 def _unmanaged_detail(adapter: Adapter, skill: Skill, scope: Scope) -> str:
-    """Explain an UNMANAGED destination and how (or whether) to adopt it."""
-    if adapter.destination(skill, scope).is_symlink():
+    """Explain an UNMANAGED destination and how (or whether) to adopt it.
+
+    ``install --force`` adopts only a regular file; it never replaces a symlink,
+    a directory or other special file, so those aren't offered it.
+    """
+    try:
+        mode = adapter.destination(skill, scope).lstat().st_mode
+    except OSError:
+        mode = stat.S_IFREG  # gone since inspect(); nothing better to say
+    if stat.S_ISLNK(mode):
         return "symlink, not managed by skilldeck"
+    if stat.S_ISDIR(mode):
+        return "directory, not managed by skilldeck"
+    if not stat.S_ISREG(mode):
+        return "special file, not managed by skilldeck"
     return "no skilldeck stamp (adopt with: install --force)"
 
 
@@ -310,7 +322,7 @@ def update(agents: tuple[str, ...], scope: str, force: bool) -> None:
             if index:
                 click.echo()
             click.echo(f"{adapter.name}:")
-        updated = 0
+        updated = errors = 0
         for skill in skills:
             if not adapter.supports(skill):
                 continue
@@ -335,8 +347,10 @@ def update(agents: tuple[str, ...], scope: str, force: bool) -> None:
                     click.echo(f"{indent}skip {skill.name}: {detail}", err=True)
             except SkillError as exc:
                 click.echo(f"{indent}error: {exc}", err=True)
-                failed = True
-        if not updated:
+                errors += 1
+        if errors:
+            failed = True
+        elif not updated:
             click.echo(f"{indent}nothing to update")
     if failed:
         raise SystemExit(1)

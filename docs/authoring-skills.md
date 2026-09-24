@@ -30,10 +30,12 @@ All five fields are required, and the loader (`skilldeck.registry`) rejects a
 | Field | Rule |
 |-------|------|
 | `name` | A string of 1–64 lowercase letters (`a-z`), digits and hyphens that starts and ends with a letter or digit and has no `--`, matching the directory name. |
-| `description` | A non-empty, single-line string of at most 1024 characters. |
+| `description` | A non-empty string of at most 1024 characters on a single line, with no line break of any kind (including escapes such as `"\u2028"`). |
 | `category` | A non-empty string. |
 | `version` | A **string** of the form `MAJOR.MINOR.PATCH`: three non-negative integers without leading zeroes, e.g. `0.1.0` or `1.10.0`. |
 | `supported-agents` | A non-empty list of agent names (strings), each listed once. Each must be an agent skilldeck has an adapter for. |
+
+Both `meta.yaml` and `skill.md` must be UTF-8.
 
 The `name` and `description` limits come from the
 [Agent Skills specification](https://agentskills.io/specification), the

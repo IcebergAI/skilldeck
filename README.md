@@ -139,6 +139,12 @@ write. skilldeck never writes through a symlink at an install path.
 [docs/adapters.md](docs/adapters.md#stamps-what-skilldeck-will-overwrite-or-delete)
 for the details.
 
+Upgrading from skilldeck 0.3.0 or earlier: those versions didn't stamp what
+they installed, so skilldeck now treats those files as ones it didn't write.
+Run `install --force` once to replace them with stamped copies, after which
+`update` and `uninstall` work without `--force`, or remove them with
+`uninstall --force`.
+
 `--agent all` means every agent that supports the chosen `--scope`. With
 `--scope global`, the project-only agents (Copilot and Cursor) are skipped.
 

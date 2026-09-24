@@ -10,7 +10,6 @@ from __future__ import annotations
 import contextlib
 import os
 import secrets
-import shutil
 import stat
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -42,7 +41,9 @@ def write_atomic(dest: Path, text: str) -> None:
     An interrupted install leaves either the old file or the new one, never a
     half-written skill. The temp file is created exclusively (never through an
     existing path) with the umask applied, as a plain write would; an existing
-    file's permissions carry over; and the temp file is removed on any failure.
+    file's permissions carry over, plus owner-read (a skill its agent can't
+    read is no use); and the temp file is removed on any failure. Callers
+    refuse a read-only ``dest`` first, as a plain write would fail on it.
     """
     tmp = dest.with_name(f".{dest.name}.{secrets.token_hex(8)}.tmp")
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
@@ -53,12 +54,35 @@ def write_atomic(dest: Path, text: str) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         if dest.exists():
-            shutil.copymode(dest, tmp)
+            os.chmod(tmp, stat.S_IMODE(dest.stat().st_mode) | stat.S_IRUSR)
         os.replace(tmp, dest)
     except BaseException:
         with contextlib.suppress(OSError):
             tmp.unlink()
         raise
+
+
+#: why an UNMANAGED regular file is refused; installs made before stamping
+#: existed (skilldeck 0.3.0 and earlier) are the common case after an upgrade
+_UNSTAMPED = (
+    "has no skilldeck stamp (hand-written, from another tool, or installed by "
+    "skilldeck 0.3.0 or earlier)"
+)
+
+
+def _entry_mode(path: Path) -> int | None:
+    """``path``'s own ``st_mode``, without following a symlink; None if absent."""
+    try:
+        return path.lstat().st_mode
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    except OSError as exc:
+        raise SkillError(f"cannot inspect {path}: {exc}") from exc
+
+
+def _special_kind(mode: int) -> str:
+    """Name what a non-regular, non-symlink entry is, for error messages."""
+    return "a directory" if stat.S_ISDIR(mode) else "a special file"
 
 
 class InstallState(Enum):
@@ -131,12 +155,9 @@ class Adapter(ABC):
         parent directories are resolved normally (see ``docs/adapters.md``).
         """
         dest = self.destination(skill, scope, project_root)
-        try:
-            mode = dest.lstat().st_mode
-        except (FileNotFoundError, NotADirectoryError):
+        mode = _entry_mode(dest)
+        if mode is None:
             return InstallState.NOT_INSTALLED, None
-        except OSError as exc:
-            raise SkillError(f"cannot inspect {dest}: {exc}") from exc
         # skilldeck only ever writes regular UTF-8 files, so a symlink (even
         # one pointing at a stamped file), a directory or a FIFO is not ours.
         if not stat.S_ISREG(mode):
@@ -165,16 +186,29 @@ class Adapter(ABC):
         force: bool = False,
     ) -> Path:
         dest = self.destination(skill, scope, project_root)
-        # Never follow a symlink at the destination: writing through it would
-        # clobber the link target instead of the intended skill file.
-        if dest.is_symlink():
-            raise SkillError(f"refusing to install through symlink: {dest}")
+        mode = _entry_mode(dest)
+        if mode is not None:
+            # Never follow a symlink at the destination: writing through it
+            # would clobber the link target instead of the intended skill file.
+            if stat.S_ISLNK(mode):
+                raise SkillError(f"refusing to install through symlink: {dest}")
+            if not stat.S_ISREG(mode):
+                raise SkillError(
+                    f"cannot install {skill.name}: {dest} is "
+                    f"{_special_kind(mode)}, which skilldeck never replaces"
+                )
+            # Replacing a file only needs its directory to be writable, but a
+            # read-only skill file was made that way on purpose; refuse it as
+            # a plain write would.
+            if not os.access(dest, os.W_OK):
+                raise SkillError(
+                    f"{dest} is read-only; make it writable to let skilldeck replace it"
+                )
         if not force:
             state, _ = self.inspect(skill, scope, project_root)
             if state is InstallState.UNMANAGED:
                 raise SkillError(
-                    f"{dest} exists but was not written by skilldeck; "
-                    "re-run with --force to overwrite it"
+                    f"{dest} {_UNSTAMPED}; re-run with --force to overwrite it"
                 )
             if state is InstallState.MODIFIED:
                 raise SkillError(
@@ -203,22 +237,31 @@ class Adapter(ABC):
         force: bool = False,
     ) -> Path | None:
         dest = self.destination(skill, scope, project_root)
-        state, _ = self.inspect(skill, scope, project_root)
-        if state is InstallState.NOT_INSTALLED:
+        mode = _entry_mode(dest)
+        if mode is None:
             return None
+        if not (stat.S_ISREG(mode) or stat.S_ISLNK(mode)):
+            raise SkillError(
+                f"cannot uninstall {skill.name}: {dest} is "
+                f"{_special_kind(mode)}, which skilldeck never deletes"
+            )
         # Deleting is as destructive as overwriting, so the same stamp checks
         # as install apply: only an unedited skilldeck install goes without
         # --force. A symlink is only ever unlinked; its target is left alone.
+        # --force skips reading the file, so even one skilldeck can't read
+        # can be removed.
         if not force:
-            if dest.is_symlink():
+            if stat.S_ISLNK(mode):
                 raise SkillError(
                     f"{dest} is a symlink skilldeck did not create; re-run "
                     "with --force to remove the link (its target is kept)"
                 )
+            state, _ = self.inspect(skill, scope, project_root)
+            if state is InstallState.NOT_INSTALLED:
+                return None
             if state is InstallState.UNMANAGED:
                 raise SkillError(
-                    f"{dest} exists but was not written by skilldeck; "
-                    "re-run with --force to delete it"
+                    f"{dest} {_UNSTAMPED}; re-run with --force to delete it"
                 )
             if state is InstallState.MODIFIED:
                 raise SkillError(

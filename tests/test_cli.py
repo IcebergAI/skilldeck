@@ -90,7 +90,7 @@ def test_uninstall_refuses_a_file_skilldeck_did_not_write(tmp_path, monkeypatch)
     runner = CliRunner()
     result = runner.invoke(cli, ["uninstall", "security-review", "--agent", "cursor"])
     assert result.exit_code == 1
-    assert "was not written by skilldeck" in result.output
+    assert "has no skilldeck stamp" in result.output
     assert "--force" in result.output
     assert own.read_text() == "my own hand-written rule\n"
 
@@ -418,6 +418,23 @@ def test_explicit_agent_without_the_scope_is_an_error(tmp_path, monkeypatch):
     assert "security-review" in result.output  # codex still reported
 
 
+def test_explicit_agent_without_the_scope_is_an_error_even_with_all(
+    tmp_path, monkeypatch
+):
+    # 'all' skips project-only agents, but naming one too is still an error.
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    result = CliRunner().invoke(
+        cli,
+        ["install", "logging", "--agent", "all", "--agent", "cursor"]
+        + ["--scope", "global"],
+    )
+    assert result.exit_code == 1
+    assert "error: cursor does not support --scope global" in result.output
+    assert "skip copilot: no --scope global support" in result.output
+    assert "skip cursor" not in result.output
+    assert (tmp_path / ".codex/prompts/logging.md").is_file()
+
+
 def test_status_and_provenance_handle_an_empty_skill_list(monkeypatch):
     monkeypatch.setattr("skilldeck.cli.discover_skills", lambda **kw: [])
     result = CliRunner().invoke(cli, ["status", "--agent", "claude"])
@@ -494,6 +511,12 @@ def test_update_reports_an_error_and_keeps_going(tmp_path, monkeypatch):
     assert "updated test-review (0.0.1 ->" in result.output
     assert "old body" in (skills_dir / "security-review/SKILL.md").read_text()
 
+    # with the only candidate failing, it doesn't also claim nothing to update
+    result = runner.invoke(cli, ["update", "--agent", "claude"])
+    assert result.exit_code == 1
+    assert "error: cannot install security-review" in result.output
+    assert "nothing to update" not in result.output
+
 
 def test_update_accepts_several_agents(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
@@ -518,6 +541,25 @@ def test_update_leaves_a_symlinked_destination_alone(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "skip logging: symlink, not managed by skilldeck" in result.output
     assert dest.is_symlink() and "old body" in target.read_text()
+
+
+def test_directory_at_an_install_path_is_not_offered_install_force(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".codex/prompts/logging.md").mkdir(parents=True)
+    runner = CliRunner()
+    result = runner.invoke(cli, ["status", "--agent", "codex"])
+    assert result.exit_code == 0, result.output
+    assert "logging" in result.output
+    assert "directory, not managed by skilldeck" in result.output
+    assert "adopt with" not in result.output
+    result = runner.invoke(cli, ["update", "--agent", "codex"])
+    assert "skip logging: directory, not managed by skilldeck" in result.output
+    result = runner.invoke(cli, ["install", "logging", "--agent", "codex", "--force"])
+    assert result.exit_code == 1
+    assert "is a directory, which skilldeck never replaces" in result.output
+    assert ".tmp" not in result.output
 
 
 def test_main_reports_skill_error_cleanly(monkeypatch):
