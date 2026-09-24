@@ -17,8 +17,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Branch protection does not cover tags, so this gate re-establishes it: only
-  # a commit already on main that passes lint, types, and tests gets built.
+  # Only a commit already on main that passes lint, types, and tests gets
+  # built. This catches a tag pushed on the wrong commit by mistake; it cannot
+  # stop a malicious tagger, because a tag push runs the tagged commit's own
+  # copy of this file, which that commit can change. The `v*` tag ruleset and
+  # the `pypi` environment's required reviewer (repository settings, see
+  # docs/releasing.md) are the controls for that.
   verify:
     runs-on: ubuntu-latest
     permissions:

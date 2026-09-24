@@ -15,9 +15,11 @@ _spec.loader.exec_module(stamp_build_metadata)
 def _root(tmp_path: Path, version: str = "1.2.3") -> Path:
     (tmp_path / "src" / "skilldeck").mkdir(parents=True)
     (tmp_path / "pyproject.toml").write_text(
-        f'[project]\nname = "skilldeck"\nversion = "{version}"\n'
+        f'[project]\nname = "skilldeck"\nversion = "{version}"\n', encoding="utf-8"
     )
-    (tmp_path / "src" / "skilldeck" / "_build_metadata.json").write_text("{}\n")
+    (tmp_path / "src" / "skilldeck" / "_build_metadata.json").write_text(
+        "{}\n", encoding="utf-8"
+    )
     return tmp_path
 
 
@@ -25,7 +27,9 @@ def test_stamp_build_metadata_requires_exact_tag_and_full_commit(tmp_path):
     root = _root(tmp_path)
     commit = "a" * 40
     stamp_build_metadata.stamp(root, "refs/tags/v1.2.3", commit)
-    data = json.loads(stamp_build_metadata.metadata_path(root).read_text())
+    data = json.loads(
+        stamp_build_metadata.metadata_path(root).read_text(encoding="utf-8")
+    )
     assert data == {
         "schema_version": 1,
         "source_commit": commit,

@@ -73,6 +73,22 @@ def test_cut_changelog_refuses_empty_unreleased():
         prep.cut_changelog(empty, "0.4.0", "2026-07-04")
 
 
+def test_cut_changelog_refuses_unreleased_with_only_headings():
+    headings = (
+        "# Changelog\n\n## [Unreleased]\n\n### Added\n\n### Fixed\n\n"
+        "## [0.3.0] - 2026-06-27\n\n- old\n"
+    )
+    with pytest.raises(SystemExit, match="no entries"):
+        prep.cut_changelog(headings, "0.4.0", "2026-07-04")
+
+
+def test_cut_changelog_refuses_a_version_below_the_newest_release():
+    # a stray newer section would make the post-write consistency guard fail
+    ahead = CHANGELOG + "\n## [0.5.0] - 2026-06-28\n\n- stray\n"
+    with pytest.raises(SystemExit, match="older than CHANGELOG.md's newest release"):
+        prep.cut_changelog(ahead, "0.4.0", "2026-07-04")
+
+
 def test_cut_changelog_refuses_duplicate_version():
     with pytest.raises(SystemExit, match="already has"):
         prep.cut_changelog(CHANGELOG, "0.3.0", "2026-07-04")
@@ -83,6 +99,7 @@ def tree(tmp_path, monkeypatch):
     """A fake repo root; main() runs against it with uv and the plugin stubbed."""
     (tmp_path / "pyproject.toml").write_text(PYPROJECT, encoding="utf-8")
     (tmp_path / "CHANGELOG.md").write_text(CHANGELOG, encoding="utf-8")
+    (tmp_path / "uv.lock").write_text("old lock\n", encoding="utf-8")
     monkeypatch.setattr(prep, "ROOT", tmp_path)
     monkeypatch.setattr(prep.build_plugin, "generate", lambda: {})
     monkeypatch.setattr(prep.build_plugin, "write", lambda files: None)
@@ -92,17 +109,20 @@ def tree(tmp_path, monkeypatch):
 def _snapshot(root):
     return {
         name: (root / name).read_text(encoding="utf-8")
-        for name in ("pyproject.toml", "CHANGELOG.md")
+        for name in ("pyproject.toml", "CHANGELOG.md", "uv.lock")
     }
 
 
-def _fake_run(uv_lock_returncode):
+def _fake_run(uv_lock_returncode, root=None):
     calls = []
 
     def run(cmd, **kwargs):
         calls.append(cmd)
-        code = uv_lock_returncode if cmd == ["uv", "lock"] else 0
-        return subprocess.CompletedProcess(cmd, code)
+        if cmd == ["uv", "lock"]:
+            if root is not None:  # a real `uv lock` rewrites the lockfile
+                (root / "uv.lock").write_text("new lock\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, uv_lock_returncode)
+        return subprocess.CompletedProcess(cmd, 0)
 
     return run, calls
 
@@ -112,6 +132,7 @@ def _fake_run(uv_lock_returncode):
     [
         ("0.3.0", "already at"),  # pyproject rejects it after the CHANGELOG is ok
         ("0.4", "not a MAJOR.MINOR.PATCH"),
+        ("0.04.0", "no leading zeros"),  # PEP 440 would publish it as 0.4.0
         ("0.2.0", "older than"),
     ],
 )
@@ -155,6 +176,21 @@ def test_main_rolls_back_when_uv_is_missing(tree, monkeypatch):
     before = _snapshot(tree)
     assert prep.main(["0.4.0"]) == 1
     assert _snapshot(tree) == before
+
+
+def test_main_rolls_back_everything_when_plugin_generation_fails(tree, monkeypatch):
+    run, calls = _fake_run(0, root=tree)
+    monkeypatch.setattr(prep.subprocess, "run", run)
+
+    def broken():
+        raise SystemExit("error: skill 'demo': invalid meta.yaml")
+
+    monkeypatch.setattr(prep.build_plugin, "generate", broken)
+    before = _snapshot(tree)
+    with pytest.raises(SystemExit, match="invalid meta.yaml"):
+        prep.main(["0.4.0"])
+    assert calls == [["uv", "lock"]]
+    assert _snapshot(tree) == before  # uv.lock included
 
 
 def test_main_prepares_the_release(tree, monkeypatch, capsys):

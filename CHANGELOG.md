@@ -91,16 +91,21 @@ All notable changes to this project are documented here. The format is based on
   the uncommitted-changes fallback, severity anchors, a worked example, the
   verify-before-reporting instruction, and the one-line report header (#33).
 - The release workflow now gates publication (#108): a `verify` job fails
-  unless the tagged commit is reachable from `main` (branch protection does not
-  cover tags) and runs lint, type-check, and the test suite on it before
-  anything is built. Releases are serialized by a `concurrency` group that
-  never cancels a running release. `docs/releasing.md` documents the repository
+  unless the tagged commit is reachable from `main` and runs lint, type-check,
+  and the test suite on it before anything is built. That catches a tag pushed
+  on the wrong commit by mistake; because a tag push runs the tagged commit's
+  own workflow file, the controls against a malicious tagger are repository
+  settings. Releases are serialized by a `concurrency` group that never
+  cancels a running release. `docs/releasing.md` documents the repository
   settings that cannot live in code: a `v*` tag ruleset restricting
-  creation/update/deletion, and a `pypi` environment limited to `v*` tags with
-  required reviewers.
+  creation/update/deletion, a `pypi` environment limited to `v*` tags with
+  required reviewers and no administrator bypass, and the CI jobs to make
+  required status checks on `main`.
 - Release builds are locked (#110): hatchling is pinned to `>=1.27,<2` in
-  `[build-system]`, every `uv run`/`uv sync` in CI and the release workflow
-  passes `--locked` (a stale `uv.lock` now fails instead of re-resolving), and
+  `[build-system]` (CI builds with both hatchling 1.27.0 and the newest release
+  and checks that both builds carry the same identity), every `uv run`/`uv sync`
+  in CI and the release workflow except the dependency-floor job passes
+  `--locked` (a stale `uv.lock` now fails instead of re-resolving), and
   the SBOM venv is built from `uv export` of `uv.lock` installed with
   `--require-hashes` (the wheel with `--no-deps`), so the attested SBOM
   describes the locked runtime rather than a fresh resolve. Dependabot waits
@@ -153,11 +158,14 @@ All notable changes to this project are documented here. The format is based on
 - Release scripts and CI read the package version through one shared helper,
   `scripts/_pyproject.py` (#114), which only looks at the `[project]` table
   (`tomllib` on Python 3.11+, a `[project]`-scoped scan on 3.10).
-  `prepare_release.py` validates everything (version format, newer than the
-  current version, non-empty `[Unreleased]`, no existing section) before it
-  writes any file, restores `pyproject.toml` and `CHANGELOG.md` and exits
-  non-zero when `uv lock` fails, and its "Next:" hint, `docs/releasing.md`,
-  `CONTRIBUTING.md`, and the PR template now use `uv run --extra dev`.
+  `prepare_release.py` validates everything (an `X.Y.Z` version without
+  leading zeros, newer than both the current version and the newest dated
+  CHANGELOG section; an `[Unreleased]` section with at least one entry, not
+  just `###` headings; no existing section) before it writes any file. When
+  `uv lock` or plugin generation fails it restores `pyproject.toml`,
+  `CHANGELOG.md`, and `uv.lock` and exits non-zero. Its "Next:" hint,
+  `docs/releasing.md`, `CONTRIBUTING.md`, and the PR template now use
+  `uv run --extra dev`.
 
 ### Fixed
 
@@ -250,13 +258,19 @@ All notable changes to this project are documented here. The format is based on
   package version (#114).
 - `check_release_consistency.py --tag` accepted any ref ending in the version
   (`refs/tags/x/v0.3.0` normalised to `0.3.0`); it now accepts only `vX.Y.Z`
-  or `refs/tags/vX.Y.Z` and rejects everything else with a clear error (#114).
+  or `refs/tags/vX.Y.Z`, without leading zeros (PEP 440 would publish
+  `v0.04.0` as 0.4.0), and rejects everything else with a clear error (#114).
 - The release build wrote `skilldeck provenance --json` to a file nobody read;
   the new `scripts/verify_provenance.py` now asserts that the installed wheel
   reports the expected version, tag ref, commit, and skills (#114).
-- Tests now read and write skill files as UTF-8 explicitly (Windows defaults to
-  the locale code page) and skip, with the reason, symlink tests where the
-  platform or account cannot create symlinks (#112).
+- Tests now read and write text files as UTF-8 explicitly (Windows defaults to
+  the locale code page). Symlink tests go through one `symlink` fixture that
+  skips, with the reason, only where the platform or account cannot create
+  symlinks; any other error still fails the test. The tests that run GitLab
+  script lines through a POSIX `sh` skip on Windows (#112).
+- The declared `pyyaml>=6.0` floor could not be installed on Python 3.12 or
+  newer: PyYAML 6.0 ships wheels only up to 3.11 and its source distribution
+  no longer builds. The floor is now `pyyaml>=6.0.1` (#112).
 
 ### Removed
 
@@ -278,10 +292,10 @@ All notable changes to this project are documented here. The format is based on
   workflow (before publish), so version/CHANGELOG/tag drift fails fast.
 - CI coverage (#112): tests also run on Windows and macOS (Python 3.14) and
   against the lowest dependency versions the declared ranges allow
-  (`uv run --resolution lowest-direct`, Python 3.10); a pinned zizmor audits
-  `.github/` (workflows and Dependabot config); and the CI build installs the
-  built sdist into a clean venv and smoke-tests `skilldeck list` and
-  `skilldeck provenance --json` against it.
+  (`uv run --resolution lowest-direct`, Python 3.10 and 3.14); a pinned
+  zizmor audits `.github/` (workflows and Dependabot config); and the CI
+  build installs the built sdist into a clean venv and smoke-tests
+  `skilldeck list` and `skilldeck provenance --json` against it.
 
 ## [0.3.0] - 2026-06-27
 

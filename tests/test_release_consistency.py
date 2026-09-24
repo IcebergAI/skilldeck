@@ -27,6 +27,7 @@ def test_version_matches_changelog():
         ("v0.3.0", "0.3.0"),
         ("refs/tags/v0.3.0", "0.3.0"),
         ("v0.10.12", "0.10.12"),
+        ("v1.0.10", "1.0.10"),
     ],
 )
 def test_normalize_tag(ref, expected):
@@ -45,6 +46,8 @@ def test_normalize_tag(ref, expected):
         "v0.3.0\n",
         "refs/tags/v0.3.0 ",
         "v\u0663.0.0",  # non-ASCII digits
+        "v0.04.0",  # PEP 440 would publish it as 0.4.0
+        "v01.0.0",
     ],
 )
 def test_normalize_tag_rejects_anything_but_an_exact_tag(ref):
@@ -58,7 +61,8 @@ def test_latest_changelog_version_picks_highest_not_first(monkeypatch, tmp_path)
     (tmp_path / "CHANGELOG.md").write_text(
         "## [0.3.0] - 2026-01-02\n\n"
         "## [0.10.0] - 2026-01-03\n\n"
-        "## [0.2.0] - 2026-01-01\n"
+        "## [0.2.0] - 2026-01-01\n",
+        encoding="utf-8",
     )
     monkeypatch.setattr(check, "ROOT", tmp_path)
     assert check.latest_changelog_version() == "0.10.0"

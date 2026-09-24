@@ -27,7 +27,7 @@ sbom = _script("verify_sbom.py")
 def _release_dir(tmp_path: Path) -> Path:
     (tmp_path / "skilldeck-1.2.3-py3-none-any.whl").write_bytes(b"wheel")
     (tmp_path / "skilldeck-1.2.3.tar.gz").write_bytes(b"sdist")
-    (tmp_path / "skilldeck-1.2.3.spdx.json").write_text("{}\n")
+    (tmp_path / "skilldeck-1.2.3.spdx.json").write_text("{}\n", encoding="utf-8")
     return tmp_path
 
 
@@ -44,11 +44,11 @@ def test_checksum_round_trip_and_tamper_failure(tmp_path):
 def test_checksum_set_rejects_missing_extra_and_malformed_entries(tmp_path):
     directory = _release_dir(tmp_path)
     output = checksums.write(directory)
-    (directory / "unexpected.txt").write_text("no")
+    (directory / "unexpected.txt").write_text("no", encoding="utf-8")
     with pytest.raises(checksums.ChecksumError, match="unexpected"):
         checksums.verify(output)
     (directory / "unexpected.txt").unlink()
-    output.write_text("not a checksum\n")
+    output.write_text("not a checksum\n", encoding="utf-8")
     with pytest.raises(checksums.ChecksumError, match="malformed"):
         checksums.verify(output)
 
@@ -137,7 +137,8 @@ def _sbom(tmp_path: Path, names: list[str]) -> Path:
                     for index, name in enumerate(names)
                 ],
             }
-        )
+        ),
+        encoding="utf-8",
     )
     return path
 

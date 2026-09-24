@@ -69,11 +69,15 @@ jobs:
 
   test-lowest:
     # Resolve the lowest versions the declared ranges allow (click>=8.1,
-    # pyyaml>=6.0, ...) instead of uv.lock, so a floor that is too low fails
+    # pyyaml>=6.0.1, ...) instead of uv.lock, so a floor that is too low fails
     # here rather than for users. No --locked: this job must re-resolve.
-    # Python 3.10 because the oldest floors ship no wheels for newer Pythons
-    # (PyYAML 6.0 stops at 3.11).
+    # Both ends of the supported Python range, because a floor can install on
+    # one and not the other (PyYAML 6.0 cannot be built on 3.12+).
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -81,8 +85,8 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
-          cache-suffix: lowest-direct
-          python-version: "3.10"
+          cache-suffix: lowest-direct-${{ matrix.python-version }}
+          python-version: ${{ matrix.python-version }}
       - name: Run tests against the lowest direct dependency versions
         run: uv run --resolution lowest-direct --extra dev pytest -q
 
@@ -133,6 +137,23 @@ jobs:
           uv run --locked --extra dev python scripts/verify_distribution_identity.py \
             --wheel dist/*.whl \
             --sdist dist/*.tar.gz \
+            --plugin-dir claude-plugin \
+            --expected-version "$EXPECTED_VERSION" \
+            --expected-ref "refs/tags/v${EXPECTED_VERSION}" \
+            --expected-commit "$GITHUB_SHA"
+      - name: Build with the hatchling floor and verify the same identity
+        # [build-system] allows the oldest hatchling below (keep the two in
+        # step; tests/test_build_floor.py checks), so prove it still builds
+        # distributions with the identity verified above.
+        env:
+          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          echo "hatchling==1.27.0" > "$RUNNER_TEMP/hatchling-floor.txt"
+          uv build --build-constraints "$RUNNER_TEMP/hatchling-floor.txt" \
+            --out-dir "$RUNNER_TEMP/dist-floor"
+          uv run --locked --extra dev python scripts/verify_distribution_identity.py \
+            --wheel "$RUNNER_TEMP"/dist-floor/*.whl \
+            --sdist "$RUNNER_TEMP"/dist-floor/*.tar.gz \
             --plugin-dir claude-plugin \
             --expected-version "$EXPECTED_VERSION" \
             --expected-ref "refs/tags/v${EXPECTED_VERSION}" \

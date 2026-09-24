@@ -65,7 +65,7 @@ def test_fixture_builds_a_repo_with_the_plant_in_the_diff(path, tmp_path):
         cwd=repo,
         check=True,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
     ).stdout
     changed = set(diff.split())
     assert changed, "change branch has an empty diff"

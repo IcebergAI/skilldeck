@@ -40,6 +40,11 @@ uv run --extra dev ruff check . && uv run --extra dev ruff format --check . \
 Always pass `--extra dev`: the linters and test runner live in the `dev` extra, and a
 bare `uv run` does not install them.
 
+Because the suite also runs on Windows, tests pass `encoding="utf-8"` to every text
+read and write (Windows defaults to the locale's code page) and create symlinks through
+the `symlink` fixture in `tests/conftest.py`, which skips only when the account may not
+create them.
+
 ## Authoring or changing a skill
 
 Skills live in `src/skilldeck/skills/<name>/` as a `meta.yaml` + `skill.md`, authored

@@ -22,8 +22,27 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import _pyproject  # noqa: E402
 
+# A release version: three ASCII numbers without leading zeros. PEP 440
+# normalizes ``0.04.0`` to ``0.4.0`` in the built metadata, so a zero-padded
+# version could never match the tag, manifest, and ``__version__`` at once.
+_NUMBER = r"(?:0|[1-9][0-9]*)"
+RELEASE_VERSION_RE = re.compile(rf"{_NUMBER}\.{_NUMBER}\.{_NUMBER}")
 # The only accepted release tag shapes: ``vX.Y.Z`` or its full ref.
-_TAG_RE = re.compile(r"(?:refs/tags/)?v([0-9]+\.[0-9]+\.[0-9]+)")
+_TAG_RE = re.compile(rf"(?:refs/tags/)?v({RELEASE_VERSION_RE.pattern})")
+_DATED_SECTION_RE = re.compile(
+    r"^##\s*\[(\d+\.\d+\.\d+)\]\s*-\s*\d{4}-\d{2}-\d{2}", re.MULTILINE
+)
+
+
+def version_key(version: str) -> tuple[int, ...]:
+    """Sort key comparing ``X.Y.Z`` numerically (so 0.10.0 > 0.3.0)."""
+    return tuple(int(part) for part in version.split("."))
+
+
+def newest_dated_version(changelog: str) -> str | None:
+    """The highest ``## [x.y.z] - DATE`` version in ``changelog``, if any."""
+    versions = _DATED_SECTION_RE.findall(changelog)
+    return max(versions, key=version_key) if versions else None
 
 
 def project_version() -> str:
@@ -41,21 +60,19 @@ def latest_changelog_version() -> str:
     numbers (not file order) keeps the check honest if a section is ever
     added in the wrong place.
     """
-    text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    versions = re.findall(
-        r"^##\s*\[(\d+\.\d+\.\d+)\]\s*-\s*\d{4}-\d{2}-\d{2}", text, re.MULTILINE
-    )
-    if not versions:
+    newest = newest_dated_version((ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))
+    if newest is None:
         raise SystemExit("error: no dated version section in CHANGELOG.md")
-    return max(versions, key=lambda v: tuple(int(part) for part in v.split(".")))
+    return newest
 
 
 def normalize_tag(ref: str) -> str:
     """Reduce ``refs/tags/vX.Y.Z`` or ``vX.Y.Z`` to the bare version ``X.Y.Z``.
 
     Anything else (a bare version, a nested ref such as ``refs/tags/x/v0.3.0``,
-    a branch, a pre-release suffix) raises ``ValueError`` rather than being
-    guessed at: the release workflow must only ever publish an exact tag.
+    a branch, a pre-release suffix, a zero-padded number) raises
+    ``ValueError`` rather than being guessed at: the release workflow must only
+    ever publish an exact tag.
     """
     match = _TAG_RE.fullmatch(ref)
     if not match:
