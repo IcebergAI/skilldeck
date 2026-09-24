@@ -15,6 +15,11 @@ rules can't silently drift.
 - **Skill versions are independent.** Each skill carries its own `version` in
   `meta.yaml`; bump it whenever that skill's content changes, regardless of the
   project version.
+- **The Claude Code plugin version follows its content.** It equals the
+  project version only for the content prepared for that release; any other
+  content on `main` ships as a development version such as
+  `0.3.1-dev.sha256-8bc06884da4f`. See
+  [Claude Code plugin versions](#claude-code-plugin-versions).
 
 ## CHANGELOG
 
@@ -29,19 +34,28 @@ state of the repo (nothing is tagged or on PyPI yet).
 ## Cutting a release
 
 1. Choose the new version per SemVer.
-2. Run `python scripts/prepare_release.py x.y.z`. It bumps `pyproject.toml`,
-   dates the `[Unreleased]` CHANGELOG section (leaving a fresh empty one
-   above), runs `uv lock`, regenerates the Claude Code plugin tree (whose
-   manifest pins the project version), and re-runs the consistency guard.
+2. Run `python scripts/prepare_release.py x.y.z` as the last change of the
+   release PR. It bumps `pyproject.toml`, dates the `[Unreleased]` CHANGELOG
+   section (leaving a fresh empty one above), runs `uv lock`, regenerates the
+   Claude Code plugin tree (recording the plugin's current content as the
+   release's, so `plugin.json` says exactly `x.y.z`), and re-runs the
+   consistency guard.
    It validates everything first (a plain `X.Y.Z` with no leading zeros,
    newer than both the current version and the newest dated CHANGELOG
    section, an `[Unreleased]` section with at least one entry, no existing
    section for the version) and writes nothing if any check fails; if
-   `uv lock` or plugin generation fails it restores `pyproject.toml`,
-   `CHANGELOG.md`, and `uv.lock` and exits non-zero.
+   `uv lock` or plugin generation fails, or the plugin would not carry
+   exactly `x.y.z`, it restores `pyproject.toml`, `CHANGELOG.md`, and
+   `uv.lock` and exits non-zero.
 3. Run the full check suite:
    `uv run --extra dev ruff check . && uv run --extra dev ruff format --check . && uv run --extra dev mypy && uv run --extra dev pytest`
-4. Open a `Release x.y.z` PR and merge it once CI is green.
+4. Open a `Release x.y.z` PR and merge it once CI is green. If the PR's plugin
+   content changes after `prepare_release.py` ran (for example
+   `gh pr update-branch` merges a skill change from `main`), `plugin.json`
+   drops back to a development version and the `lint` job fails the PR;
+   re-record the final content before merging:
+   `git checkout origin/main -- claude-plugin/.skilldeck/release.json`, then
+   `python scripts/build_plugin.py`, and commit.
 
 At this point the version is **prepared**. To actually **publish**:
 
@@ -58,20 +72,38 @@ At this point the version is **prepared**. To actually **publish**:
    - runs lint, type-check, and the test suite on the tagged commit against
      the locked (`uv run --locked`) dependencies;
    - stamps the full tag ref and commit into both Python distributions;
-   - proves wheel, source distribution, and committed Claude plugin have the
-     same canonical skill manifest;
+   - proves the source distribution is exactly the tagged commit's files and
+     the wheel exactly its `src/skilldeck` files (plus their generated
+     metadata, checked against `pyproject.toml` and the wheel's `RECORD`),
+     that both carry the same canonical skill manifest as the committed
+     Claude plugin, and that the plugin is the prepared release rather than a
+     development snapshot;
    - installs the wheel into a clean venv holding only the runtime
      dependencies pinned in `uv.lock` (exported and installed with
-     `--require-hashes`), and checks that `skilldeck provenance --json`
-     there reports the expected version, tag ref, commit, and skills;
+     `--require-hashes`), and checks that `skilldeck provenance --verify
+     --json` there re-hashes the installed skills and reports the expected
+     version, tag ref, commit, and skills;
    - builds and validates an SPDX 2.3 SBOM from that runtime-only install;
-   - writes and verifies an exact `SHA256SUMS` file;
+   - writes and verifies an exact `SHA256SUMS` file, and passes the SHA-256
+     of every bundle file to the later jobs as a **job output**;
+   - in each later job, checks the downloaded bundle against those digests
+     before using it (`SHA256SUMS` travels inside the same artifact as the
+     files it covers, so it cannot vouch for them across the handoff);
    - creates GitHub SLSA provenance and SBOM attestations;
    - publishes only the wheel and source distribution to PyPI with Trusted
      Publishing and its PEP 740 attestation;
+   - downloads what PyPI serves for the release, compares its bytes with the
+     build job's digests, and verifies PyPI's attestations, **before**
+     creating the GitHub release. A PyPI upload can't be undone, so a
+     mismatch here stops the release at PyPI (yank the files there) instead
+     of spreading it to a GitHub release;
    - creates the GitHub release from the same build bundle; and
-   - downloads the public release again, verifies both channels, and proves a
-     one-byte modification is rejected.
+   - downloads the public release again, compares it with the build digests,
+     verifies its attestations and identity, and proves that a modified wheel
+     is rejected by the consumer's `gh attestation verify` command
+     specifically because no attestation exists for its digest (any other
+     failure, such as a network or auth error, fails the check instead of
+     passing it).
 
    Build, attestation, PyPI, and GitHub release permissions are isolated in
    separate jobs. No publish job rebuilds an artifact. Releases run one at a
@@ -132,6 +164,15 @@ Consumer verification is documented in
 - `pyproject` version **==** the newest dated CHANGELOG version — run on every PR
   by the `lint` job, and also by `tests/test_release_consistency.py` under
   `pytest`.
+- the plugin release record (`claude-plugin/.skilldeck/release.json`) is
+  the copy committed at its `v<version>` tag whenever that tag exists, so a
+  released plugin version string never gets new content. On a pull request
+  the `lint` job also passes `--base origin/<target branch>` (it checks out
+  with `fetch-depth: 0` for the branches and tags), which fails a record
+  change without a project version bump, and a version bump whose plugin is
+  not exactly the new version (a release PR whose content drifted after
+  `prepare_release.py`). The tag check also runs under `pytest` in a checkout
+  that has the release tags.
 - on a tag push, the tag (minus the `v`) **==** the `pyproject` version — run by
   the release workflow before it builds or publishes. Only an exact `vX.Y.Z` or
   `refs/tags/vX.Y.Z` (no leading zeros) is accepted; anything else (for
@@ -146,17 +187,108 @@ be mistaken for the package version.
 So a version/CHANGELOG mismatch fails CI, and a mis-tagged release fails before
 anything reaches PyPI.
 
+## Claude Code plugin versions
+
+The marketplace in `.claude-plugin/marketplace.json` points at
+`./claude-plugin` in this repository. Claude Code resolves a relative-path
+source against its local copy of the marketplace, and a marketplace added as
+`IcebergAI/skilldeck` (no `ref`) tracks the repository's default branch. So
+**`main` is the plugin channel**: no release tag exists yet (the first release
+is tracked in #80), and pinning the marketplace to a tag would leave it with
+nothing to install.
+
+How Claude Code decides an installed plugin needs updating (checked against
+the Claude Code docs, [Version
+management](https://code.claude.com/docs/en/plugins-reference#version-management)
+and [Version resolution and release
+channels](https://code.claude.com/docs/en/plugin-marketplaces#version-resolution-and-release-channels),
+and the plugin-update code bundled in the published
+`@anthropic-ai/claude-code-linux-x64` 2.1.281 npm package):
+
+- It resolves the version from `plugin.json`'s `version` first, and uses it
+  as the cache key: "if the resolved version matches what a user already has,
+  `/plugin update` and auto-update skip the plugin." Pushing new commits
+  without changing the string has no effect.
+- The comparison is plain string equality (plus equality of the cache
+  directory named after the version, whose characters outside
+  `[A-Za-z0-9._-]` become `-`). SemVer precedence is not consulted, so any
+  different string counts as an update, even one that sorts lower.
+- Omitting `version` would fall back to the git commit SHA of the
+  marketplace, updating every user on every commit to `main`, and the
+  version could no longer say which release a plugin is.
+
+So the version is derived from the plugin content:
+
+- `claude-plugin/.skilldeck/release.json` records the SHA-256 content digest
+  of the plugin tree (every file but the record itself, with `plugin.json`'s
+  `version` left out) at the moment the project version was bumped.
+- While the plugin content still has that digest, `plugin.json` says exactly
+  the project version (`0.4.0`). Any other content gets
+  `<major>.<minor>.<patch+1>-dev.sha256-<first 12 hex digits of its digest>`,
+  for example `0.4.1-dev.sha256-8bc06884da4f`: a SemVer pre-release that
+  sorts after the last release and before the next one. Different content
+  means a different string, so every change reaches existing installs, and
+  reverting content restores its earlier version string.
+- `scripts/build_plugin.py` records the digest when it sees a project version
+  newer than the record (which `prepare_release.py` produces); it refuses a
+  version older than the record, which would relabel today's content with an
+  old string. The output depends only on the canonical skills, the project
+  version, and the committed record, so `--check` and the pytest freshness
+  guard stay deterministic, and a skill change committed without
+  regenerating fails them.
+- The release workflow runs `verify_distribution_identity.py
+  --release-plugin`, which fails unless the tagged plugin is exactly the
+  prepared release. CI on `main` checks the same derivation without
+  requiring a release.
+
+`0.3.0` was prepared but never tagged, and `main` changed the plugin content
+under that version string, so the record starts with no content for `0.3.0`
+and the plugin is on a development version until the first release, which
+must therefore be newer than `0.3.0`. If a release PR changes the plugin
+content after `prepare_release.py` ran, the plugin drops back to a
+development version and CI fails the PR; before merging, restore the old
+record with `git checkout origin/main -- claude-plugin/.skilldeck/release.json`
+and re-run `python scripts/build_plugin.py` to record the final content.
+This applies **only to an unmerged release PR** (one that bumps the project
+version). Anywhere else, restoring or editing the record would relabel new
+content with a version string users may already hold, which is the bug this
+scheme exists to prevent, so `check_release_consistency.py` rejects a record
+change without a version bump and any change to a record whose release tag
+exists.
+
 ## Generated trust files
 
 - `src/skilldeck/_content_manifest.json` and
   `claude-plugin/.skilldeck/content-manifest.json` are generated together by
   `scripts/build_plugin.py`; never edit either by hand.
+- `claude-plugin/.skilldeck/release.json` is the plugin release record
+  described above; `scripts/build_plugin.py` writes it.
 - `src/skilldeck/_build_metadata.json` is committed with unavailable source
   fields for development. `scripts/stamp_build_metadata.py` writes an exact
   `refs/tags/vX.Y.Z` plus full commit only inside the authorized tag workflow.
 - `scripts/verify_distribution_identity.py` fails closed on archive traversal,
   links, duplicate members, malformed manifests, missing/orphaned skills, or
-  any wheel/sdist/plugin digest mismatch.
+  any wheel/sdist/plugin digest mismatch. It reads the expected files of
+  `--expected-commit` with `git archive` (and fails unless that commit is the
+  checkout's `HEAD`), not from the working tree a build step could have
+  edited, and requires the sdist to be exactly those files plus `PKG-INFO`,
+  and the wheel exactly the `src/skilldeck` files plus `METADATA`, `WHEEL`,
+  `entry_points.txt`, `RECORD`, and the license, with every file hashed
+  correctly in `RECORD` and the requirements (with their environment
+  markers), extras, entry point, and tag matching `pyproject.toml`. An added
+  module or `.pth` file, changed code, or an added, dropped, or re-scoped
+  dependency fails it. Only the stamped
+  `_build_metadata.json` may differ from the commit.
 - `scripts/write_checksums.py` accepts exactly one wheel, one source
   distribution, and one SPDX document. It streams verification and rejects
   symlinks, malformed lines, duplicates, extras, and missing artifacts.
+  `--digests` prints the bundle's digests as one line of JSON for a job
+  output, and `--expect` checks a downloaded bundle against it.
+- `scripts/verify_pypi_release.py` reads the release's files from PyPI's
+  JSON API (`/pypi/skilldeck/<version>/json`), downloads each, and compares
+  its SHA-256 with the build job's digests, retrying while PyPI's listing
+  catches up.
+
+The earlier tamper test also re-checked `SHA256SUMS` after appending bytes to
+the wheel. That only showed that SHA-256 notices appended bytes, which the
+unit tests cover, so it was dropped.

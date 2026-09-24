@@ -1,6 +1,7 @@
 """Tests for scripts/prepare_release.py."""
 
 import importlib.util
+import json
 import subprocess
 from pathlib import Path
 
@@ -101,9 +102,15 @@ def tree(tmp_path, monkeypatch):
     (tmp_path / "CHANGELOG.md").write_text(CHANGELOG, encoding="utf-8")
     (tmp_path / "uv.lock").write_text("old lock\n", encoding="utf-8")
     monkeypatch.setattr(prep, "ROOT", tmp_path)
-    monkeypatch.setattr(prep.build_plugin, "generate", lambda: {})
+    monkeypatch.setattr(prep.build_plugin, "generate", lambda: _plugin("0.4.0"))
     monkeypatch.setattr(prep.build_plugin, "write", lambda files: None)
     return tmp_path
+
+
+def _plugin(version):
+    """A stand-in :func:`build_plugin.generate` result holding just plugin.json."""
+    path = prep.build_plugin.PLUGIN_DIR / ".claude-plugin" / "plugin.json"
+    return {path: json.dumps({"version": version})}
 
 
 def _snapshot(root):
@@ -205,3 +212,21 @@ def test_main_prepares_the_release(tree, monkeypatch, capsys):
     # the hint must keep the dev tools installed (bare `uv run` drops extras)
     assert "uv run --extra dev pytest" in out
     assert "uv run ruff" not in out
+
+
+def test_main_rolls_back_when_the_plugin_would_not_carry_the_release_version(
+    tree, monkeypatch, capsys
+):
+    # a plugin release record the bump did not supersede keeps a dev version
+    run, _ = _fake_run(0, root=tree)
+    monkeypatch.setattr(prep.subprocess, "run", run)
+    monkeypatch.setattr(
+        prep.build_plugin, "generate", lambda: _plugin("0.4.1-dev.sha256-0123456789ab")
+    )
+    written = []
+    monkeypatch.setattr(prep.build_plugin, "write", written.append)
+    before = _snapshot(tree)
+    assert prep.main(["0.4.0"]) == 1
+    assert _snapshot(tree) == before
+    assert written == []
+    assert "not 0.4.0" in capsys.readouterr().err

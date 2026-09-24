@@ -41,8 +41,12 @@ marketplace. In Claude Code:
 ```
 
 The skills then appear namespaced (e.g. `/skilldeck:security-review`) and
-update via `/plugin update`. Use the CLI below if you want per-skill
-selection, other agents, or plain files in your project.
+update via `/plugin update`. The plugin follows this repo's `main` branch:
+between releases every change to its content ships under a new development
+version (such as `0.3.1-dev.sha256-8bc06884da4f`), so `/plugin update` picks
+it up; Claude Code keeps auto-update off for third-party marketplaces unless
+you turn it on. Use the CLI below if you want per-skill selection, other
+agents, or plain files in your project.
 
 ## Running skilldeck
 
@@ -137,9 +141,12 @@ skilldeck status --agent all
 # Refresh installed skills after upgrading skilldeck
 skilldeck update --agent claude
 
-# Inspect the package source identity and bundled skill digests
+# Show the source identity and skill digests recorded at build time (claims only)
 skilldeck provenance
 skilldeck provenance --json
+
+# Re-hash the installed skills and fail if any differ from those build-time digests
+skilldeck provenance --verify
 ```
 
 Installed files carry a `skilldeck` stamp recording the skill version, so
