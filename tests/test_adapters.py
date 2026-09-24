@@ -732,3 +732,13 @@ def test_check_scope(skill):
     ADAPTERS["cursor"].check_scope(Scope.GLOBAL)
     with pytest.raises(SkillError, match="does not support --scope global"):
         LEGACY_ADAPTERS["cursor-rule"].check_scope(Scope.GLOBAL)
+
+
+def test_write_atomic_writes_lf_on_every_platform(tmp_path):
+    # installs must be byte-identical across operating systems; text mode on
+    # Windows would otherwise translate each "\n" to "\r\n"
+    from skilldeck.adapters.base import write_atomic
+
+    dest = tmp_path / "SKILL.md"
+    write_atomic(dest, "line one\nline two\n")
+    assert dest.read_bytes() == b"line one\nline two\n"
