@@ -1,0 +1,13 @@
+---
+description: "Contract fixture: a synthetic review skill that pins every adapter's rendered bytes, long enough that YAML folds it onto a second line."
+alwaysApply: false
+---
+
+# Contract demo
+
+A synthetic skill for the adapter contract tests — it is never installed for
+real. Non-ASCII text (naïve café, 検査) must reach every agent as UTF-8.
+
+1. Run `git diff` and read the changed files.
+2. Report each finding with its file and line.
+<!-- skilldeck name=contract-demo version=1.2.3 hash=f63300423929d7252b34ea5d2a247a0e493cf11cabf611a6985d5f9d062f9525 -->

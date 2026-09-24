@@ -48,9 +48,14 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
 - `src/skilldeck/skills/<name>/` — canonical, agent-neutral skills (`meta.yaml` +
   `skill.md`); inside the package so they're bundled into the wheel
 - `src/skilldeck/` — the installer package
-  - `cli.py` — `skilldeck list/show/install/uninstall/status/update/migrate`
-    and `provenance`
-  - `registry.py` — discovers and validates skills
+  - `cli.py` — `skilldeck list/show/install/uninstall/status/update/migrate`,
+    `provenance` and `catalog`
+  - `registry.py` — discovers and validates skills, including the optional
+    `deprecated` metadata
+  - `catalog.py` + `catalog.schema.json` — the public, schema-versioned
+    `skilldeck catalog --json` contract (the schema ships in the wheel);
+    change it only per the compatibility rules in `docs/catalog.md` (bump
+    `CATALOG_SCHEMA_VERSION` for breaking changes only)
   - `stamp.py` — install stamps (version + content hash on installed files)
   - `targets.py` — install scope, project base dir, and `UserDir` (an agent's
     user-level folder, with its env-var override)
@@ -71,7 +76,11 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
   `tests/test_eval_fixtures.py`, and unit-tests the scorer
   (`tests/test_eval_scoring.py`). See `evals/README.md`. New/changed skills
   should be run through them.
-- `docs/` — `authoring-skills.md`, `adapters.md`, `releasing.md`
+- `docs/` — `authoring-skills.md`, `adapters.md`, `catalog.md`, `compatibility.md`
+  (the public agent compatibility matrix), `releasing.md`
+- `tests/fixtures/adapter-contracts/` — each adapter's exact rendered file,
+  paths and env-override behaviour for one synthetic skill; checked byte for
+  byte by `tests/test_adapter_contracts.py`
 - `.claude-plugin/marketplace.json` + `claude-plugin/` — the Claude Code plugin
   marketplace tree, **generated** by `scripts/build_plugin.py` from the
   canonical skills; regenerate after changing skills or the project version (a
@@ -97,6 +106,14 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
   output.
 - A skill's `meta.yaml` `name` must match its directory name; all metadata fields
   are required and validated by the registry.
+- Any change to an adapter's output format, paths or env handling must update
+  its contract fixtures, the `adapter-contract` digest and matrix rows in
+  `docs/compatibility.md`, and CHANGELOG. The contract tests enforce the
+  fixtures, the digest line, a digest mention in CHANGELOG, and the matrix's
+  path/"Moved by"/scope-error text. Status, minimum versions, dates and notes
+  are maintained by hand (see `docs/compatibility.md#contract-tests`). Only
+  state vendor behaviour a primary source confirms; mark the rest
+  *unverified*.
 - New skills follow the structural template (enforced by
   `tests/test_skill_structure.py`), ground their checklists in **fetched**
   authoritative sources (OWASP/CIS/vendor docs) cited in the skill body, and

@@ -1,0 +1,10 @@
+name: contract-demo
+description: "Contract fixture: a synthetic review skill that pins every adapter's rendered bytes, long enough that YAML folds it onto a second line."
+category: testing
+version: "1.2.3"
+supported-agents:
+  - claude
+  - codex
+  - copilot
+  - cursor
+  - kiro

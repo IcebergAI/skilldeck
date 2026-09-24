@@ -2,7 +2,7 @@ import textwrap
 
 import pytest
 
-from skilldeck.registry import SkillError, discover_skills, load_skill
+from skilldeck.registry import Deprecation, SkillError, discover_skills, load_skill
 
 
 def _write_skill(root, name, *, agents="[claude, codex, kiro]", body="hi"):
@@ -248,4 +248,193 @@ def test_invalid_yaml_is_a_clean_error(tmp_path):
     skill_dir = _write_meta(tmp_path)
     (skill_dir / "meta.yaml").write_text("name: [unclosed\n", encoding="utf-8")
     with pytest.raises(SkillError, match="not valid YAML"):
+        load_skill(skill_dir)
+
+
+# --- deprecated (#77) ---------------------------------------------------------
+
+
+def _deprecate(skill_dir, block):
+    meta = skill_dir / "meta.yaml"
+    meta.write_text(
+        meta.read_text(encoding="utf-8") + "\n" + textwrap.dedent(block).strip(),
+        encoding="utf-8",
+    )
+
+
+def test_skill_without_deprecated_is_not_deprecated(tmp_path):
+    assert load_skill(_write_skill(tmp_path, "demo")).deprecated is None
+
+
+def test_deprecated_roundtrip(tmp_path):
+    _write_skill(tmp_path, "new")
+    old = _write_skill(tmp_path, "old")
+    _deprecate(
+        old,
+        """
+        deprecated:
+          since: 0.1.0
+          replacement: new
+          reason: Folded into new.
+        """,
+    )
+    skill = {s.name: s for s in discover_skills(tmp_path)}["old"]
+    assert skill.deprecated == Deprecation(
+        since="0.1.0", reason="Folded into new.", replacement="new"
+    )
+
+
+@pytest.mark.parametrize("replacement", ["", ", replacement: null"])
+def test_deprecated_replacement_is_optional(tmp_path, replacement):
+    skill_dir = _write_skill(tmp_path, "demo")
+    _deprecate(skill_dir, f"deprecated: {{since: 0.1.0, reason: x{replacement}}}")
+    assert load_skill(skill_dir).deprecated == Deprecation(since="0.1.0", reason="x")
+
+
+@pytest.mark.parametrize(
+    ("block", "message"),
+    [
+        ("deprecated: true", "deprecated must be a mapping"),
+        ("deprecated: null", "deprecated must be a mapping"),
+        ("deprecated: [0.1.0]", "deprecated must be a mapping"),
+        ("deprecated: {since: 0.1.0}", "deprecated missing fields: reason"),
+        ("deprecated: {reason: x}", "deprecated missing fields: since"),
+        (
+            "deprecated: {since: 0.1.0, reason: x, replaced-by: y}",
+            "deprecated has unknown field\\(s\\): replaced-by",
+        ),
+        ("deprecated: {since: 0.1, reason: x}", "deprecated.since must be a string"),
+        ("deprecated: {since: v0.1.0, reason: x}", "MAJOR.MINOR.PATCH"),
+        ("deprecated: {since: 0.2.0, reason: x}", "later than the skill's version"),
+        ("deprecated: {since: 0.1.0, reason: ''}", "reason must be a non-empty"),
+        ("deprecated: {since: 0.1.0, reason: 3}", "reason must be a non-empty"),
+        (
+            'deprecated: {since: 0.1.0, reason: "a\\nb"}',
+            "reason must be a single line",
+        ),
+        (
+            "deprecated: {since: 0.1.0, reason: x, replacement: Bad_Name}",
+            "replacement must be a skill name or null",
+        ),
+        (
+            "deprecated: {since: 0.1.0, reason: x, replacement: [a]}",
+            "replacement must be a skill name or null",
+        ),
+        (
+            "deprecated: {since: 0.1.0, reason: x, replacement: demo}",
+            "names the skill itself",
+        ),
+    ],
+)
+def test_malformed_deprecated_rejected(tmp_path, block, message):
+    skill_dir = _write_skill(tmp_path, "demo")
+    _deprecate(skill_dir, block)
+    with pytest.raises(SkillError, match=message):
+        load_skill(skill_dir)
+
+
+def test_deprecated_since_may_be_older_than_the_version(tmp_path):
+    skill_dir = _write_skill(tmp_path, "demo")
+    (skill_dir / "meta.yaml").write_text(
+        (skill_dir / "meta.yaml")
+        .read_text(encoding="utf-8")
+        .replace("version: 0.1.0", "version: 0.10.0"),
+        encoding="utf-8",
+    )
+    # compared numerically: 0.9.0 is before 0.10.0, though not as a string
+    _deprecate(skill_dir, "deprecated: {since: 0.9.0, reason: x}")
+    deprecated = load_skill(skill_dir).deprecated
+    assert deprecated is not None
+    assert deprecated.since == "0.9.0"
+
+
+def test_deprecated_replacement_must_exist(tmp_path):
+    skill_dir = _write_skill(tmp_path, "demo")
+    _deprecate(skill_dir, "deprecated: {since: 0.1.0, reason: x, replacement: gone}")
+    load_skill(skill_dir)  # a single skill can't know its siblings
+    with pytest.raises(SkillError, match="'gone' is not a skill"):
+        discover_skills(tmp_path)
+
+
+def test_deprecated_replacement_must_not_be_deprecated(tmp_path):
+    _deprecate(
+        _write_skill(tmp_path, "a"),
+        "deprecated: {since: 0.1.0, reason: x, replacement: b}",
+    )
+    _deprecate(_write_skill(tmp_path, "b"), "deprecated: {since: 0.1.0, reason: y}")
+    with pytest.raises(SkillError, match="'b' is itself deprecated"):
+        discover_skills(tmp_path)
+
+
+def test_no_bundled_skill_is_deprecated():
+    assert [s.name for s in discover_skills() if s.deprecated is not None] == []
+
+
+def test_folded_deprecated_reason_is_accepted(tmp_path):
+    # a folded ``>`` block keeps one final line break; it isn't a second line
+    skill_dir = _write_skill(tmp_path, "demo")
+    _deprecate(
+        skill_dir,
+        """
+        deprecated:
+          since: 0.1.0
+          reason: >
+            Superseded by a broader
+            skill.
+        """,
+    )
+    deprecated = load_skill(skill_dir).deprecated
+    assert deprecated is not None
+    assert deprecated.reason == "Superseded by a broader skill."
+
+
+def test_literal_multiline_deprecated_reason_is_rejected(tmp_path):
+    skill_dir = _write_skill(tmp_path, "demo")
+    _deprecate(skill_dir, "deprecated:\n  since: 0.1.0\n  reason: |\n    a\n    b\n")
+    with pytest.raises(SkillError, match="reason must be a single line"):
+        load_skill(skill_dir)
+
+
+def test_folded_description_error_names_the_fix(tmp_path):
+    skill_dir = _write_skill(tmp_path, "demo")
+    meta = skill_dir / "meta.yaml"
+    meta.write_text(
+        meta.read_text(encoding="utf-8").replace(
+            "description: a test skill", "description: >\n  a test skill"
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(SkillError, match="single line .*>- rather than >"):
+        load_skill(skill_dir)
+
+
+def test_deprecated_replacement_must_support_the_same_agents(tmp_path):
+    _deprecate(
+        _write_skill(tmp_path, "old", agents="[claude, codex, kiro]"),
+        "deprecated: {since: 0.1.0, reason: x, replacement: new}",
+    )
+    _write_skill(tmp_path, "new", agents="[claude]")
+    with pytest.raises(
+        SkillError, match="'new' does not support codex, kiro, which old supports"
+    ):
+        discover_skills(tmp_path)
+
+
+def test_deprecated_replacement_may_support_more_agents(tmp_path):
+    _deprecate(
+        _write_skill(tmp_path, "old", agents="[kiro]"),
+        "deprecated: {since: 0.1.0, reason: x, replacement: new}",
+    )
+    _write_skill(tmp_path, "new", agents="[claude, kiro]")
+    assert [s.name for s in discover_skills(tmp_path)] == ["new", "old"]
+
+
+def test_unknown_meta_field_rejected(tmp_path):
+    skill_dir = _write_skill(tmp_path, "demo")
+    _deprecate(skill_dir, "depreciated: {since: 0.1.0, reason: x}\nauthor: me")
+    with pytest.raises(
+        SkillError,
+        match="unknown field\\(s\\): author, depreciated; the fields are name, "
+        "description, category, version, supported-agents, deprecated",
+    ):
         load_skill(skill_dir)

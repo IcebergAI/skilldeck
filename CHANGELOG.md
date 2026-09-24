@@ -149,6 +149,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Asking an adapter for a scope it doesn't support now tells you what works
+  instead (#79). For example, `--agent cursor-rule --scope global` names
+  `--scope project`. On `install` it also names `--agent cursor`, which
+  supports `--scope global`.
+- `meta.yaml` rejects keys other than `name`, `description`, `category`,
+  `version`, `supported-agents` and `deprecated`, so a misspelt field fails
+  loudly instead of being ignored (#77).
+- `skilldeck provenance --json` writes its JSON as UTF-8 bytes with `\n`
+  line endings, as `catalog --json` does, so the output is byte-identical on
+  Windows too (#77).
 - Five review skills cover defect classes their checklists missed, each
   cited to a fetched source (#104):
   - `ci-workflow-review` 0.4.0: newline injection through writes to
@@ -506,6 +516,46 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Agent compatibility matrix, `docs/compatibility.md` (#79), linked from the
+  README and `docs/adapters.md`. It lists every adapter, including the
+  `copilot-prompt`, `cursor-rule` and `kiro-steering` legacy adapters, with:
+
+  - a status (tested, supported or experimental; the page defines each)
+  - project and global paths, and the environment variables that move them
+  - how you invoke the skill in that agent
+  - the minimum agent version
+  - the date, agent version and vendor sources it was checked against
+
+  Whatever couldn't be checked is marked unverified. The page also says how
+  skilldeck responds when a vendor deprecates or moves a skill location or
+  format.
+
+  Adapter contract fixtures (`tests/fixtures/adapter-contracts/`, contract
+  `sha256:25b3bbad35d7`) pin each adapter's exact rendered file, stamp included, for
+  one synthetic skill. They also pin its project and global paths, and its
+  behaviour with each config-directory variable set to an absolute path,
+  left empty, or set to a relative path. CI installs with every adapter and
+  compares the results byte for byte. It also checks the matrix's path,
+  "Moved by" and scope-error text against the contracts. A test fails when
+  the fixtures change unless the matrix's `adapter-contract` digest is
+  updated too, and this changelog mentions the new digest under
+  `[Unreleased]` (or, just after a release, in its dated section).
+- `skilldeck catalog` (#77): a deterministic, schema-versioned JSON catalog
+  of the bundled skills for tools (`--json`), with each skill's name,
+  version, category, description, supported agents, canonical content digest
+  (the one `provenance --verify` checks), per-agent rendered digest (equal to
+  the install stamp's `hash=`), source path and deprecation state. It runs
+  the full `provenance --verify` check first and fails, printing no catalog,
+  on any mismatch. `--category` and `--agent` filter it without parsing text;
+  `--schema` prints the JSON Schema, which ships in the package as
+  `skilldeck/catalog.schema.json`. `docs/catalog.md` sets the compatibility
+  rules: additive changes keep `schema_version` 1, breaking ones bump it.
+  Releases do not attach the catalog as a separate asset; generate it from
+  the verified wheel.
+- Optional `deprecated` skill metadata (`since`, `reason`, optional
+  `replacement`), validated by the registry; `skilldeck list` marks
+  deprecated skills, and `install`/`update` warn when they write one. No
+  bundled skill is deprecated.
 - `frontend-security-review` skill (0.1.0) (#105) — reviews browser-side
   changes (React, Vue, Angular, Svelte, plain JavaScript and HTML templates,
   CSP and header config): framework escape hatches (`dangerouslySetInnerHTML`,

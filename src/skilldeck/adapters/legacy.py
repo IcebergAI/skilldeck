@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..registry import Skill, SkillError
-from ..targets import UserDir
+from ..targets import Scope, UserDir
 from .base import Adapter, yaml_frontmatter
 
 
@@ -42,6 +42,18 @@ class LegacyAdapter(Adapter):
 
     def supports(self, skill: Skill) -> bool:
         return self.agent in skill.supported_agents
+
+    def scope_alternative(self, scope: Scope) -> str | None:
+        # imported here: the adapter registry imports this module
+        from . import ADAPTERS
+
+        native = ADAPTERS.get(self.agent)
+        if native is None or scope not in native.scopes:
+            return None
+        return (
+            f"--agent {native.name} (Agent Skills), "
+            f"which supports --scope {scope.value}"
+        )
 
 
 class CopilotPromptAdapter(LegacyAdapter):
