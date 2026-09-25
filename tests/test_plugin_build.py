@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from skilldeck.adapters.base import rendered_body
 from skilldeck.provenance import (
     claude_plugin_content_digest,
     claude_plugin_version,
@@ -107,7 +108,8 @@ def test_plugin_provenance_matches_python_distribution():
         rendered = (
             _ROOT / "claude-plugin" / "skills" / record["name"] / "SKILL.md"
         ).read_text(encoding="utf-8")
-        assert rendered.endswith(by_name[record["name"]].body)
+        # the body, then the notice of what the skill declares it may do
+        assert rendered.endswith(rendered_body(by_name[record["name"]]))
 
 
 # --- the content-derived plugin version, on a throwaway tree ------------------
@@ -119,6 +121,14 @@ category: review
 version: 0.1.0
 supported-agents:
   - claude
+capabilities:
+  schema: 1
+  files: {read: repo, write: none}
+  commands: []
+  network: []
+  credentials: []
+  tools: []
+  artifacts: []
 """
 _DEV_VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)-dev\.sha256-[0-9a-f]{12}$")
 

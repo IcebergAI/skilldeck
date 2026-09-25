@@ -28,6 +28,7 @@ SUPPORTED_KEYWORDS = {
     "maxLength",
     "minItems",
     "uniqueItems",
+    "enum",
 }
 _TYPES = {
     "object": lambda v: isinstance(v, dict),
@@ -59,6 +60,8 @@ def schema_errors(instance, schema=None, *, exact=False):
             types = node["type"] if isinstance(node["type"], list) else [node["type"]]
             if not any(_TYPES[t](value) for t in types):
                 return [f"{path}: {value!r} is not of type {types}"]
+        if "enum" in node and value not in node["enum"]:
+            errors.append(f"{path}: {value!r} is not one of {node['enum']}")
         if "const" in node and (
             value != node["const"] or type(value) is not type(node["const"])
         ):

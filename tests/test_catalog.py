@@ -86,6 +86,20 @@ def test_validator_rejects_malformed_catalogs():
     # consumers must ignore unknown properties, so the schema allows them
     assert not broken(lambda d: d["skills"][0].update(added_later=1))
 
+    def caps(change):
+        return broken(lambda d: change(d["skills"][0]["capabilities"]))
+
+    assert broken(lambda d: d["skills"][0].pop("capabilities"))
+    assert caps(lambda c: c.update(schema=2))
+    assert caps(lambda c: c.pop("network"))
+    assert caps(lambda c: c["files"].update(read="everything"))
+    assert caps(lambda c: c["files"].update(write="diff"))
+    assert caps(lambda c: c.update(commands=["git diff", "git diff"]))
+    assert caps(lambda c: c.update(tools=[""]))
+    for path in ("../x.md", "a/../b.md", "/etc/x", "./x", "a//b", "a\\b", "..", "."):
+        assert caps(lambda c, path=path: c.update(artifacts=[path])), path
+    assert not caps(lambda c: c.update(artifacts=["reports/review.md", ".x/y"]))
+
 
 # --- the command --------------------------------------------------------------
 
@@ -140,6 +154,8 @@ def test_catalog_mirrors_canonical_metadata():
         assert entry["description"] == skill.description
         assert entry["supported_agents"] == sorted(skill.supported_agents)
         assert entry["deprecated"] is None
+        assert entry["capabilities"] == skill.capabilities.record()
+        assert entry["capabilities"]["schema"] == 1
         assert entry["source"] == {
             "repository": "https://github.com/IcebergAI/skilldeck",
             "path": f"src/skilldeck/skills/{skill.name}",
@@ -282,6 +298,14 @@ def _write(root, name, *, agents="[claude, codex]", extra=""):
         category: testing
         version: 1.2.0
         supported-agents: {agents}
+        capabilities:
+          schema: 1
+          files: {{read: repo, write: none}}
+          commands: [git diff]
+          network: []
+          credentials: []
+          tools: []
+          artifacts: []
         """
     )
     (skill_dir / "meta.yaml").write_text(meta + extra, encoding="utf-8")
@@ -357,6 +381,38 @@ def test_human_catalog_and_list_mark_deprecated_skills(deprecated_skills):
         assert "deprecated" not in lines["new-review"]
 
 
+def test_show_summary_reports_deprecation(deprecated_skills):
+    lines = _invoke("show", "old-review", "--summary").stdout.splitlines()
+    assert (
+        "  deprecated:  deprecated since 1.1.0; use new-review "
+        "(Folded into new-review.)"
+    ) in lines
+    assert "  deprecated:  no" in _invoke("show", "new-review", "--summary").stdout
+
+
+def test_show_summary_names_the_release_it_was_built_from(monkeypatch):
+    commit = "0123456789abcdef0123456789abcdef01234567"
+    monkeypatch.setattr(
+        "skilldeck.cli.load_build_metadata",
+        lambda: {
+            "schema_version": 1,
+            "source_repository": "https://github.com/IcebergAI/skilldeck",
+            "source_ref": "refs/tags/v9.9.9",
+            "source_commit": commit,
+        },
+    )
+    out = _invoke("show", "logging", "--summary").stdout
+    assert (
+        f"  built from:  refs/tags/v9.9.9, commit {commit} (recorded at build)\n" in out
+    )
+    monkeypatch.undo()
+    out = _invoke("show", "logging", "--summary").stdout
+    assert (
+        "  built from:  a development build, with no release tag or commit "
+        "(recorded at build)\n"
+    ) in out
+
+
 def test_list_does_not_mark_current_skills():
     assert "deprecated" not in _invoke("list").output
 
@@ -375,6 +431,8 @@ def test_catalog_rejects_skills_that_differ_from_the_manifest(tmp_path, monkeypa
     ("extra", "problem"),
     [
         ("logging/payload.sh", "logging: unexpected file(s): payload.sh"),
+        # an OS leftover loading ignores still fails the integrity check
+        ("logging/.DS_Store", "logging: unexpected file(s): .DS_Store"),
         ("README.txt", "README.txt: not listed in the packaged content manifest"),
     ],
 )

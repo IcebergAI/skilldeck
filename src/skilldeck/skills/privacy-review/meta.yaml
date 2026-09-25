@@ -1,10 +1,24 @@
 name: privacy-review
 description: Review changes that handle personal data for privacy defects — over-collection and over-broad responses, personal data sent to trackers without consent, missing retention and deletion paths, unencrypted sensitive data, and PII in URLs, caches, and client storage — aligned to OWASP ASVS 5.0 V14 Data Protection.
 category: security
-version: 0.1.0
+version: 0.1.1
 supported-agents:
   - claude
   - codex
   - copilot
   - cursor
   - kiro
+capabilities:
+  schema: 1
+  files:
+    read: repo
+    write: none
+  commands:
+    - git fetch
+    - git diff
+    - git ls-files
+  network:
+    - the git remote, via git fetch, to bring the base branch up to date
+  credentials: []
+  tools: []
+  artifacts: []

@@ -262,6 +262,8 @@ def write_skill(repo, name, version="1.2.0", agents=("claude", "codex"), **depre
         f"version: {version}",
         "supported-agents:",
         *(f"  - {agent}" for agent in agents),
+        "capabilities: {schema: 1, files: {read: repo, write: none}, commands: [],"
+        " network: [], credentials: [], tools: [], artifacts: []}",
     ]
     if deprec:
         lines += ["deprecated:", *(f"  {k}: {v}" for k, v in deprec.items())]

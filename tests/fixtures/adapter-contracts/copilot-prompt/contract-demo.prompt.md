@@ -10,5 +10,14 @@ A synthetic skill for the adapter contract tests — it is never installed for
 real. Non-ASCII text (naïve café, 検査) must reach every agent as UTF-8.
 
 1. Run `git diff` and read the changed files.
-2. Report each finding with its file and line.
-<!-- skilldeck name=contract-demo version=1.2.3 hash=9bd866a1ab9e2abd45f98c846442046bd92b15e06ebf39008e8e4eb63dadbc65 -->
+2. Run `<the project's test command>` to see whether the change breaks a test.
+3. Report each finding with its file and line.
+
+## Declared capabilities
+
+Beyond reading the changed files, this skill asks you to:
+
+- run `git diff`, `<the project's test command>`
+
+It asks for nothing else.
+<!-- skilldeck name=contract-demo version=1.2.3 hash=fb4fdec5b86c601d2735353d925994bc5f477d0deb69cc3472c5bc9479caf6d5 -->

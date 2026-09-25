@@ -338,6 +338,13 @@ tools should see the field, the catalog, where it is an additive change.
 Removing or renaming a field, or tightening a rule so that existing metadata
 fails, is breaking for skill authors.
 
+`capabilities` declares what a skill may ask an agent to do (see
+[Capabilities](authoring-skills.md#capabilities)). It is versioned by its own
+`schema` number: a new capability schema is breaking for skill authors, and a
+catalog `schema_version` bump. Changing a skill's declaration versions the
+skill like the body change behind it; declaring what the body already asked
+for is a patch.
+
 The one lifecycle field is `deprecated`, with `since`, `reason` and an
 optional `replacement`. It deliberately has no removal date or version. The
 notice period starts when a release publishes the deprecation, and only the

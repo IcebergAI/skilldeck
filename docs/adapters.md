@@ -31,6 +31,13 @@ moved it with an [environment variable](#environment-variables).
 
 `skilldeck show <skill> --agent <agent>` prints exactly what gets written
 (minus the [stamp](#stamps-what-skilldeck-will-overwrite-or-delete)).
+When the skill asks for more than a read-only review (reading files and
+read-only git commands), every adapter, legacy formats included, appends a
+`## Declared capabilities` section to the body that tells the agent what the
+skill's [capability declaration](authoring-skills.md#capabilities) lists, so
+it travels with the installed file; a read-only review is written unchanged.
+`skilldeck install ... --dry-run` previews an install, with each skill's
+declaration and digest, without writing anything.
 
 `--agent all` selects these five native adapters and nothing else; a legacy
 adapter runs only when you name it.

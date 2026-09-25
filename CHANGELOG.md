@@ -67,13 +67,55 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Breaking:** for skill authors, `meta.yaml` now requires a
+  `capabilities` declaration, and a skill directory may hold only
+  `meta.yaml` and `skill.md` (#73). A skill without the declaration, or with
+  any other file (a script, an asset, a symlink), no longer loads. Add a
+  declaration as described in `docs/authoring-skills.md#capabilities`, and
+  move other files out. Every bundled skill already complies.
+- Every bundled skill declares its capabilities (#73), so its `meta.yaml`
+  changed and its version is bumped: a patch for the declaration alone
+  (`authentication-review` 0.2.1, `ci-workflow-review` 0.4.1, `code-smells`
+  0.3.1, `frontend-security-review` 0.1.1, `iac-review` 0.3.1,
+  `llm-integration-review` 0.1.1, `logging` 0.3.1, `migration-review` 0.4.1,
+  `privacy-review` 0.1.1, `resilience-review` 0.3.1, `security-review` 0.5.2,
+  `test-review` 0.3.1), and a minor bump for `dependency-review` 0.5.0,
+  whose instructions changed (below). The ten read-only reviews install
+  exactly as before. `dependency-review`, `logging` and `test-review` ask for
+  more (audit tools and web lookups; edits; the project's tests), so their
+  installed files gain a `## Declared capabilities` section: run
+  `skilldeck update` to refresh installed copies.
+- `test-review` 0.3.1 says how to run a regression test against the
+  pre-change code without touching the working tree under review: in a
+  temporary `git worktree` outside the repository, removed afterwards; never
+  by stashing, resetting or checking out (#73). A patch under
+  `docs/lifecycle.md#skill-versions`: what it reports is unchanged, and the
+  step only spells out a safe way to do what it already asked.
+- `dependency-review` 0.5.0 runs `pip-audit` only on a fully pinned
+  requirements file without resolving it
+  (`pip-audit --disable-pip --require-hashes -r <file>`, or `--no-deps`),
+  and skips it otherwise, since `pip-audit -r` resolves like
+  `pip install -r`, per pip-audit's security model; and it reads a package's
+  registry page for its publish dates, maintainers and provenance (#73). A
+  minor bump under `docs/lifecycle.md#skill-versions`: it changes how the
+  skill gathers evidence (fewer pip-audit runs, a new registry lookup),
+  which can change what it reports, though its checklist and output shape
+  are unchanged.
+- Every adapter appends a `## Declared capabilities` section to a skill that
+  asks for more than a read-only review (#73): an edit, a credential, an
+  agent tool, a new file, or any command beyond read-only git (`git fetch`,
+  `diff`, `ls-files`, `log`, `show`, `status`, `blame`). It tells the agent
+  in plain terms what the skill asks of it and that it asks for nothing else;
+  read-only reviews render unchanged. The adapter contract fixtures pin the
+  section, since the synthetic contract skill now declares the project's
+  test command it runs (contract `sha256:7c21e0856472`).
 - Asking an adapter for a scope it doesn't support now tells you what works
   instead (#79). For example, `--agent cursor-rule --scope global` names
   `--scope project`. On `install` it also names `--agent cursor`, which
   supports `--scope global`.
 - `meta.yaml` rejects keys other than `name`, `description`, `category`,
-  `version`, `supported-agents` and `deprecated`, so a misspelt field fails
-  loudly instead of being ignored (#77).
+  `version`, `supported-agents`, `capabilities` and `deprecated`, so a
+  misspelt field fails loudly instead of being ignored (#77, #73).
 - `skilldeck provenance --json` writes its JSON as UTF-8 bytes with `\n`
   line endings, as `catalog --json` does, so the output is byte-identical on
   Windows too (#77).
@@ -485,6 +527,52 @@ All notable changes to this project are documented here. The format is based on
   policy. Without release tags it prints a note and skips the notice rules.
   An impossible CHANGELOG date is a clean error here and in
   `prepare_release.py`.
+- Skill capability declarations (#73). Every `meta.yaml` now declares, under
+  a required, versioned `capabilities` block (schema 1), what the skill may
+  ask an agent to do: which files it reads (`none`, `diff` or `repo`) and
+  edits (`none` or `repo`), the commands it may run, what it contacts over
+  the network and why, the credentials it handles, the agent tools it needs,
+  and the files it may create. Anything not declared is not requested. The
+  registry rejects a malformed block: an unknown or missing key, another
+  schema number, a command given as a path to a script, an interpreter given
+  a script or inline code (`sh check.sh`, `python -c`), a command with shell
+  operators, or an artifact path that is absolute, names a drive or home
+  directory, uses `\` or has a `..` component. It is a declaration for
+  review; skilldeck cannot enforce it inside an agent. See
+  `docs/authoring-skills.md#capabilities`.
+  - `skilldeck show <skill> --summary` prints a skill's source, the build it
+    was recorded as coming from, its canonical digest (and whether it
+    matches the content manifest shipped in the package), deprecation state
+    and declared capabilities, and points to `provenance --verify` and
+    `docs/verifying-releases.md` for real verification.
+  - `skilldeck install ... --dry-run` prints that summary for each skill and
+    what installing it would do for each agent (install, update, rewrite,
+    overwrite, or the error a real install would hit, including a
+    destination folder that can't be created), and writes nothing.
+  - `skilldeck catalog --json` reports each skill's `capabilities`, an
+    additive field (`schema_version` stays 1).
+  - The bundled declarations were reviewed against each skill's
+    instructions: every review skill runs `git fetch`, `git diff` and
+    `git ls-files` and contacts the git remote; `dependency-review` may also
+    run `npm audit`, `pip-audit --disable-pip`, `osv-scanner`,
+    `govulncheck`, `cargo audit` and `gh api`, query advisory databases and
+    fetch advisory and package registry pages; `test-review` may run the
+    project's own tests in a temporary `git worktree`; `logging` may edit
+    repository files when it adds logging.
+- Skill bundle validation (#73). A skill directory must hold exactly
+  `meta.yaml` and `skill.md` as regular files. Loading a skill rejects a
+  symlink or Windows junction (including a linked skill directory), a
+  subdirectory, and any other file, naming a script, a file with its execute
+  bit set or one starting with `#!` or a binary header as an undeclared
+  executable. It ignores OS and editor leftovers (`.DS_Store`, `Thumbs.db`,
+  `desktop.ini`, `__pycache__`, `._*`, `.#*`, `*~`, `#*#`, Vim swap files),
+  so one stray file doesn't break every command; `provenance --verify` and
+  `catalog` still report them as unexpected files, and also report a
+  `meta.yaml`, `skill.md` or skill directory that is a symlink or junction.
+  A `skill.md` link to a relative path, absolute path, `file:` URL or other
+  non-web scheme (in a Markdown link, image, reference definition or
+  autolink, or an HTML tag's `src`/`href`) is rejected as an asset the skill
+  can't ship.
 - Agent compatibility matrix, `docs/compatibility.md` (#79), linked from the
   README and `docs/adapters.md`. It lists every adapter, including the
   `copilot-prompt`, `cursor-rule` and `kiro-steering` legacy adapters, with:

@@ -1,10 +1,24 @@
 name: code-smells
 description: Review pending changes for code smells that signal a need for refactoring.
 category: review
-version: 0.3.0
+version: 0.3.1
 supported-agents:
   - claude
   - codex
   - copilot
   - cursor
   - kiro
+capabilities:
+  schema: 1
+  files:
+    read: repo
+    write: none
+  commands:
+    - git fetch
+    - git diff
+    - git ls-files
+  network:
+    - the git remote, via git fetch, to bring the base branch up to date
+  credentials: []
+  tools: []
+  artifacts: []
