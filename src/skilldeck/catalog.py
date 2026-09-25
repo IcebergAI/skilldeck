@@ -99,6 +99,19 @@ def _entry(skill: Skill, digest: str) -> CatalogSkill:
     }
 
 
+def skill_entry(skill: Skill) -> CatalogSkill:
+    """The catalog entry for ``skill``, its canonical digest recomputed from
+    its files and not checked against any content manifest.
+
+    ``skilldeck validate`` uses it to check that a skill the package does not
+    ship yet can be described. Raises ``OSError`` or ``UnicodeDecodeError``
+    if ``meta.yaml`` cannot be read, and ``SkillError`` if an adapter cannot
+    render the skill.
+    """
+    meta_text = (skill.path / "meta.yaml").read_text(encoding="utf-8")
+    return _entry(skill, canonical_skill_digest(meta_text, skill.body))
+
+
 def build_catalog(
     skills: Iterable[Skill], manifest: ContentManifest | None = None
 ) -> Catalog:

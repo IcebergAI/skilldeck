@@ -81,7 +81,9 @@ rests on.
 
 (OWASP's matrix calls the low/low cell "Note"; skills fold it into `low` or
 drop it.) This is the one-paragraph form of the matrix, covering every cell,
-that every skill inlines word for word:
+that every skill inlines word for word (`skilldeck new` writes it and
+`skilldeck validate` checks it from a copy in `skilldeck/lint.py`, which a
+test keeps identical to this one):
 
 > Rate `severity` on the shared severity rubric, impact × likelihood:
 > **critical** — high impact (code execution, auth bypass, stolen credentials or

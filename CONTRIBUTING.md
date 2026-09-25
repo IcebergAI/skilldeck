@@ -48,10 +48,17 @@ create them.
 ## Authoring or changing a skill
 
 Skills live in `src/skilldeck/skills/<name>/` as a `meta.yaml` + `skill.md`, authored
-once in an agent-neutral format — never hand-edit per-agent output. A skill's
-`meta.yaml` `name` must match its directory name. See
-[docs/authoring-skills.md](docs/authoring-skills.md) for the full guide, and bump that
-skill's own `version` in `meta.yaml` whenever its content changes.
+once in an agent-neutral format — never hand-edit per-agent output. Scaffold a new one
+and check your work with:
+
+```bash
+uv run --extra dev skilldeck new my-review --category security
+uv run --extra dev skilldeck validate my-review   # file, rule and fix per problem
+```
+
+See [docs/authoring-skills.md](docs/authoring-skills.md) for the full guide and the
+review path, and bump that skill's own `version` in `meta.yaml` whenever its content
+changes.
 
 ## Opening the pull request
 

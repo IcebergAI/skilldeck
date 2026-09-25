@@ -153,6 +153,10 @@ skilldeck provenance --verify
 # Machine-readable, schema-versioned skill catalog for tools (filters optional)
 skilldeck catalog --json
 skilldeck catalog --json --category security --agent claude
+
+# Author a skill: scaffold it, then check it against every rule, offline
+skilldeck new my-review --category security --dir skills
+skilldeck validate --skills-dir skills my-review
 ```
 
 `skilldeck catalog --json` is a stable contract for tools; see
@@ -208,8 +212,12 @@ release; the package remains unpublished today.
 ## Authoring skills
 
 Each skill is a directory under `src/skilldeck/skills/` containing a `meta.yaml`
-and a `skill.md`. See [docs/authoring-skills.md](docs/authoring-skills.md), and
-follow the [contributor guide](CONTRIBUTING.md) for setup and validation.
+and a `skill.md`. Start one with `skilldeck new` and check it with
+`skilldeck validate`, which names the file, rule and fix for every problem; in
+your own repository, pass `--dir` / `--skills-dir` to keep organization skills
+there. See [docs/authoring-skills.md](docs/authoring-skills.md), including the
+review path for official and organization skills, and follow the
+[contributor guide](CONTRIBUTING.md) for setup.
 
 ## Changelog
 
