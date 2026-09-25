@@ -9,8 +9,7 @@ block's format; this module reads schema 1.
 
 A declaration is for review, not enforcement. Skilldeck cannot sandbox the
 agents it installs into, and no metadata makes a malicious instruction safe.
-Anything a skill does not declare, it does not request: an attempt to do it
-comes from somewhere other than the skill, to refuse or review by hand.
+Anything a skill does not declare, it does not request.
 ``docs/authoring-skills.md`` documents the format.
 """
 
@@ -35,6 +34,41 @@ WRITE_SCOPES = ("none", "repo")
 #: the list fields, in the order summaries show them
 LIST_FIELDS = ("commands", "network", "credentials", "tools", "artifacts")
 MAX_ENTRY_LENGTH = 200
+#: read-only git commands a review needs; a skill that asks for no more than
+#: these (and the git remote they contact) and reading files is rendered
+#: without a notice
+GIT_BASELINE = frozenset(
+    {
+        "git fetch",
+        "git diff",
+        "git ls-files",
+        "git log",
+        "git show",
+        "git status",
+        "git blame",
+    }
+)
+#: suffixes of files a shell, an interpreter or the OS runs as a program
+SCRIPT_SUFFIXES = frozenset(
+    {
+        ".app", ".bash", ".bat", ".bin", ".cjs", ".cmd", ".com", ".command",
+        ".csh", ".dll", ".dylib", ".exe", ".fish", ".jar", ".js", ".ksh",
+        ".lua", ".mjs", ".msi", ".php", ".pl", ".ps1", ".psm1", ".py", ".pyw",
+        ".rb", ".scr", ".sh", ".so", ".ts", ".vbs", ".wsf", ".zsh",
+    }
+)  # fmt: skip
+# Interpreters: declaring one with a script (a path, or a file with a script
+# suffix) or inline code (-c, -e, ...) would run code the skill cannot ship
+# or the declaration does not show.
+_INTERPRETERS = frozenset(
+    {
+        "bash", "dash", "deno", "fish", "ksh", "node", "perl", "php",
+        "powershell", "pwsh", "python", "python3", "ruby", "sh", "zsh",
+    }
+)  # fmt: skip
+_INLINE_CODE_FLAGS = frozenset(
+    {"--command", "--eval", "--print", "-command", "-encodedcommand", "-file"}
+)
 
 # A command names a program on PATH (never a path to a file: a skill ships no
 # scripts) followed by its subcommand or arguments, single-spaced. A
@@ -64,14 +98,19 @@ _WRITE_TEXT = {
 }
 # (label, field) of each list the notice shows, in order; commands and paths
 # are shown as code
-_NOTICE_LABELS = (
-    ("Commands", "commands"),
-    ("Network", "network"),
-    ("Credentials", "credentials"),
-    ("Agent tools", "tools"),
-    ("Creates", "artifacts"),
-)
 _CODE_FIELDS = frozenset({"commands", "artifacts"})
+# How the notice opens, by read scope, and the verb it gives each description
+# list. The notice speaks to the agent.
+_NOTICE_LEAD = {
+    "repo": "Beyond reading the repository, this skill asks you to:",
+    "diff": "Beyond reading the changed files, this skill asks you to:",
+    "none": "This skill reads none of your files. It asks you to:",
+}
+_NOTICE_VERBS = (
+    ("network", "contact"),
+    ("credentials", "use these credentials:"),
+    ("tools", "use these agent tools:"),
+)
 
 
 class CapabilityError(ValueError):
@@ -113,10 +152,18 @@ class Capabilities:
     artifacts: tuple[str, ...] = ()
 
     @property
-    def beyond_reading(self) -> bool:
-        """Whether it asks for anything but reading files."""
-        return self.write != "none" or any(
-            getattr(self, field) for field in LIST_FIELDS
+    def beyond_review_baseline(self) -> bool:
+        """Whether it asks for more than a read-only review: reading files and
+        running :data:`GIT_BASELINE` commands, with the git remote they reach.
+
+        That is, an edit, a credential, an agent tool, a new file, or any
+        other command. Network use alone doesn't count: without another
+        command or tool, the git remote is the only thing a skill can reach.
+        """
+        return (
+            self.write != "none"
+            or bool(self.credentials or self.tools or self.artifacts)
+            or any(command not in GIT_BASELINE for command in self.commands)
         )
 
     def record(self) -> CapabilityRecord:
@@ -245,12 +292,41 @@ def _check_command(entry: str, where: str) -> None:
             f"{where} entry {entry!r} runs a file by its path; a command must "
             "name a program on PATH, since a skill ships no scripts"
         )
+    if program in _INTERPRETERS and any(
+        _runs_code(argument) for argument in entry.split(" ")[1:]
+    ):
+        raise CapabilityError(
+            f"{where} entry {entry!r} has {program} run a script or inline "
+            "code; a command must name a program on PATH, since a skill ships "
+            "no scripts. Declare a command the project defines as a "
+            "<placeholder>"
+        )
     if not _PROGRAM_RE.fullmatch(program):
         raise CapabilityError(
             f"{where} entry {entry!r} must start with a program name "
             "(letters, digits, '.', '_', '+' and '-'), or be a <placeholder> "
             "for a command the project defines"
         )
+
+
+def _runs_code(argument: str) -> bool:
+    """Whether an interpreter's ``argument`` names a script or passes code:
+    a path, a file with a script suffix, or an inline-code flag (``-c``,
+    ``-e``, ``-E``, also inside a cluster such as ``-lc``)."""
+    if "/" in argument or "\\" in argument:
+        return True
+    if any(argument.lower().endswith(suffix) for suffix in SCRIPT_SUFFIXES):
+        return True
+    if argument.lower() in _INLINE_CODE_FLAGS:
+        return True
+    cluster = argument[1:]
+    return (
+        argument.startswith("-")
+        and not argument.startswith("--")
+        and cluster.isalpha()
+        and any(flag in cluster for flag in "ceE")
+        and argument.lower() not in {"-version", "-help"}
+    )
 
 
 def _check_path(entry: str, where: str) -> None:
@@ -303,36 +379,42 @@ def summary(capabilities: Capabilities) -> list[tuple[str, tuple[str, ...]]]:
 
 def notice(capabilities: Capabilities) -> str:
     """The Markdown section adapters append to a skill that asks for more
-    than reading files; empty for one that doesn't.
+    than a read-only review (:attr:`Capabilities.beyond_review_baseline`);
+    empty for one that doesn't.
 
-    It travels with the installed file, so whoever reads it (the agent, or a
-    person reviewing what was installed) sees the declaration. Commands and
-    paths are code, listed inline; descriptions get an item each once there
-    are several.
+    It speaks to the agent: everything the skill asks for beyond reading
+    files, every command (the git baseline included) and every network use,
+    then that it asks for nothing else. Commands and paths are code, listed
+    inline; descriptions get an item each once there are several. It adds no
+    instruction of its own.
     """
-    if not capabilities.beyond_reading:
+    if not capabilities.beyond_review_baseline:
         return ""
+    items: list[str] = []
+    if capabilities.commands:
+        commands = ", ".join(f"`{command}`" for command in capabilities.commands)
+        items.append(f"- run {commands}")
+    if capabilities.write == "repo":
+        items.append("- edit files in the repository")
+    if capabilities.artifacts:
+        created = ", ".join(f"`{path}`" for path in capabilities.artifacts)
+        items.append(f"- create {created}")
+    for field, verb in _NOTICE_VERBS:
+        entries: tuple[str, ...] = getattr(capabilities, field)
+        if len(entries) == 1:
+            items.append(f"- {verb} {entries[0]}")
+        elif entries:
+            items.append(f"- {verb.rstrip(':')}:")
+            items.extend(f"  - {entry}" for entry in entries)
     lines = [
         "## Declared capabilities",
         "",
-        "What this skill may ask for, as declared in its skilldeck metadata",
-        f"(capability schema {CAPABILITY_SCHEMA}). The declaration is for "
-        "review: nothing enforces it.",
-        "Anything not listed here is not requested by this skill.",
+        _NOTICE_LEAD[capabilities.read],
         "",
-        f"- Files: {files_text(capabilities)}",
+        *items,
+        "",
+        "It asks for nothing else.",
     ]
-    for label, field in _NOTICE_LABELS:
-        entries: tuple[str, ...] = getattr(capabilities, field)
-        if not entries:
-            continue
-        if field in _CODE_FIELDS:
-            lines.append(f"- {label}: " + ", ".join(f"`{e}`" for e in entries))
-        elif len(entries) == 1:
-            lines.append(f"- {label}: {entries[0]}")
-        else:
-            lines.append(f"- {label}:")
-            lines.extend(f"  - {entry}" for entry in entries)
     return "\n".join(lines) + "\n"
 
 

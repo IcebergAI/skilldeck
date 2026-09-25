@@ -52,13 +52,16 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
     `provenance` and `catalog`
   - `registry.py` — discovers and validates skills, including the optional
     `deprecated` metadata, and the bundle rules: a skill directory is exactly
-    regular `meta.yaml` + `skill.md` (no scripts, assets or symlinks), and
-    `skill.md` links only to the web or its own headings
+    regular `meta.yaml` + `skill.md` (no scripts, assets, symlinks or
+    junctions; OS/editor leftovers such as `.DS_Store` are ignored when
+    loading but still fail `provenance --verify`), and `skill.md` links only
+    to the web or its own headings
   - `capabilities.py` — the versioned `capabilities` declaration every
     `meta.yaml` carries (files, commands, network, credentials, tools,
     artifacts), its validation, the `## Declared capabilities` notice
-    adapters append for skills that ask for more than reading files, and the
-    summary `show --summary` / `install --dry-run` print
+    adapters append for skills that ask for more than a read-only review
+    (reading files plus read-only git commands; those render unchanged), and
+    the summary `show --summary` / `install --dry-run` print
   - `catalog.py` + `catalog.schema.json` — the public, schema-versioned
     `skilldeck catalog --json` contract (the schema ships in the wheel);
     change it only per the compatibility rules in `docs/catalog.md` (bump
@@ -116,9 +119,11 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
 - Every skill declares `capabilities` (schema 1, every key spelled out, `[]`
   or `none` when unused) that match what `skill.md` actually asks the agent
   to do; update it with the body (`tests/test_skill_structure.py` checks
-  declared commands against the body both ways). Undeclared means not
-  requested; it is a declaration for review, never presented as
-  enforcement. See `docs/authoring-skills.md#capabilities`.
+  declared commands against the body both ways; list a span the skill only
+  quotes in its `MENTIONED_ONLY`). Undeclared means not requested; it is a
+  declaration for review, never presented as enforcement. The rendered notice
+  speaks to the agent and adds no instructions of its own. See
+  `docs/authoring-skills.md#capabilities`.
 - Any change to an adapter's output format, paths or env handling must update
   its contract fixtures, the `adapter-contract` digest and matrix rows in
   `docs/compatibility.md`, and CHANGELOG. The contract tests enforce the

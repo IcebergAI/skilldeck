@@ -18,7 +18,7 @@ capabilities:
     - git diff
     - git ls-files
     - npm audit
-    - pip-audit
+    - pip-audit --disable-pip
     - osv-scanner
     - govulncheck
     - cargo audit
@@ -28,7 +28,8 @@ capabilities:
     - vulnerability databases and package registries, queried by the audit commands
     - GitHub's advisory API, via gh api with its existing login
     - advisory pages, fetched to verify an advisory ID before citing it
+    - package registry pages, fetched for a package's publish dates, maintainers and provenance
   credentials: []
   tools:
-    - web fetch, to read advisory pages
+    - web fetch, to read advisory and package registry pages
   artifacts: []

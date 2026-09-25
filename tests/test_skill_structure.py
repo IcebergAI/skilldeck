@@ -10,6 +10,7 @@ skill inlines word for word, so the tests compare it to the doc.
 """
 
 import re
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -163,17 +164,74 @@ def test_skill_description_is_a_single_sentence_line(skill):
     )
 
 
-# Programs a code span in a skill body is taken to run: every program some
-# official skill declares a command for. (Skills also quote commands as
-# patterns to look for, such as `sh -c` in a CI job, so a wider list would
-# flag those.) A span that is only the program's name is a mention.
-COMMAND_PROGRAMS = {
+# Programs a code span in a skill body is taken to run: common CLIs (forges,
+# network clients, package managers, scanners, test runners, interpreters and
+# infrastructure tools) and every program an official skill declares. A span
+# that is only the program's name is a mention, not a command.
+KNOWN_PROGRAMS = {
+    # version control, forges and the network
+    "git", "gh", "glab", "curl", "wget",
+    # package managers
+    "npm", "npx", "pnpm", "yarn", "bun", "pip", "pip3", "pipx", "uv", "uvx",
+    "poetry", "cargo", "go", "gem", "bundle", "composer", "mvn", "gradle",
+    "dotnet", "brew", "apt", "apt-get",
+    # scanners and linters
+    "pip-audit", "osv-scanner", "govulncheck", "semgrep", "trivy", "grype",
+    "syft", "checkov", "tfsec", "kics", "kube-score", "conftest", "zizmor",
+    "actionlint", "bandit", "gitleaks", "trufflehog", "snyk", "safety",
+    "squawk", "hadolint",
+    # test runners and build tools
+    "pytest", "tox", "nox", "jest", "vitest", "mocha", "rspec", "phpunit", "make",
+    # interpreters and shells
+    "python", "python3", "node", "deno", "ruby", "perl", "php", "sh", "bash",
+    "zsh", "pwsh",
+    # infrastructure
+    "docker", "kubectl", "helm", "terraform",
+}  # fmt: skip
+COMMAND_PROGRAMS = KNOWN_PROGRAMS | {
     command.split(" ")[0]
     for skill in SKILLS
     for command in skill.capabilities.commands
     if not command.startswith("<")
 }
+# Code spans a skill quotes without asking the agent to run them, per skill:
+# patterns to look for in the code under review, or commands to avoid. Each
+# must still appear in that skill's body.
+MENTIONED_ONLY = {
+    "ci-workflow-review": {
+        # interpreter flags a CI step can inject through
+        "bash -c",
+        "node -e",
+        "perl -e",
+        "python -c",
+        "ruby -e",
+        "sh -c",
+        'sh -c "… $VAR"',
+        'sh -c \'notify "$1"\' _ "$CI_COMMIT_TITLE"',
+    },
+    # the unsafe invocations the skill warns against
+    "dependency-review": {"pip install -r", "pip-audit -r <file>"},
+}
 _CODE_SPAN_RE = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.S)
+
+
+def _spans(skill):
+    return [" ".join(m.group(2).split()) for m in _CODE_SPAN_RE.finditer(skill.body)]
+
+
+def _undeclared(skill):
+    """Code spans in ``skill``'s body that run a known program with a command
+    its capabilities don't declare."""
+    return sorted(
+        {
+            span
+            for span in _spans(skill)
+            if span.split(" ")[0] in COMMAND_PROGRAMS
+            and span not in COMMAND_PROGRAMS
+            and span not in MENTIONED_ONLY.get(skill.name, ())
+            and not any(_runs(span, command) for command in skill.capabilities.commands)
+        }
+    )
 
 
 def _runs(span, command):
@@ -183,20 +241,13 @@ def _runs(span, command):
 @pytest.mark.parametrize("skill", SKILLS, ids=lambda s: s.name)
 def test_skill_declares_the_commands_its_body_names(skill):
     # the capability declaration must keep up with the body, both ways
-    spans = [" ".join(m.group(2).split()) for m in _CODE_SPAN_RE.finditer(skill.body)]
+    spans = _spans(skill)
     declared = skill.capabilities.commands
-    undeclared = sorted(
-        {
-            span
-            for span in spans
-            if span.split(" ")[0] in COMMAND_PROGRAMS
-            and span not in COMMAND_PROGRAMS
-            and not any(_runs(span, command) for command in declared)
-        }
-    )
+    undeclared = _undeclared(skill)
     assert not undeclared, (
         f"{skill.name}/skill.md runs commands its meta.yaml capabilities.commands "
-        f"does not declare: {undeclared}"
+        f"does not declare: {undeclared} (declare them, or, for a span the skill "
+        "only quotes, add it to MENTIONED_ONLY)"
     )
     unused = [
         command
@@ -209,6 +260,28 @@ def test_skill_declares_the_commands_its_body_names(skill):
     assert not unused, (
         f"{skill.name}/meta.yaml declares commands its skill.md never names: {unused}"
     )
+
+
+def test_mentioned_only_spans_are_still_in_their_skills():
+    by_name = {skill.name: skill for skill in SKILLS}
+    for name, mentioned in MENTIONED_ONLY.items():
+        assert mentioned <= set(_spans(by_name[name])), name
+
+
+def test_a_command_no_skill_declares_yet_is_still_caught():
+    # the fixed list flags programs that no skill declares, so adding the
+    # first scanner, network call or test run to a body can't slip through
+    security = next(skill for skill in SKILLS if skill.name == "security-review")
+    added = (
+        "\nAlso run `semgrep --config auto`, `curl https://example.com/x` and"
+        " `pytest -x`; `semgrep` alone is a mention.\n"
+    )
+    edited = replace(security, body=security.body + added)
+    assert _undeclared(edited) == [
+        "curl https://example.com/x",
+        "pytest -x",
+        "semgrep --config auto",
+    ]
 
 
 @pytest.mark.parametrize("skill", SKILLS, ids=lambda s: s.name)

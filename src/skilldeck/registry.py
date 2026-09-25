@@ -25,7 +25,12 @@ from typing import Any
 
 import yaml
 
-from .capabilities import Capabilities, CapabilityError, parse_capabilities
+from .capabilities import (
+    SCRIPT_SUFFIXES,
+    Capabilities,
+    CapabilityError,
+    parse_capabilities,
+)
 
 # Bundled ``skills/`` directory, co-located with this module inside the package.
 # Resolving relative to ``__file__`` works identically for an editable checkout
@@ -64,16 +69,13 @@ DEPRECATION_FIELDS = ("since", "reason", "replacement")
 #: skill, so a bundle has no way to carry a script, an asset or a link, and a
 #: skill's metadata cannot declare one.
 BUNDLE_FILES = ("meta.yaml", "skill.md")
-# Suffixes of files a shell, an interpreter or the OS runs as a program; only
-# used to say why an extra file is refused (every extra file is).
-SCRIPT_SUFFIXES = frozenset(
-    {
-        ".app", ".bash", ".bat", ".bin", ".cjs", ".cmd", ".com", ".command",
-        ".csh", ".dll", ".dylib", ".exe", ".fish", ".jar", ".js", ".ksh",
-        ".lua", ".mjs", ".msi", ".php", ".pl", ".ps1", ".psm1", ".py", ".pyw",
-        ".rb", ".scr", ".sh", ".so", ".ts", ".vbs", ".wsf", ".zsh",
-    }
-)  # fmt: skip
+# Files an OS or editor leaves next to the ones you edit: macOS Finder and
+# AppleDouble files, Windows thumbnail and folder settings, Python bytecode,
+# and Emacs and Vim backup, lock, autosave and swap files. Loading a skill
+# ignores them, so one stray file doesn't break every command;
+# ``provenance --verify`` (the release-integrity check) still reports them.
+_JUNK_NAMES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini", "__pycache__"})
+_JUNK_RE = re.compile(r"\._.*|\.#.*|.*~|#.*#|\..+\.sw[a-p]", re.S)
 # Leading bytes of native binaries: ELF, PE (MZ) and Mach-O (32/64-bit, both
 # byte orders, and universal).
 _BINARY_MAGIC = (
@@ -85,15 +87,21 @@ _BINARY_MAGIC = (
     b"\xcf\xfa\xed\xfe",
     b"\xca\xfe\xba\xbe",
 )
-# Markdown the link check must skip: fenced code blocks and code spans.
+# Markdown the link check must skip: fenced and indented code blocks, and
+# code spans.
 _FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+_LIST_ITEM_RE = re.compile(r"(?:[-*+]|[0-9]{1,9}[.)])(?: |$)")
 _CODE_SPAN_RE = re.compile(r"(?<!`)(`+)(?!`).+?(?<!`)\1(?!`)", re.S)
-# Link targets: inline links and images, reference definitions, and HTML
-# src/href attributes.
+# Link targets: inline links and images, reference definitions, autolinks,
+# and the src/href attributes of HTML tags.
 _LINK_TARGET_RES = (
     re.compile(r"\]\(\s*<?([^)\s>]*)"),
     re.compile(r"^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)", re.M),
-    re.compile(r"""\b(?:src|href)\s*=\s*["']?([^"'\s>]+)""", re.I),
+    re.compile(r"<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*)>"),
+)
+_HTML_TAG_RE = re.compile(r"<[A-Za-z][A-Za-z0-9-]*\s[^<>]*>")
+_HTML_LINK_ATTR_RE = re.compile(
+    r"""(?<![\w-])(?:src|href)\s*=\s*["']?([^"'\s>]+)""", re.I
 )
 _SCHEME_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:")
 #: link schemes that resolve wherever the installed file ends up
@@ -137,8 +145,10 @@ def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> 
     meta_path = skill_dir / "meta.yaml"
     body_path = skill_dir / "skill.md"
 
-    if skill_dir.is_symlink():
-        raise SkillError(f"{skill_dir}: the skill directory is a symlink")
+    if is_link(skill_dir):
+        raise SkillError(
+            f"{skill_dir}: the skill directory is a {link_kind(skill_dir)}"
+        )
     problems = bundle_problems(skill_dir) if skill_dir.is_dir() else []
     if problems:
         raise SkillError(
@@ -259,14 +269,33 @@ def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> 
     )
 
 
+def is_junk(name: str) -> bool:
+    """Whether ``name`` is a file an OS or editor leaves behind, which loading
+    a skill ignores (``provenance --verify`` does not)."""
+    return name in _JUNK_NAMES or bool(_JUNK_RE.fullmatch(name))
+
+
+def is_link(path: Path) -> bool:
+    """Whether ``path`` is a symlink or, on Windows, a directory junction;
+    neither is followed."""
+    isjunction = getattr(os.path, "isjunction", None)  # Python 3.12+
+    return path.is_symlink() or bool(isjunction and isjunction(path))
+
+
+def link_kind(path: Path) -> str:
+    return "symlink" if path.is_symlink() else "junction"
+
+
 def bundle_problems(skill_dir: Path) -> list[str]:
     """What in ``skill_dir`` breaks the bundle rules; ``[]`` if nothing does.
 
-    One message per offending entry: a symlink (never followed), a directory
-    or other non-regular file, or any file besides :data:`BUNDLE_FILES`, which
-    the message calls executable when its suffix, execute bit (not on
-    Windows, which has none) or first bytes say it is a program. Every such
-    file is refused, since a skill cannot ship or declare one.
+    One message per offending entry: a symlink or junction (never followed),
+    a directory or other non-regular file, or any file besides
+    :data:`BUNDLE_FILES`, which the message calls executable when its suffix,
+    execute bit (not on Windows, which has none) or first bytes say it is a
+    program. Every such file is refused, since a skill cannot ship or declare
+    one. OS and editor leftovers (:func:`is_junk`) are skipped, unless one is
+    a link: only an Emacs lock file (``.#name``) is a symlink by nature.
     """
     try:
         entries = sorted(skill_dir.iterdir(), key=lambda entry: entry.name)
@@ -279,8 +308,11 @@ def bundle_problems(skill_dir: Path) -> list[str]:
         except OSError as exc:
             problems.append(f"cannot inspect {entry.name}: {exc}")
             continue
-        if stat.S_ISLNK(mode):
-            problems.append(f"{entry.name} is a symlink")
+        link = stat.S_ISLNK(mode) or is_link(entry)
+        if is_junk(entry.name) and (not link or entry.name.startswith(".#")):
+            continue
+        if link:
+            problems.append(f"{entry.name} is a {link_kind(entry)}")
         elif stat.S_ISDIR(mode):
             problems.append(f"{entry.name} is a directory")
         elif not stat.S_ISREG(mode):
@@ -317,38 +349,72 @@ def _executable(path: Path, mode: int) -> str | None:
 def local_links(body: str) -> list[str]:
     """Link targets in ``body`` that name a file rather than a web page.
 
-    Markdown links, images and reference definitions, and HTML ``src`` and
-    ``href`` attributes, outside code blocks and code spans. A target counts
-    unless it is a ``#heading`` anchor or uses one of :data:`WEB_SCHEMES` (or
-    is scheme-relative, ``//host/...``); a relative path, an absolute one, a
-    ``file:`` URL and any other scheme all count. Sorted, each once.
+    Markdown links, images, reference definitions and autolinks, and the
+    ``src`` and ``href`` attributes of HTML tags, outside code blocks (fenced
+    or indented) and code spans. A target counts unless it is a ``#heading``
+    anchor or uses one of :data:`WEB_SCHEMES` (or is scheme-relative,
+    ``//host/...``); a relative path, an absolute one, a ``file:`` URL and any
+    other scheme all count. Sorted, each once.
+    """
+    text = _CODE_SPAN_RE.sub("", "\n".join(_prose_lines(body)))
+    targets = [
+        target for pattern in _LINK_TARGET_RES for target in pattern.findall(text)
+    ]
+    for tag in _HTML_TAG_RE.findall(text):
+        targets.extend(_HTML_LINK_ATTR_RE.findall(tag))
+    found: set[str] = set()
+    for target in targets:
+        if not target or target.startswith(("#", "//")):
+            continue
+        scheme = _SCHEME_RE.match(target)
+        if scheme and scheme.group(0)[:-1].lower() in WEB_SCHEMES:
+            continue
+        found.add(target)
+    return sorted(found)
+
+
+def _prose_lines(body: str) -> list[str]:
+    """``body``'s lines outside fenced and indented code blocks.
+
+    An indented code block is a run of lines indented four or more columns
+    that starts after a blank line, outside a list: inside one, that
+    indentation continues a list item. A list lasts until a line starts at
+    column 0 after a blank line, or a heading.
     """
     prose: list[str] = []
     fence: str | None = None
+    in_list = in_code = False
+    after_blank = True
     for line in body.splitlines():
-        match = _FENCE_RE.match(line)
-        if fence is None:
-            if match:
-                fence = match.group(1)
-                continue
-            prose.append(line)
-        elif (
-            match
-            and match.group(1)[0] == fence[0]
-            and len(match.group(1)) >= len(fence)
-        ):
-            fence = None
-    text = _CODE_SPAN_RE.sub("", "\n".join(prose))
-    found: set[str] = set()
-    for pattern in _LINK_TARGET_RES:
-        for target in pattern.findall(text):
-            if not target or target.startswith(("#", "//")):
-                continue
-            scheme = _SCHEME_RE.match(target)
-            if scheme and scheme.group(0)[:-1].lower() in WEB_SCHEMES:
-                continue
-            found.add(target)
-    return sorted(found)
+        fence_match = _FENCE_RE.match(line)
+        if fence is not None:
+            closer = fence_match.group(1) if fence_match else ""
+            if closer[:1] == fence[0] and len(closer) >= len(fence):
+                fence = None
+            continue
+        if fence_match:
+            fence = fence_match.group(1)
+            in_code = False
+            continue
+        expanded = line.expandtabs(4)
+        content = expanded.lstrip(" ")
+        indent = len(expanded) - len(content)
+        if not content:
+            after_blank = True
+            prose.append("")
+            continue
+        if indent >= 4 and not in_list and (after_blank or in_code):
+            in_code = True
+            after_blank = False
+            continue
+        in_code = False
+        if indent < 4 and _LIST_ITEM_RE.match(content):
+            in_list = True
+        elif indent == 0 and (after_blank or content.startswith("#")):
+            in_list = False
+        after_blank = False
+        prose.append(line)
+    return prose
 
 
 def _require_str(skill_dir: Path, meta: dict[Any, Any], field: str) -> str:
@@ -456,11 +522,11 @@ def discover_skills(
 
     skills = []
     for child in sorted(root.iterdir()):
-        if child.name.startswith("."):
+        if child.name.startswith(".") or is_junk(child.name):
             continue
         # checked before is_dir(), which follows the link
-        if child.is_symlink():
-            raise SkillError(f"{child}: the skill directory is a symlink")
+        if is_link(child):
+            raise SkillError(f"{child}: the skill directory is a {link_kind(child)}")
         if child.is_dir():
             skills.append(load_skill(child, known_agents))
     _check_replacements(skills)

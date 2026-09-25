@@ -96,15 +96,18 @@ from it, rather than trusting a second file that could drift from it.
   `artifacts` lists in the order the skill declares them, `[]` for none.
   Anything not listed is not requested; the declaration is for review, and
   nothing enforces it. See
-  [Capabilities](authoring-skills.md#capabilities). A new capability schema
-  number is a catalog change like any other, under the rules below.
+  [Capabilities](authoring-skills.md#capabilities). `schema` is always `1`
+  under catalog `schema_version` 1: a new capability schema is a breaking
+  catalog change, which bumps `schema_version`.
 
 `catalog` runs the full `skilldeck provenance --verify` check first. If any
-installed skill no longer matches its recorded digest, is missing, or breaks
-the [bundle rules](authoring-skills.md#what-a-skill-directory-may-hold) (a
-file besides `meta.yaml` and `skill.md`, or a symlink; or the skills
-directory holds anything else), it prints each problem on stderr, nothing on
-stdout, and exits 1. It never produces a catalog for content the package did not ship.
+installed skill no longer matches its recorded digest, is missing, has a file
+the content manifest does not list next to it (OS and editor leftovers
+included), or has a `meta.yaml`, `skill.md` or skill directory that is a
+symlink or junction (or the skills directory holds anything else), it prints
+each problem on stderr, nothing on stdout, and exits 1. It never produces a
+catalog for content the package did not ship. See the
+[bundle rules](authoring-skills.md#what-a-skill-directory-may-hold).
 
 The output is deterministic: the same installed package always prints the same
 bytes on every platform: UTF-8 (in fact ASCII, with `\u` escapes), sorted
@@ -168,6 +171,8 @@ These are **breaking** and bump `schema_version`:
 - changing what a value means, such as the digest algorithm, the bytes
   `canonical_sha256` covers, `rendered_sha256` no longer matching the install
   stamp, or the meaning of `since`;
+- a new capability schema (`capabilities.schema`), or a new value for
+  `capabilities.files.read` or `capabilities.files.write`;
 - dropping a guarantee on this page, such as the sort order or one entry per
   skill.
 

@@ -295,19 +295,19 @@ def _warn_deprecated(skills: Iterable[Skill]) -> None:
 
 
 def _built_from() -> str:
-    """Where this package says it was built from, for a summary."""
+    """Where this package's build metadata says it was built from."""
     try:
         build = load_build_metadata()
     except ValueError as exc:
         return f"unknown ({exc})"
     if build["source_ref"] is None:
-        return "a development build (no release tag or commit recorded)"
+        return "a development build, with no release tag or commit"
     return f"{build['source_ref']}, commit {build['source_commit']}"
 
 
 def _digest_status(skill: Skill) -> str:
-    """``skill``'s canonical digest, and whether the content manifest recorded
-    when the package was built vouches for it."""
+    """``skill``'s canonical digest, and whether it matches the content
+    manifest this package shipped with (a claim of the package itself)."""
     try:
         meta_text = (skill.path / "meta.yaml").read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
@@ -320,10 +320,13 @@ def _digest_status(skill: Skill) -> str:
     recorded = {record["name"]: record["canonical_sha256"] for record in records}
     expected = recorded.get(skill.name)
     if expected is None:
-        return f"{digest} (NOT in the content manifest)"
+        return f"{digest} (NOT in the content manifest shipped in this package)"
     if digest != expected:
-        return f"{digest} (does NOT match the content manifest's {expected})"
-    return f"{digest} (matches the content manifest)"
+        return (
+            f"{digest} (does NOT match the content manifest shipped in this "
+            f"package: {expected})"
+        )
+    return f"{digest} (matches the content manifest shipped in this package)"
 
 
 def _summary_lines(skill: Skill) -> list[str]:
@@ -338,8 +341,11 @@ def _summary_lines(skill: Skill) -> list[str]:
         f"{skill.name} {skill.version} ({skill.category})",
         f"  {skill.description}",
         f"  source:      {REPOSITORY_URL}, {SKILLS_SOURCE_PATH}/{skill.name}",
-        f"  built from:  {_built_from()}",
+        f"  built from:  {_built_from()} (recorded at build)",
         f"  digest:      {_digest_status(skill)}",
+        "  verify:      both lines above are the package's own records; "
+        "skilldeck provenance --verify re-hashes the installed skills, and "
+        "docs/verifying-releases.md checks the package itself",
         f"  deprecated:  {deprecated}",
         "  capabilities (declared for review, not enforced; anything not listed "
         "is not requested):",
@@ -515,9 +521,11 @@ def _preview_install(
     """Print what ``install`` would do, writing nothing; return whether every
     install would succeed.
 
-    Each skill's summary comes first, then one line per adapter: the same
-    checks as a real install (``Adapter.install`` with ``dry_run``), and the
-    same errors on stderr.
+    Each skill's summary comes first, then one line per adapter. The checks
+    are a real install's (``Adapter.install`` with ``dry_run``), with the
+    same errors on stderr, except that instead of creating the destination's
+    folder it checks the folder could be created; a failure only writing
+    reveals, such as a full disk, still shows up only in a real install.
     """
     ok = True
     for index, skill in enumerate(skills):

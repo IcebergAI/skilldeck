@@ -99,6 +99,22 @@ def _entry_mode(path: Path) -> int | None:
         raise SkillError(f"cannot inspect {path}: {exc}") from exc
 
 
+def _check_creatable(skill: Skill, dest: Path) -> None:
+    """Raise :class:`SkillError`, as ``install`` would on writing, unless the
+    nearest existing directory on the way to ``dest`` could hold it."""
+    ancestor = dest.parent
+    while not os.path.lexists(ancestor) and ancestor != ancestor.parent:
+        ancestor = ancestor.parent
+    if not ancestor.is_dir():
+        raise SkillError(
+            f"cannot install {skill.name} to {dest}: {ancestor} is not a directory"
+        )
+    if not os.access(ancestor, os.W_OK | os.X_OK):
+        raise SkillError(
+            f"cannot install {skill.name} to {dest}: {ancestor} is not writable"
+        )
+
+
 def _special_kind(mode: int) -> str:
     """Name what a non-regular, non-symlink entry is, for error messages."""
     return "a directory" if stat.S_ISDIR(mode) else "a special file"
@@ -257,8 +273,11 @@ class Adapter(ABC):
     ) -> Path:
         """Write ``skill`` to its destination; return the destination.
 
-        ``dry_run`` makes every check a real install makes, raising the same
-        errors, then returns without writing anything.
+        ``dry_run`` makes the checks a real install makes, raising the same
+        errors, then returns without writing anything. Instead of creating
+        the destination's directory it checks that the nearest part of that
+        path that exists is a directory it may write to; a real install can
+        still fail for a reason only writing reveals, such as a full disk.
         """
         self.check_scope(scope, installing=True)
         dest = self.destination(skill, scope, project_root)
@@ -292,6 +311,7 @@ class Adapter(ABC):
                     "re-run with --force to overwrite them"
                 )
         if dry_run:
+            _check_creatable(skill, dest)
             return dest
         try:
             dest.parent.mkdir(parents=True, exist_ok=True)

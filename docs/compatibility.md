@@ -1,6 +1,6 @@
 # Agent compatibility
 
-<!-- adapter-contract: sha256:d8b7d4463e849cf64e11a9c5e05721bdfff8149098cd5ebe6e6934cf54185e55 -->
+<!-- adapter-contract: sha256:7c21e08564727bfc9e6258b30d046a37d684a845b699a73b1215c2a33dda4438 -->
 
 This page lists what skilldeck installs for each agent and where it goes. It
 also covers how you then use a skill in that agent, the agent version it needs,
@@ -226,7 +226,8 @@ The full list of sources, with paths and line numbers, is in
 
 - `skill/contract-demo/` is a small synthetic skill. Its description needs
   YAML quoting and folding, and its body has non-ASCII text. It declares a
-  command (`git diff`), so every expected file also pins the
+  command beyond the read-only git baseline
+  (`<the project's test command>`), so every expected file also pins the
   `## Declared capabilities` section adapters append to such a skill.
 - `contracts.json` gives each adapter's project and global paths, the text
   its `--scope global` error must contain if it is project-only (for

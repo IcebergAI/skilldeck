@@ -144,10 +144,10 @@ than manufacturing findings.
 
 ## Declared capabilities
 
-What this skill may ask for, as declared in its skilldeck metadata
-(capability schema 1). The declaration is for review: nothing enforces it.
-Anything not listed here is not requested by this skill.
+Beyond reading the repository, this skill asks you to:
 
-- Files: reads the repository; may edit files in the repository
-- Commands: `git fetch`, `git diff`, `git ls-files`
-- Network: the git remote, via git fetch, to bring the base branch up to date
+- run `git fetch`, `git diff`, `git ls-files`
+- edit files in the repository
+- contact the git remote, via git fetch, to bring the base branch up to date
+
+It asks for nothing else.

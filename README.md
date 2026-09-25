@@ -165,11 +165,12 @@ Every skill declares its capabilities: which files it reads or edits, the
 commands it may ask your agent to run, what it contacts over the network and
 why, and any credentials, agent tools or new files it needs. Anything not
 declared is not requested. `show --summary` and `install --dry-run` print the
-declaration before you install, and a skill that asks for more than reading
-files carries it in its installed `SKILL.md` as a "Declared capabilities"
-section. It is a declaration for review, not a sandbox: skilldeck can't
-enforce it inside your agent, so review what a skill asks for (see
-[Capabilities](docs/authoring-skills.md#capabilities)).
+declaration before you install. A skill that asks for more than a read-only
+review (reading files and read-only git commands) also carries it in its
+installed `SKILL.md`, as a "Declared capabilities" section telling your agent
+what the skill asks of it. It is a declaration for review, not a sandbox:
+skilldeck can't enforce it inside your agent, so review what a skill asks for
+(see [Capabilities](docs/authoring-skills.md#capabilities)).
 
 Installed files carry a `skilldeck` stamp recording the skill version, so
 `status` can tell current, stale, and locally modified installs apart. Files you

@@ -37,7 +37,14 @@ rest of the application surface.
 3. Diff old vs new versions to see exactly what changed. If automated tooling is
    available (`npm audit`, `pip-audit`, `osv-scanner`, `govulncheck`,
    `cargo audit`, `gh` advisory APIs), run it and cite the results; otherwise
-   reason from the version changes and known advisories.
+   reason from the version changes and known advisories. `pip-audit -r <file>`
+   resolves the requirements as `pip install -r` would, so run `pip-audit` only
+   on a fully pinned file without resolving it:
+   `pip-audit --disable-pip --require-hashes -r <file>`, or `--no-deps` in place
+   of `--require-hashes` when the pins carry no hashes; skip it for anything
+   else ([pip-audit security model](https://github.com/pypa/pip-audit#security-model)).
+   For a package's publish dates, maintainers, and provenance, read its
+   registry page.
 4. This skill owns package manifests and lockfiles; how CI steps and images
    are pinned belongs to `ci-workflow-review`, and IaC images and modules to
    `iac-review`. If the owner runs in the same review, leave its area to it;
@@ -136,15 +143,15 @@ changes are clean, say so explicitly.
 
 ## Declared capabilities
 
-What this skill may ask for, as declared in its skilldeck metadata
-(capability schema 1). The declaration is for review: nothing enforces it.
-Anything not listed here is not requested by this skill.
+Beyond reading the repository, this skill asks you to:
 
-- Files: reads the repository; edits no files
-- Commands: `git fetch`, `git diff`, `git ls-files`, `npm audit`, `pip-audit`, `osv-scanner`, `govulncheck`, `cargo audit`, `gh api`
-- Network:
+- run `git fetch`, `git diff`, `git ls-files`, `npm audit`, `pip-audit --disable-pip`, `osv-scanner`, `govulncheck`, `cargo audit`, `gh api`
+- contact:
   - the git remote, via git fetch, to bring the base branch up to date
   - vulnerability databases and package registries, queried by the audit commands
   - GitHub's advisory API, via gh api with its existing login
   - advisory pages, fetched to verify an advisory ID before citing it
-- Agent tools: web fetch, to read advisory pages
+  - package registry pages, fetched for a package's publish dates, maintainers and provenance
+- use these agent tools: web fetch, to read advisory and package registry pages
+
+It asks for nothing else.

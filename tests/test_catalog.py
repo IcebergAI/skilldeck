@@ -519,10 +519,15 @@ def test_show_summary_names_the_release_it_was_built_from(monkeypatch):
         },
     )
     out = _invoke("show", "logging", "--summary").stdout
-    assert f"  built from:  refs/tags/v9.9.9, commit {commit}\n" in out
+    assert (
+        f"  built from:  refs/tags/v9.9.9, commit {commit} (recorded at build)\n" in out
+    )
     monkeypatch.undo()
     out = _invoke("show", "logging", "--summary").stdout
-    assert "  built from:  a development build (no release tag or commit" in out
+    assert (
+        "  built from:  a development build, with no release tag or commit "
+        "(recorded at build)\n"
+    ) in out
 
 
 def test_list_does_not_mark_current_skills():
@@ -542,11 +547,9 @@ def test_catalog_rejects_skills_that_differ_from_the_manifest(tmp_path, monkeypa
 @pytest.mark.parametrize(
     ("extra", "problem"),
     [
-        (
-            "logging/payload.sh",
-            "logging: payload.sh is an undeclared executable (a .sh file)",
-        ),
-        ("logging/notes.txt", "logging: notes.txt is not meta.yaml or skill.md"),
+        ("logging/payload.sh", "logging: unexpected file(s): payload.sh"),
+        # an OS leftover loading ignores still fails the integrity check
+        ("logging/.DS_Store", "logging: unexpected file(s): .DS_Store"),
         ("README.txt", "README.txt: not listed in the packaged content manifest"),
     ],
 )

@@ -17,6 +17,8 @@ capabilities:
     - git fetch
     - git diff
     - git ls-files
+    - git worktree add
+    - git worktree remove
     - <the project's test command>
   network:
     - the git remote, via git fetch, to bring the base branch up to date

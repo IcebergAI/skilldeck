@@ -164,7 +164,7 @@ def test_verify_bundled_skills_reports_every_kind_of_drift(installed_skills):
     (installed_skills / "rogue").mkdir()
     problems = verify_bundled_skills()
     assert any(p.startswith("logging: installed files do not match") for p in problems)
-    assert "code-smells: notes.md is not meta.yaml or skill.md" in problems
+    assert "code-smells: unexpected file(s): notes.md" in problems
     assert any(p.startswith("iac-review: cannot read") for p in problems)
     assert "rogue: not listed in the packaged content manifest" in problems
     assert len(problems) == 4

@@ -91,9 +91,10 @@ a modified install still reports the original identity.
 `skilldeck provenance --verify` **checks** those claims: it re-hashes every
 installed skill's `meta.yaml` and `skill.md`, and exits 1 with an error naming
 each skill that no longer matches its recorded canonical digest, is missing,
-or has unexpected files or symlinks next to it. It combines with `--json`. It detects
-changes to installed skill files; it cannot vouch for a package whose code was
-also changed, since that code does the checking. Verify the wheel itself (the
+has unexpected files next to it, or is (or holds) a symlink or junction in
+place of its files. It combines with `--json`. It detects changes to
+installed skill files; it cannot vouch for a package whose code was also
+changed, since that code does the checking. Verify the wheel itself (the
 steps above) before installing it.
 
 A source checkout honestly reports the tag and commit as unavailable instead

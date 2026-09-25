@@ -152,7 +152,7 @@
       ],
       "properties": {
         "schema": {
-          "description": "The capability schema of the declaration. Changing it is a catalog change like any other (see docs/catalog.md).",
+          "description": "The capability schema of the declaration. A new capability schema is a breaking catalog change: it bumps schema_version (see docs/catalog.md).",
           "const": 1
         },
         "files": {

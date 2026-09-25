@@ -17,6 +17,7 @@ from skilldeck import provenance, registry
 from skilldeck.adapters import ADAPTERS, ALL_ADAPTERS
 from skilldeck.adapters.base import rendered_body
 from skilldeck.capabilities import (
+    GIT_BASELINE,
     Capabilities,
     CapabilityError,
     notice,
@@ -80,20 +81,33 @@ def test_parse_reads_every_field():
     assert FULL.record() == {**raw, "schema": 1}
 
 
-def test_read_only_declaration_requests_nothing_beyond_reading():
+BASELINE_REVIEW = Capabilities(
+    read="repo",
+    commands=tuple(sorted(GIT_BASELINE)),
+    network=("the git remote, via git fetch",),
+)
+
+
+def test_a_read_only_review_stays_within_the_baseline():
     caps = parse_capabilities(_raw())
     assert caps == Capabilities(read="repo")
-    assert not caps.beyond_reading
-    assert not Capabilities().beyond_reading
+    assert not caps.beyond_review_baseline
+    assert not Capabilities().beyond_review_baseline
+    # read-only git commands and the git remote they reach are the baseline
+    assert not BASELINE_REVIEW.beyond_review_baseline
+    assert not Capabilities(network=("the git remote",)).beyond_review_baseline
     for field, value in (
         ("write", "repo"),
-        ("commands", ("git diff",)),
-        ("network", ("x",)),
+        ("commands", ("git diff", "git push")),
+        ("commands", ("git worktree add",)),
+        ("commands", ("<the project's test command>",)),
+        ("commands", ("npm audit",)),
         ("credentials", ("x",)),
         ("tools", ("x",)),
         ("artifacts", ("x.md",)),
     ):
-        assert Capabilities(**{field: value}).beyond_reading, field
+        caps = Capabilities(read="repo", **{field: value})
+        assert caps.beyond_review_baseline, (field, value)
 
 
 @pytest.mark.parametrize(
@@ -134,6 +148,20 @@ def test_read_only_declaration_requests_nothing_beyond_reading():
         (_raw(commands=["scripts/check.sh --all"]), "by its path"),
         (_raw(commands=["C:\\tools\\x.exe"]), "by its path"),
         (_raw(commands=["-rf"]), "must start with a program name"),
+        (_raw(commands=["sh ./check.sh"]), "run a script or inline code"),
+        (_raw(commands=["sh check.sh"]), "run a script or inline code"),
+        (_raw(commands=["python ../x.py"]), "run a script or inline code"),
+        (_raw(commands=["python manage.py test"]), "run a script or inline code"),
+        (_raw(commands=["python3 -c pass"]), "run a script or inline code"),
+        (_raw(commands=["bash -c make"]), "run a script or inline code"),
+        (_raw(commands=["bash -lc make"]), "run a script or inline code"),
+        (_raw(commands=["node -e x"]), "run a script or inline code"),
+        (_raw(commands=["node --eval x"]), "run a script or inline code"),
+        (_raw(commands=["ruby app.rb"]), "run a script or inline code"),
+        (_raw(commands=["perl -E say"]), "run a script or inline code"),
+        (_raw(commands=["pwsh -Command Get-Item"]), "run a script or inline code"),
+        (_raw(commands=["pwsh -File x"]), "run a script or inline code"),
+        (_raw(commands=["zsh scripts\\x"]), "run a script or inline code"),
         (_raw(commands=["+x"]), "must start with a program name"),
     ],
 )
@@ -164,6 +192,14 @@ def test_artifact_paths_must_stay_inside_the_project(path, reason):
         parse_capabilities(_raw(artifacts=[path]))
 
 
+@pytest.mark.parametrize(
+    "command",
+    ["python -m pytest", "python3 -m pip_audit", "node --version", "git diff ./src"],
+)
+def test_interpreters_may_run_modules_and_other_programs_take_paths(command):
+    assert parse_capabilities(_raw(commands=[command])).commands == (command,)
+
+
 @pytest.mark.parametrize("path", ["review.md", "reports/review.md", ".skilldeck/r.md"])
 def test_relative_artifact_paths_are_accepted(path):
     assert parse_capabilities(_raw(artifacts=[path])).artifacts == (path,)
@@ -172,32 +208,70 @@ def test_relative_artifact_paths_are_accepted(path):
 # --- the notice adapters render -------------------------------------------------
 
 
-def test_read_only_skills_get_no_notice():
-    assert notice(Capabilities(read="repo")) == ""
-    assert with_notice("body", Capabilities(read="repo")) == "body"
+def test_a_read_only_review_gets_no_notice():
+    for caps in (Capabilities(read="repo"), BASELINE_REVIEW):
+        assert notice(caps) == ""
+        assert with_notice("body", caps) == "body"
 
 
-def test_notice_lists_what_the_skill_declares():
+def test_notice_tells_the_agent_everything_the_skill_asks_for():
     assert with_notice("# Demo\n", FULL) == (
         "# Demo\n"
         "\n"
         "## Declared capabilities\n"
         "\n"
-        "What this skill may ask for, as declared in its skilldeck metadata\n"
-        "(capability schema 1). The declaration is for review: nothing enforces it.\n"
-        "Anything not listed here is not requested by this skill.\n"
+        "Beyond reading the changed files, this skill asks you to:\n"
         "\n"
-        "- Files: reads the changed files; may edit files in the repository\n"
-        "- Commands: `git diff`, `<the project's test command>`\n"
-        "- Network:\n"
+        "- run `git diff`, `<the project's test command>`\n"
+        "- edit files in the repository\n"
+        "- create `reports/review.md`\n"
+        "- contact:\n"
         "  - the git remote, to fetch\n"
         "  - an advisory database\n"
-        "- Credentials: a registry token from NPM_TOKEN\n"
-        "- Agent tools: web fetch\n"
-        "- Creates: `reports/review.md`\n"
+        "- use these credentials: a registry token from NPM_TOKEN\n"
+        "- use these agent tools: web fetch\n"
+        "\n"
+        "It asks for nothing else.\n"
     )
     # a body without a final newline still gets a blank line before the notice
     assert with_notice("# Demo", FULL).startswith("# Demo\n\n## Declared")
+
+
+def test_notice_lists_baseline_commands_and_network_once_it_renders():
+    caps = Capabilities(
+        read="repo",
+        write="repo",
+        commands=("git fetch", "git diff"),
+        network=("the git remote, via git fetch",),
+    )
+    assert notice(caps) == (
+        "## Declared capabilities\n"
+        "\n"
+        "Beyond reading the repository, this skill asks you to:\n"
+        "\n"
+        "- run `git fetch`, `git diff`\n"
+        "- edit files in the repository\n"
+        "- contact the git remote, via git fetch\n"
+        "\n"
+        "It asks for nothing else.\n"
+    )
+    assert notice(Capabilities(tools=("web fetch", "web search"))) == (
+        "## Declared capabilities\n"
+        "\n"
+        "This skill reads none of your files. It asks you to:\n"
+        "\n"
+        "- use these agent tools:\n"
+        "  - web fetch\n"
+        "  - web search\n"
+        "\n"
+        "It asks for nothing else.\n"
+    )
+
+
+def test_notice_speaks_to_the_agent_not_about_skilldeck():
+    text = notice(FULL)
+    for phrase in ("skilldeck", "schema", "enforce", "refuse"):
+        assert phrase not in text.lower(), phrase
 
 
 def _skill(capabilities, body="# Demo\n\nDo the review.\n"):
@@ -217,18 +291,21 @@ def _skill(capabilities, body="# Demo\n\nDo the review.\n"):
 def test_every_adapter_carries_the_notice(name):
     adapter = ALL_ADAPTERS[name]
     for caps in (
-        Capabilities(read="repo", commands=("git diff",)),
-        Capabilities(read="repo", network=("an advisory database",)),
+        Capabilities(read="repo", commands=("git diff", "npm audit")),
+        Capabilities(read="repo", write="repo"),
         Capabilities(read="repo", credentials=("a token from GH_TOKEN",)),
+        Capabilities(read="repo", tools=("web fetch",)),
+        Capabilities(read="repo", artifacts=("review.md",)),
         FULL,
     ):
         rendered = adapter.render(_skill(caps))
         assert rendered.endswith(with_notice("# Demo\n\nDo the review.\n", caps))
         assert "\n## Declared capabilities\n" in rendered
-    # a skill that only reads renders its body unchanged
-    plain = adapter.render(_skill(Capabilities(read="repo")))
-    assert plain.endswith("# Demo\n\nDo the review.\n")
-    assert "Declared capabilities" not in plain
+    # a read-only review renders its body unchanged
+    for caps in (Capabilities(read="repo"), BASELINE_REVIEW):
+        plain = adapter.render(_skill(caps))
+        assert plain.endswith("# Demo\n\nDo the review.\n")
+        assert "Declared capabilities" not in plain
 
 
 def test_installed_file_keeps_the_notice_above_the_stamp(tmp_path):
@@ -236,7 +313,7 @@ def test_installed_file_keeps_the_notice_above_the_stamp(tmp_path):
     dest = adapter.install(_skill(FULL), Scope.PROJECT, project_root=tmp_path)
     text = dest.read_text(encoding="utf-8")
     assert text == stamp(adapter.render(_skill(FULL)), "demo", "0.1.0")
-    assert "- Creates: `reports/review.md`\n<!-- skilldeck " in text
+    assert "It asks for nothing else.\n<!-- skilldeck " in text
 
 
 def test_summary_marks_what_is_not_requested():
@@ -323,7 +400,8 @@ def test_malformed_capabilities_name_the_skill(tmp_path):
         ),
         ("helper", b"\x7fELF\x02\x01", "helper is an undeclared executable (a native"),
         ("notes.txt", b"just notes\n", "notes.txt is not meta.yaml or skill.md"),
-        (".DS_Store", b"\x00\x00", ".DS_Store is not meta.yaml or skill.md"),
+        (".env", b"TOKEN=x\n", ".env is not meta.yaml or skill.md"),
+        ("run.sh.bak", b"echo\n", "run.sh.bak is not meta.yaml or skill.md"),
     ],
 )
 def test_extra_files_are_rejected(tmp_path, name, content, problem):
@@ -356,6 +434,88 @@ def test_an_execute_bit_on_the_bundle_files_themselves_is_tolerated(tmp_path):
     for name in ("meta.yaml", "skill.md"):
         (skill_dir / name).chmod(0o755)
     assert load_skill(skill_dir).name == "demo"
+
+
+JUNK = [
+    ".DS_Store",
+    "Thumbs.db",
+    "desktop.ini",
+    "._skill.md",
+    "skill.md~",
+    "#skill.md#",
+    ".skill.md.swp",
+    ".meta.yaml.swo",
+]
+
+
+@pytest.mark.parametrize("name", JUNK)
+def test_os_and_editor_leftovers_are_ignored_when_loading(tmp_path, name):
+    skill_dir = _bundle(tmp_path)
+    (skill_dir / name).write_bytes(b"\x00junk")
+    assert registry.bundle_problems(skill_dir) == []
+    assert load_skill(skill_dir).name == "demo"
+
+
+def test_a_pycache_directory_is_ignored_when_loading(tmp_path):
+    skill_dir = _bundle(tmp_path / "skills")
+    (skill_dir / "__pycache__").mkdir()
+    (skill_dir / "__pycache__" / "x.cpython-312.pyc").write_bytes(b"\x00")
+    (tmp_path / "skills" / "__pycache__").mkdir()
+    (tmp_path / "skills" / "Thumbs.db").write_bytes(b"\x00")
+    assert [skill.name for skill in discover_skills(tmp_path / "skills")] == ["demo"]
+
+
+def test_an_emacs_lock_symlink_is_ignored_but_other_junk_links_are_not(
+    tmp_path, symlink
+):
+    skill_dir = _bundle(tmp_path)
+    # Emacs writes its lock as a dangling symlink named .#<file>
+    symlink(skill_dir / ".#skill.md", Path("user@host.1234"))
+    assert load_skill(skill_dir).name == "demo"
+    secret = tmp_path / "secret.txt"
+    secret.write_text("token\n", encoding="utf-8")
+    symlink(skill_dir / ".DS_Store", secret)
+    with pytest.raises(SkillError, match=r"\.DS_Store is a symlink"):
+        load_skill(skill_dir)
+
+
+def test_leftovers_still_fail_provenance_verify(bundled_copy):
+    for name in (".DS_Store", "skill.md~", ".skill.md.swp"):
+        (bundled_copy / "logging" / name).write_bytes(b"\x00")
+    # every command that loads the skills keeps working...
+    assert discover_skills(bundled_copy)
+    assert CliRunner().invoke(cli, ["list"]).exit_code == 0
+    # ...but the release-integrity check reports them, as it always did
+    assert verify_bundled_skills() == [
+        "logging: unexpected file(s): .DS_Store, .skill.md.swp, skill.md~"
+    ]
+    assert CliRunner().invoke(cli, ["provenance", "--verify"]).exit_code == 1
+    assert CliRunner().invoke(cli, ["catalog", "--json"]).exit_code == 1
+
+
+def test_a_junction_counts_as_a_link(tmp_path, monkeypatch):
+    # os.path.isjunction exists from Python 3.12 and is only ever true on
+    # Windows; stand one in for the skill directory and one of its files
+    skill_dir = _bundle(tmp_path / "skills")
+    junctions = {skill_dir / "skill.md"}
+    monkeypatch.setattr(
+        os.path, "isjunction", lambda path: Path(path) in junctions, raising=False
+    )
+    with pytest.raises(SkillError, match="skill.md is a junction"):
+        load_skill(skill_dir)
+    junctions = {skill_dir}
+    with pytest.raises(SkillError, match="the skill directory is a junction"):
+        discover_skills(tmp_path / "skills")
+    with pytest.raises(SkillError, match="the skill directory is a junction"):
+        load_skill(skill_dir)
+
+
+def test_a_junction_fails_provenance_verify(bundled_copy, monkeypatch):
+    target = bundled_copy / "logging" / "meta.yaml"
+    monkeypatch.setattr(
+        os.path, "isjunction", lambda path: Path(path) == target, raising=False
+    )
+    assert verify_bundled_skills() == ["logging: meta.yaml is a junction"]
 
 
 def test_a_directory_in_a_bundle_is_rejected(tmp_path):
@@ -427,6 +587,38 @@ def test_web_links_anchors_and_code_are_not_file_references():
     assert local_links(body + "\n[after](after.md)\n") == ["after.md"]
 
 
+@pytest.mark.parametrize(
+    "prose",
+    [
+        "Never set location.href = userInput from the query string.",
+        "Check where src= comes from before trusting it.",
+        "A <b>bold</b> claim, and a <placeholder> for a command.",
+        'Para.\n\n    [indented](code.md)\n    <img src="code.png">\n\nText.',
+        "Para.\n\n\t[tab-indented](code.md)\n",
+    ],
+)
+def test_prose_and_indented_code_are_not_file_references(prose):
+    assert local_links(prose) == []
+
+
+@pytest.mark.parametrize(
+    ("body", "found"),
+    [
+        ("An autolink: <file:///etc/passwd>.", ["file:///etc/passwd"]),
+        ("<https://owasp.org/> and <mailto:a@example.com>", []),
+        ('<a title="x"\n href="scripts/run.sh">run</a>', ["scripts/run.sh"]),
+        (
+            "- item\n\n    continued, with [a link](inside-list.md)\n",
+            ["inside-list.md"],
+        ),
+        ("1. step\n    [lazy](cont.md)\n", ["cont.md"]),
+        ("- item\n\nNot in the list.\n\n    [code](x.md)\n", []),
+    ],
+)
+def test_link_check_edge_cases(body, found):
+    assert local_links(body) == found
+
+
 def test_bundled_skills_link_only_to_the_web():
     for skill in discover_skills(known_agents=set(ADAPTERS)):
         assert local_links(skill.body) == [], skill.name
@@ -444,7 +636,7 @@ def bundled_copy(tmp_path, monkeypatch):
     return copy
 
 
-def test_provenance_verify_reports_symlinks_and_executables(bundled_copy, symlink):
+def test_provenance_verify_reports_symlinks_and_extra_files(bundled_copy, symlink):
     assert verify_bundled_skills() == []
     body = bundled_copy / "logging" / "skill.md"
     target = bundled_copy.parent / "logging-skill.md"
@@ -452,7 +644,7 @@ def test_provenance_verify_reports_symlinks_and_executables(bundled_copy, symlin
     symlink(body, target)  # same bytes, so the digest still matches
     (bundled_copy / "code-smells" / "fix.py").write_text("x\n", encoding="utf-8")
     assert verify_bundled_skills() == [
-        "code-smells: fix.py is an undeclared executable (a .py file)",
+        "code-smells: unexpected file(s): fix.py",
         "logging: skill.md is a symlink",
     ]
     result = CliRunner().invoke(cli, ["provenance", "--verify"])
@@ -474,7 +666,11 @@ def test_show_summary_prints_trust_and_capabilities():
     ) in lines
     assert any(
         line.startswith("  digest:      sha256:")
-        and line.endswith("(matches the content manifest)")
+        and line.endswith("(matches the content manifest shipped in this package)")
+        for line in lines
+    )
+    assert any(
+        line.startswith("  verify:      ") and "skilldeck provenance --verify" in line
         for line in lines
     )
     assert "  deprecated:  no" in lines
@@ -484,7 +680,9 @@ def test_show_summary_prints_trust_and_capabilities():
         for line in lines
     )
     assert "    credentials: none" in lines
-    assert "    tools:       web fetch, to read advisory pages" in lines
+    assert (
+        "    tools:       web fetch, to read advisory and package registry pages"
+    ) in lines
     # each network description on its own line
     network = lines.index(
         "    network:     the git remote, via git fetch, to bring the base branch "
@@ -503,11 +701,15 @@ def test_show_summary_and_agent_are_exclusive():
 
 
 def test_show_agent_prints_the_notice_that_is_installed():
-    skill = next(s for s in discover_skills() if s.name == "security-review")
-    result = CliRunner().invoke(cli, ["show", "security-review", "--agent", "codex"])
+    skills = {s.name: s for s in discover_skills()}
+    result = CliRunner().invoke(cli, ["show", "logging", "--agent", "codex"])
     assert result.exit_code == 0, result.output
-    assert result.output.endswith(rendered_body(skill))
-    assert "- Commands: `git fetch`, `git diff`, `git ls-files`\n" in result.output
+    assert result.output.endswith(rendered_body(skills["logging"]))
+    assert "\n- edit files in the repository\n" in result.output
+    # a read-only review is shown, and installed, exactly as its body
+    plain = CliRunner().invoke(cli, ["show", "security-review", "--agent", "codex"])
+    assert plain.output.endswith("\n\n" + skills["security-review"].body)
+    assert "Declared capabilities" not in plain.output
 
 
 def _snapshot(root: Path) -> dict[str, bytes]:
@@ -590,9 +792,29 @@ def test_install_dry_run_flags_a_skill_the_manifest_does_not_know(
         cli, ["install", "demo", "--agent", "claude", "--dry-run"]
     )
     assert result.exit_code == 0, result.output
-    assert "(NOT in the content manifest)" in result.output
+    assert "(NOT in the content manifest shipped in this package)" in result.output
     assert "    commands:    git diff\n" in result.output
     assert not (tmp_path / ".claude").exists()
+
+
+def test_install_dry_run_reports_a_path_that_cannot_hold_the_skill(
+    tmp_path, monkeypatch
+):
+    # .claude/skills is a regular file, so creating the skill's folder fails
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude" / "skills").write_text("not a folder\n", encoding="utf-8")
+    args = ["install", "security-review", "--agent", "claude"]
+    preview = CliRunner().invoke(cli, [*args, "--dry-run"])
+    assert preview.exit_code == 1
+    assert "would install" not in preview.output
+    blocked = tmp_path.resolve() / ".claude" / "skills"
+    assert f"cannot install security-review to {blocked}" in preview.output
+    assert f"{blocked} is not a directory" in preview.output
+    # the real install fails the same way
+    real = CliRunner().invoke(cli, args)
+    assert real.exit_code == 1
+    assert f"error: cannot install security-review to {blocked}" in real.output
 
 
 def test_install_prints_nothing_new_without_dry_run(tmp_path, monkeypatch):
