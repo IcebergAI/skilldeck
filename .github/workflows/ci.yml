@@ -40,6 +40,18 @@ jobs:
           else
             python scripts/check_release_consistency.py
           fi
+      - name: Lifecycle notes (removals, deprecations, breaking changes)
+        # docs/lifecycle.md: on a PR, compatibility changes since the target
+        # branch need CHANGELOG entries; always, the newest release's bump
+        # must be big enough for what it removes or deprecates
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            uv run --locked --extra dev python scripts/check_lifecycle.py --base "origin/$BASE_REF"
+          else
+            uv run --locked --extra dev python scripts/check_lifecycle.py
+          fi
 
   test:
     runs-on: ubuntu-latest

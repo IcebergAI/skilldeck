@@ -11,10 +11,14 @@ rules can't silently drift.
 - **SemVer**, and the project is **pre-1.0**: a breaking change bumps the
   **minor** (`0.2 → 0.3`); features and fixes bump the minor or patch at
   discretion. (Dropping Python 3.9 in 0.2.0 was breaking; the two new skills in
-  0.3.0 were additive.)
+  0.3.0 were additive.) A release with Removed or Deprecated entries, or an
+  entry marked **Breaking:**, can't be a patch release. See
+  [Lifecycle and compatibility](lifecycle.md#the-package) for what counts as
+  breaking, the rules from 1.0, and the notice period before a removal.
 - **Skill versions are independent.** Each skill carries its own `version` in
   `meta.yaml`; bump it whenever that skill's content changes, regardless of the
-  project version.
+  project version. [Skill versions](lifecycle.md#skill-versions) says which
+  changes are major, minor or patch.
 - **The Claude Code plugin version follows its content.** It equals the
   project version only for the content prepared for that release; any other
   content on `main` ships as a development version such as
@@ -178,6 +182,18 @@ Consumer verification is documented in
   `refs/tags/vX.Y.Z` (no leading zeros) is accepted; anything else (for
   example `refs/tags/x/v0.3.0`, `v0.3.0rc1`, or `v0.04.0`, which PEP 440
   would publish as 0.4.0) is rejected outright.
+
+`scripts/check_lifecycle.py` checks the lifecycle notes described in
+[Lifecycle and compatibility](lifecycle.md#release-checks). It needs PyYAML
+and the package, so the `lint` job runs it with `uv run`. On a pull request
+it compares the change with `--base origin/<target branch>`, and requires a
+CHANGELOG entry for each removed or newly deprecated skill, agent dropped
+from a skill, removed adapter, major skill version and catalog
+`schema_version` change. A skill removal must also follow a published
+deprecation by the notice period. Every run also checks that the newest
+dated CHANGELOG section is a big enough version bump for its Removed,
+Deprecated and **Breaking:** entries, which `prepare_release.py` checks
+before it writes anything.
 
 Every script reads the version through `scripts/_pyproject.py`, which takes
 `version` from the `[project]` table only (via `tomllib` on Python 3.11+, and a

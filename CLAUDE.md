@@ -77,7 +77,8 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
   (`tests/test_eval_scoring.py`). See `evals/README.md`. New/changed skills
   should be run through them.
 - `docs/` — `authoring-skills.md`, `adapters.md`, `catalog.md`, `compatibility.md`
-  (the public agent compatibility matrix), `releasing.md`
+  (the public agent compatibility matrix), `lifecycle.md` (the versioning,
+  deprecation and compatibility policy), `releasing.md`
 - `tests/fixtures/adapter-contracts/` — each adapter's exact rendered file,
   paths and env-override behaviour for one synthetic skill; checked byte for
   byte by `tests/test_adapter_contracts.py`
@@ -140,6 +141,22 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
   stay in sync — `scripts/check_release_consistency.py` enforces this in CI and
   `pytest`. A dated CHANGELOG section without a matching `v*` tag is prepared, not
   published.
+- Lifecycle: follow `docs/lifecycle.md` for what bumps package/skill versions
+  (skills: removing a checklist area or changing output shape is major, adding
+  checks minor, wording/citations patch) and for deprecation → notice → removal
+  (a deprecation must ship in a tagged release ≥90 days before removal, 180
+  from 1.0; urgent security fixes may skip it). `scripts/check_lifecycle.py`
+  (CI `lint` job, `--base origin/<target>`; needs `uv run --locked --extra dev`)
+  fails a PR unless CHANGELOG `[Unreleased]` (or the newest dated section) has a
+  bullet naming the thing **in backticks**: `### Removed` for a removed skill
+  (which must also be deprecated at base with a published, old-enough
+  `### Deprecated` entry, unless a `### Security` entry names it), a removed
+  adapter, or an agent dropped from a skill (skill and agent in one bullet);
+  `### Deprecated` for a newly deprecated skill; `### Changed` naming skill +
+  new version for a major skill bump; `**Breaking:**` + `schema_version` for a
+  catalog schema bump. It also fails (as does `prepare_release.py`) when the
+  newest dated section is a patch release with Removed/Deprecated/**Breaking**
+  entries. Run it locally with `--base origin/main` before pushing.
 - Release CI must build once, verify wheel/sdist/plugin identity (against the
   tagged commit's files), produce a runtime-only SPDX SBOM and exact
   checksums, attest those bytes, then publish the same bundle. The build job

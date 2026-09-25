@@ -516,6 +516,49 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Lifecycle and compatibility policy, `docs/lifecycle.md` (#78), linked from
+  the README, `CONTRIBUTING.md`, `docs/releasing.md`,
+  `docs/authoring-skills.md`, `docs/compatibility.md` and `docs/catalog.md`.
+  It defines:
+
+  - what bumps the package version before and after 1.0 (a patch release
+    never removes, deprecates or breaks anything);
+  - what makes a skill change major, minor or patch (skills don't get SemVer's
+    0.x exception), and how skill versions meet `status` and `update`;
+  - the deprecate, notice and remove path for skills, agents and formats:
+    a deprecation must ship in a tagged release at least 90 days before the
+    removal (180 days from 1.0). A rename is a new skill plus a deprecation;
+  - what `status`, `update` and `uninstall` do with installed copies of a
+    removed skill, or of a skill that dropped an agent;
+  - how `meta.yaml`, the catalog, install stamps and future lockfiles (#71)
+    may change. Every stamp format stays readable, and `update` migrates old
+    stamps;
+  - which output is a stable contract (`catalog --json`, `provenance --json`,
+    run records) and which is human output that may change;
+  - the urgent security-fix path.
+
+  Tests walk through a skill rename, an agent removal and a stamp-format
+  migration, and pin the current stamp format byte for byte.
+- `scripts/check_lifecycle.py`, run by CI's `lint` job with
+  `--base origin/<target>`, requires CHANGELOG notes when compatibility
+  changes. Each note is a bullet under `[Unreleased]` (or the newest dated
+  section) that names the skill, agent or adapter in backticks:
+
+  - a removed skill needs a Removed entry, a deprecation at the base, and, once
+    a release has contained the skill, a published Deprecated entry at least
+    the notice period old. A Security entry naming the skill skips the last
+    two;
+  - a newly deprecated skill needs a Deprecated entry;
+  - an agent dropped from a skill, or a removed adapter, needs a Removed entry;
+  - a major skill version needs a Changed entry giving the new version;
+  - a change to the catalog's schema version needs an entry marked as
+    breaking.
+
+  It also fails, as `scripts/prepare_release.py` now does before writing
+  anything, when the newest dated section is a patch release with Removed,
+  Deprecated or breaking entries (from 1.0, Removed and breaking entries need
+  a major release). Every error says what to add and where, and links the
+  policy.
 - Agent compatibility matrix, `docs/compatibility.md` (#79), linked from the
   README and `docs/adapters.md`. It lists every adapter, including the
   `copilot-prompt`, `cursor-rule` and `kiro-steering` legacy adapters, with:

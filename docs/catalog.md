@@ -77,7 +77,9 @@ from it, rather than trusting a second file that could drift from it.
 - `deprecated` is `null`, or an object with `since` (the skill version that
   first carried the deprecation), `replacement` (the skill to use instead, or
   `null`) and `reason`. See
-  [Deprecating a skill](authoring-skills.md#deprecating-a-skill).
+  [Deprecating a skill](authoring-skills.md#deprecating-a-skill). A removed
+  skill is simply absent; [Lifecycle and compatibility](lifecycle.md#the-catalog)
+  covers each state and how long a deprecated skill stays.
 
 `catalog` runs the full `skilldeck provenance --verify` check first. If any
 installed skill no longer matches its recorded digest, is missing, or has a
