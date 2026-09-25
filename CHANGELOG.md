@@ -473,6 +473,43 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Skill author commands (#72). `skilldeck new NAME --category ...` scaffolds
+  a skill: a `meta.yaml` with every required field (version `0.1.0`, every
+  agent unless `--agent` narrows it, and the read-only review `capabilities`
+  the bundled review skills declare: read the repository, `git fetch`,
+  `git diff` and `git ls-files`, and the git remote) and a `skill.md`
+  skeleton with the shared review-skill structure (Scope diff steps, finding
+  format, the severity rubric word for word, verify-before-reporting,
+  findings cap, report header). Wherever domain content goes it writes a
+  `TODO(author)` placeholder; it states no domain guidance and cites no
+  source. In a checkout it also scaffolds `evals/fixtures/NAME/` (skip with
+  `--no-eval-fixture`). `skilldeck validate [NAME|PATH]... [--skills-dir]
+  [--json]` checks skills offline: metadata and the capability declaration,
+  the bundle rules (links, directories, undeclared executables and other
+  files, each reported and never followed), structure, cited sources and
+  local links, declared commands against the body's code spans, leftover
+  placeholders, rendering by every adapter (legacy formats included) and the
+  catalog entry; in a checkout also the eval fixtures (loaded through
+  `evals/run_evals.py`: layout, keywords that echo the planted code, a
+  clean-diff fixture's tolerance), the skill's row in
+  `docs/finding-output.md`, and generated-output freshness
+  (`scripts/build_plugin.py --check`, in process). It never runs code from
+  the tree it checks: the checks that import a checkout's scripts run only
+  when that checkout's `src/skilldeck` is the running skilldeck, and are
+  reported as skipped otherwise. Each problem names the file and line, a
+  rule id, and a fix; `--json` is deterministic, and the exit status is 0
+  only when clean. A fresh skeleton passes every metadata, capability and
+  structure check and is rated `incomplete` (not `invalid`) until its
+  placeholders, sources and eval fixture are written. Outside a checkout
+  both commands need an explicit directory (`--dir`, `--skills-dir`), for
+  organization skills, and `new` never writes into the installed package.
+  `docs/authoring-skills.md` now leads with the commands, lists every rule,
+  and documents the review path for official and organization skills. The
+  structure, citation and declared-command rules moved from the tests into
+  `skilldeck.lint`, which the tests and `validate` share, and the registry's
+  errors carry the rule they break (and, for a YAML syntax error, its line).
+  The fixture keyword-echo and clean-tolerance checks moved into
+  `evals/run_evals.py` helpers that the fixture tests and `validate` share.
 - Lifecycle and compatibility policy, `docs/lifecycle.md` (#78), linked from
   the README, `CONTRIBUTING.md`, `docs/releasing.md`,
   `docs/authoring-skills.md`, `docs/compatibility.md` and `docs/catalog.md`.

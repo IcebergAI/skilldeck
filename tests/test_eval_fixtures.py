@@ -630,24 +630,31 @@ def test_fixture_is_well_formed(path):
         assert (path / "change" / plant.file).is_file(), (
             f"plant file {plant.file} not in change/"
         )
-    if not fixture.plants:
-        # a clean-diff fixture's max-findings is its false-positive tolerance
-        assert fixture.max_findings <= 2, "keep a clean fixture's tolerance small"
+    # a clean-diff fixture's max-findings is its false-positive tolerance
+    assert run_evals.clean_tolerance_problem(fixture) is None
 
 
 @pytest.mark.parametrize("path", FIXTURE_DIRS, ids=lambda p: p.name)
 def test_plant_keywords_describe_the_defect_not_the_code(path):
-    # A keyword copied from the planted code (a variable, an event name, a
-    # CIDR) is satisfied by any report that quotes the line, whether or not it
-    # identified the defect. Same whole-word matching as the scorer.
-    fixture = run_evals.load_fixture(path)
-    for plant in fixture.plants:
-        code = (path / "change" / plant.file).read_text(encoding="utf-8")
-        echoed = [k for k in plant.keywords if run_evals.mentions(code, k)]
-        assert not echoed, (
-            f"{plant.file}: keyword(s) {echoed} appear verbatim in the planted "
-            "code; keywords must describe the defect, not echo the code"
-        )
+    # shared with skilldeck validate; see run_evals.echoed_keywords
+    problems = run_evals.echoed_keywords(run_evals.load_fixture(path))
+    assert not problems, "; ".join(problems)
+
+
+def test_fixture_content_checks_catch_what_they_are_for(tmp_path):
+    change = tmp_path / "change"
+    change.mkdir()
+    (change / "app.py").write_text("session_token = read()\n", encoding="utf-8")
+    plant = run_evals.Plant(file="app.py", keywords=("session_token", "leak"))
+    fixture = run_evals.Fixture(tmp_path, "x", (plant,), max_findings=1)
+    (problem,) = run_evals.echoed_keywords(fixture)
+    assert "['session_token']" in problem
+    clean = run_evals.Fixture(tmp_path, "x", (), max_findings=3)
+    assert "at most 2" in run_evals.clean_tolerance_problem(clean)
+    assert (
+        run_evals.clean_tolerance_problem(dataclasses.replace(clean, max_findings=2))
+        is None
+    )
 
 
 def test_every_planted_fixture_has_sample_reports():

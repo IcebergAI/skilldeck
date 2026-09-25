@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import stat
 from collections.abc import Collection, Iterable
 from itertools import groupby
@@ -9,6 +10,7 @@ from pathlib import Path
 
 import click
 
+from . import authoring
 from .adapters import (
     ADAPTERS,
     ALL_ADAPTERS,
@@ -25,6 +27,7 @@ from .catalog import (
     catalog_schema_text,
     filter_catalog,
 )
+from .lint import PLACEHOLDER
 from .provenance import (
     REPOSITORY_URL,
     canonical_json,
@@ -940,6 +943,203 @@ def _migrate_blocker(old: Path, state: InstallState, force: bool) -> str | None:
             "it with the bundled skill)"
         )
     return None
+
+
+_NO_SKILLS_DIR = (
+    "not inside a skilldeck checkout, so there is no default skills directory"
+)
+
+
+@cli.command(name="new")
+@click.argument("name")
+@click.option(
+    "--category", required=True, help="The skill's category, e.g. security or review."
+)
+@click.option(
+    "--description",
+    default=None,
+    help="The one-sentence description (default: a placeholder to replace).",
+)
+@click.option(
+    "--agent",
+    "agents",
+    multiple=True,
+    type=click.Choice(sorted(ADAPTERS)),
+    help="An agent the skill supports; repeat for several (default: all).",
+)
+@click.option(
+    "--dir",
+    "skills_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="The skills directory to create it in. Default: src/skilldeck/skills "
+    "of the skilldeck checkout you are in; required anywhere else.",
+)
+@click.option(
+    "--no-eval-fixture",
+    is_flag=True,
+    help="In a skilldeck checkout, don't scaffold evals/fixtures/<name>/.",
+)
+def new(
+    name: str,
+    category: str,
+    description: str | None,
+    agents: tuple[str, ...],
+    skills_dir: Path | None,
+    no_eval_fixture: bool,
+) -> None:
+    """Scaffold a new skill: meta.yaml and a skill.md skeleton.
+
+    The skeleton has the structure every review skill shares and a
+    TODO(author) placeholder wherever domain content goes; it states no
+    domain guidance. In a skilldeck checkout it also scaffolds an eval
+    fixture. skilldeck never writes into its installed package.
+    """
+    if skills_dir is None:
+        checkout = authoring.find_checkout(Path.cwd())
+        if checkout is None:
+            raise click.UsageError(
+                f"{_NO_SKILLS_DIR}: pass --dir PATH, e.g. your organization's "
+                "skills directory (skilldeck never writes into its installed "
+                "package)"
+            )
+        skills_dir = checkout.skills_dir
+    try:
+        files = authoring.scaffold(
+            name,
+            category=category,
+            description=description,
+            agents=list(dict.fromkeys(agents)) or sorted(ADAPTERS),
+            skills_dir=skills_dir,
+            eval_fixture=not no_eval_fixture,
+        )
+        authoring.write_files(files)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    except OSError as exc:
+        raise click.ClickException(f"cannot create {name}: {exc}") from exc
+    for path in files:
+        click.echo(f"created {authoring.display_path(path)}")
+    in_checkout = authoring.checkout_of(skills_dir) is not None
+    if in_checkout:
+        check = f"uv run --extra dev skilldeck validate {name}"
+    else:
+        check = (
+            "skilldeck validate --skills-dir "
+            f"{shlex.quote(authoring.display_path(skills_dir))} {name}"
+        )
+    steps = [
+        f"Replace every {PLACEHOLDER} placeholder. Ground the checklist in "
+        "sources you fetched and cite them as links; the template states no "
+        "domain guidance of its own.",
+        "Declare in meta.yaml's capabilities anything the skill asks beyond "
+        "the read-only review it declares now (another command, an edit, a "
+        "credential, an agent tool, a file it creates).",
+    ]
+    if in_checkout:
+        steps += [
+            f"Build the eval fixture in evals/fixtures/{name}/ (see "
+            "evals/README.md), add its SAMPLE_REPORTS entry in "
+            "tests/test_eval_fixtures.py, and add the skill to "
+            "docs/finding-output.md.",
+            "Regenerate the plugin tree: uv run --extra dev python "
+            "scripts/build_plugin.py",
+        ]
+    steps.append(f"Check it: {check}")
+    if in_checkout:
+        steps.append(
+            "Before you push, run the full check suite in CONTRIBUTING.md "
+            "(uv run --extra dev pytest checks what validate cannot, such as "
+            "SAMPLE_REPORTS)."
+        )
+    click.echo("\nNext:")
+    for number, step in enumerate(steps, start=1):
+        click.echo(f"  {number}. {step}")
+
+
+def _is_path_argument(target: str) -> bool:
+    """A skill directory path, as opposed to a skill name."""
+    return target in (".", "..") or "/" in target or "\\" in target
+
+
+@cli.command()
+@click.argument("targets", nargs=-1, metavar="[NAME|PATH]...")
+@click.option(
+    "--skills-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Where to find skills given by NAME, and every skill when none is "
+    "given. Default: src/skilldeck/skills of the skilldeck checkout you are in.",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Emit the deterministic machine-readable report as JSON.",
+)
+def validate(targets: tuple[str, ...], skills_dir: Path | None, as_json: bool) -> None:
+    """Check skills against every authoring rule, offline.
+
+    Checks meta.yaml, the skill.md structure and cited sources, leftover
+    placeholders, rendering by every adapter and the catalog entry; in a
+    skilldeck checkout also the eval fixture, docs/finding-output.md and the
+    generated plugin tree. Each problem names its file, rule and fix. Exits 0
+    when clean, 1 on any problem.
+
+    Give skill NAMEs from the skills directory, or PATHs to skill directories
+    (anything with a slash, e.g. ./my-skill); with neither, every skill in the
+    skills directory is checked.
+    """
+    if skills_dir is None:
+        checkout = authoring.find_checkout(Path.cwd())
+        default_dir = checkout.skills_dir if checkout is not None else None
+    elif not skills_dir.is_dir():
+        raise click.UsageError(f"--skills-dir {skills_dir} is not a directory")
+    else:
+        default_dir = skills_dir
+    no_dir = (
+        f"{_NO_SKILLS_DIR}: pass --skills-dir PATH, or skill directory paths "
+        "(e.g. ./my-skill)"
+    )
+    paths: list[Path] = []
+    for target in targets:
+        if not target.strip():
+            raise click.UsageError("an empty skill name or path")
+        if _is_path_argument(target):
+            path = Path(target)
+            if not path.is_dir():
+                raise click.UsageError(f"{target} is not a directory")
+            paths.append(path)
+            continue
+        if default_dir is None:
+            raise click.UsageError(no_dir)
+        path = default_dir / target
+        if not path.is_dir():
+            hint = (
+                f"; to check the directory {target}, pass ./{target}"
+                if Path(target).is_dir()
+                else ""
+            )
+            raise click.UsageError(
+                f"no skill {target!r} in {authoring.display_path(default_dir)}{hint}"
+            )
+        paths.append(path)
+    if not targets:
+        if default_dir is None:
+            raise click.UsageError(no_dir)
+        paths = authoring.skill_dirs(default_dir)
+        if not paths:
+            raise click.UsageError(
+                f"no skills in {authoring.display_path(default_dir)}"
+            )
+    report = authoring.validate(paths)
+    if as_json:
+        _echo_json(report.to_json())
+    else:
+        for line in authoring.format_report(report):
+            click.echo(line)
+    if not report.ok:
+        raise SystemExit(1)
 
 
 def main() -> None:
