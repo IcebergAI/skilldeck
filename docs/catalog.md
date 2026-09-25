@@ -88,7 +88,9 @@ from it, rather than trusting a second file that could drift from it.
 - `deprecated` is `null`, or an object with `since` (the skill version that
   first carried the deprecation), `replacement` (the skill to use instead, or
   `null`) and `reason`. See
-  [Deprecating a skill](authoring-skills.md#deprecating-a-skill).
+  [Deprecating a skill](authoring-skills.md#deprecating-a-skill). A removed
+  skill is simply absent; [Lifecycle and compatibility](lifecycle.md#the-catalog)
+  covers each state and how long a deprecated skill stays.
 - `capabilities` is what the skill declares it may ask an agent to do,
   exactly as its `meta.yaml` states it: `schema` (the capability schema,
   `1`), `files.read` (`none`, `diff` or `repo`), `files.write` (`none` or

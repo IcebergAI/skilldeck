@@ -297,3 +297,7 @@ handles a change like this:
    fix as soon as it merges, following [Releasing](releasing.md), instead of
    batching it with other changes. Have the changelog entry tell users to run
    `skilldeck migrate` or `skilldeck update`.
+
+When skilldeck itself drops an agent or a format that the vendor still
+supports, it deprecates it first and waits a notice period: see
+[Removing an agent or format](lifecycle.md#removing-an-agent-or-format).

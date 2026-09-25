@@ -54,6 +54,12 @@ what `skill.md` asks the agent to do (commands, network, credentials, edits). Se
 [docs/authoring-skills.md](docs/authoring-skills.md) for the full guide, and bump that
 skill's own `version` in `meta.yaml` whenever its content changes.
 
+Deprecating or removing a skill, dropping an agent, or making a major version change
+needs a `CHANGELOG.md` entry that names it, and CI checks for one. See
+[docs/lifecycle.md](docs/lifecycle.md) for the rules and the notice period, and run
+`uv run --locked --extra dev python scripts/check_lifecycle.py --base origin/main` to
+check.
+
 ## Opening the pull request
 
 - Make sure the checks above pass.

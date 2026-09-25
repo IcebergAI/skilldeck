@@ -97,6 +97,16 @@ that agent would have nothing to move to). `skilldeck list` and
 they write one, and `skilldeck catalog --json` reports the record to tools
 (see [the skill catalog](catalog.md)).
 
+Deprecating a skill also needs a `### Deprecated` entry in `CHANGELOG.md`
+naming it in backticks, and CI checks for one. The skill can be removed only
+after a release has published the deprecation for the notice period (90
+days before 1.0). While a skill is 0.x, a breaking change bumps its minor
+version. A rename is a new skill plus a deprecation of the old name.
+See [Lifecycle and compatibility](lifecycle.md#deprecating-a-skill) for the
+full path, including what happens to installed copies, and
+[Skill versions](lifecycle.md#skill-versions) for which changes are major,
+minor or patch.
+
 ### Capabilities
 
 `capabilities` declares what the skill may ask an agent to do beyond

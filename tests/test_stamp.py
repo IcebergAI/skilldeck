@@ -1,4 +1,4 @@
-from skilldeck.stamp import parse, read, stamp
+from skilldeck.stamp import Stamp, parse, read, stamp
 
 
 def test_roundtrip():
@@ -69,3 +69,26 @@ def test_read_treats_anything_skilldeck_cannot_have_written_as_unstamped(
     directory.mkdir()
     for path in (binary, link, directory, tmp_path / "missing.md"):
         assert read(path) is None, path
+
+
+# The stamp format every skilldeck release so far has written. It carries no
+# format marker, so a later format must be told apart by its shape, and
+# docs/lifecycle.md#install-stamps promises the parser keeps reading this one.
+# Spelled out byte for byte so a change to it cannot go unnoticed.
+V1_STAMPED = (
+    "BODY\n<!-- skilldeck name=demo version=1.2.3 "
+    "hash=578fe4610847d4812493928762cea185a366979343fc84bf79e6c0564a05c0de -->\n"
+)
+
+
+def test_the_current_stamp_format_is_pinned():
+    assert stamp("BODY\n", "demo", "1.2.3") == V1_STAMPED
+    assert parse(V1_STAMPED) == Stamp(name="demo", version="1.2.3", modified=False)
+
+
+def test_a_stamp_in_an_unknown_future_format_reads_as_unstamped():
+    # what this version does with a file a newer skilldeck stamped in another
+    # format (see docs/lifecycle.md#install-stamps): it is not a skilldeck
+    # file here, so install, update and uninstall leave it alone without --force
+    future = V1_STAMPED.replace("skilldeck name=", "skilldeck stamp=2 name=")
+    assert parse(future) is None

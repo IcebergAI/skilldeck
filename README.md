@@ -226,6 +226,10 @@ Each skill is a directory under `src/skilldeck/skills/` containing a `meta.yaml`
 [docs/authoring-skills.md](docs/authoring-skills.md), and
 follow the [contributor guide](CONTRIBUTING.md) for setup and validation.
 
-## Changelog
+## Changelog and support
 
 Notable changes are recorded in [CHANGELOG.md](CHANGELOG.md).
+[docs/lifecycle.md](docs/lifecycle.md) says what each kind of version bump
+means, how long deprecated skills, agents and formats stay supported (a
+deprecation ships in a release at least 90 days before the removal), and
+what happens to skills you have already installed when one is removed.
