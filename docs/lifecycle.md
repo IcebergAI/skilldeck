@@ -14,11 +14,11 @@ A CI check enforces the parts a script can check (see
 | Change | Package release (before 1.0 / from 1.0) | Notice | CHANGELOG entry |
 |---|---|---|---|
 | Fix a skill's wording, typos or citations | patch | none | Changed or Fixed |
-| Add a skill, agent, format, command, option or catalog field | patch or minor / minor | none | Added |
+| Add a skill, agent, format, command, option or catalog field | minor / minor | none | Added |
 | Deprecate a skill, agent, format, command or option | minor / minor | none: this starts the notice period | Deprecated (checked for skills) |
-| Remove a skill | minor / major | deprecation published at least 90 days earlier (180 from 1.0) (checked) | Removed (checked) |
+| Remove a skill | minor / major | deprecation published at least 90 days earlier (180 from 1.0; a maintainer policy choice) (checked) | Removed (checked) |
 | Remove an agent or format, or drop an agent from one skill | minor / major | the same, unless the vendor removed it first | Removed (checked) |
-| Make a breaking change to a skill (a major skill version) | minor / minor | none: read the entry before `update` | Changed, with the new version (checked) |
+| Make a breaking change to a skill (a minor bump while the skill is 0.x, a major one from 1.0.0) | minor / minor | none: read the entry before `update` | Changed, with the new version (checked for a new major) |
 | Change the stamp format | minor / minor | none: old stamps stay readable | Changed |
 | Bump the catalog's `schema_version` | minor / major | none | **Breaking:** (checked) |
 | Fix an urgent security problem | whatever the change needs | may skip all of it | Security, plus an advisory |
@@ -44,10 +44,11 @@ A skill's guidance is versioned by the skill itself (see
 [Skill versions](#skill-versions)), not by the package.
 
 **Before 1.0 (now)**, a breaking change bumps the minor version (`0.4.0` →
-`0.5.0`). A deprecation also needs at least a minor release. New features and
-fixes can go in either kind of release. So a patch release (`0.4.0` →
-`0.4.1`) never removes, deprecates or breaks anything, and is always safe to
-take.
+`0.5.0`). A deprecation, or a new skill, agent, format, command, option or
+catalog field, also needs at least a minor release. Fixes can go in either
+kind of release. So a patch release (`0.4.0` → `0.4.1`) only fixes things:
+it never adds a feature, or removes, deprecates or breaks anything, and is
+always safe to take.
 
 A change is breaking if it does any of these:
 
@@ -67,26 +68,42 @@ The release check holds releases to this. The newest dated CHANGELOG section
 can't be a patch release if it has `### Removed` or `### Deprecated` entries,
 or an entry marked **Breaking:**. From 1.0, Removed and Breaking entries need
 a major release. `scripts/prepare_release.py` refuses such a version before
-it writes anything.
+it writes anything. Reviewers check the rest, such as a new feature slipped
+into a patch release.
+
+`### Removed` is only for removals from the public surface above: skills,
+agents and adapters, commands and options, fields of the stable output
+formats, and `meta.yaml` fields. Removing internal code, such as an unused
+helper function, is a `### Changed` entry, so it doesn't force a minor
+release.
 
 ### Skill versions
 
 Each skill's `version` in `meta.yaml` is SemVer too, applied to what the skill
-tells the agent to do. Skills don't get SemVer's 0.x exception: the first
-breaking change to a 0.x skill takes it to 1.0.0.
+tells the agent to do. Like the package, a skill gets SemVer's 0.x exception:
+while it is 0.x, a change that would be major bumps its minor version
+(`0.4.0` → `0.5.0`). From 1.0.0 it follows SemVer fully. So a shared change,
+such as a new severity rubric in every review skill, doesn't push every 0.x
+skill to 1.0.0.
 
-| Bump | When the change | Examples |
+| Bump (from 1.0.0) | When the change | Examples |
 |---|---|---|
 | major | takes something away, or changes the shape of the result | removing a checklist area or a kind of finding; narrowing what the skill reviews; handing an area to another skill in [Which skill owns what](finding-output.md#which-skill-owns-what); changing the output shape (the finding format, severity rubric or report header) |
 | minor | adds to what the skill does, without taking anything away | new checks or a new checklist area; new sources that add checks; covering another kind of file; deprecating the skill; changing its `category`, which moves it between `catalog --category` filters |
 | patch | leaves what it reports unchanged | wording, typos, clarifications, citation and link fixes, a clearer worked example, a new `description` |
 
+While a skill is 0.x, read "major" in this table as a minor bump, and "minor"
+as a minor or patch bump.
+
 Adding an agent to `supported-agents` is a patch. Dropping one follows
 [Dropping an agent from a skill](#dropping-an-agent-from-a-skill).
 
-A major skill version needs at least a minor package release. It also needs a
-`### Changed` entry naming the skill and its new version (checked), saying
-what changed and what users should do.
+A breaking skill change needs at least a minor package release, and a
+`### Changed` entry naming the skill and its new version, saying what changed
+and what users should do. The release check requires that entry when the
+skill's major version goes up (0.x → 1.0.0, 1.x → 2.0.0); for a 0.x skill's
+breaking minor bump, and for the package release it lands in, it is a
+reviewer's job.
 
 How skill versions meet `status` and `update`:
 
@@ -99,7 +116,7 @@ How skill versions meet `status` and `update`:
   sides.
 - `skilldeck update` rewrites every stale, unedited install, whatever the size
   of the bump. It never overwrites a locally modified install without
-  `--force`. Check the CHANGELOG for major skill versions before you run it.
+  `--force`. Check the CHANGELOG for breaking skill changes before you run it.
   To stay on the old guidance for a while, keep running the older skilldeck
   release (`uvx skilldeck@X.Y.Z`), or edit the installed file, which `update`
   then leaves alone.
@@ -147,11 +164,17 @@ unchanged, so the CHANGELOG is where they learn about the deprecation.
 
 The notice period has two parts:
 
-- the deprecation must ship in at least one **published** release, meaning a
-  dated CHANGELOG section with its `vX.Y.Z` tag;
-- the removal can merge no sooner than **90 days** after that release's date
-  (**180 days** from 1.0). Before 1.0 it goes in a minor release, and from
-  1.0 in a major one.
+- the deprecation must ship in at least one **published** release: a
+  `vX.Y.Z` tag on `main` whose own files mark the skill `deprecated` and whose
+  own CHANGELOG has a `### Deprecated` entry naming it;
+- the removal can merge no sooner than **90 days** after that release (**180
+  days** from 1.0), counted from the later of its CHANGELOG date and its tag's
+  date. Before 1.0 it goes in a minor release, and from 1.0 in a major one.
+
+The 90 and 180 days, like the 7-day target under
+[Security fixes](#security-fixes), are the maintainers' policy choices rather
+than anything an outside standard sets. Changing one means changing this page
+and `scripts/check_lifecycle.py` together.
 
 Why these numbers:
 
@@ -173,10 +196,12 @@ To remove the skill:
 
 The release check also requires the skill to have been deprecated at the
 base of the pull request. If any release tag contains the skill, it also
-requires the deprecation to have been published for the notice period. A
-skill that no release ever contained must still be deprecated first, but it
-has no waiting period. [Security fixes](#security-fixes) can skip all of
-this.
+requires a release to have published the deprecation for the notice period.
+It reads that from the release tags themselves, not from the pull request's
+CHANGELOG, so a Deprecated entry added to an old section afterwards doesn't
+count. A skill that no release ever contained must still be deprecated first,
+but it has no waiting period. [Security fixes](#security-fixes) can skip all
+of this.
 
 A removed skill is gone from `list` and from the catalog. The catalog has no
 "removed" state: the CHANGELOG's Removed entry is the record, and the release
@@ -268,10 +293,11 @@ steps as for a skill:
 2. **Wait** for the same notice period: 90 days after the release that
    published the deprecation (180 from 1.0).
 3. **Remove** it from `ADAPTERS` or `LEGACY_ADAPTERS`, along with its
-   contract fixtures and matrix row. Add a `### Removed` entry naming it
-   (checked) that lists the paths it installed to. If a successor format
-   exists, keep the old one in `MIGRATIONS` so that `migrate` can still move
-   installs.
+   contract fixtures and matrix row. Add a `### Removed` entry of its own
+   that names the adapter and no skill (checked), and lists the paths it
+   installed to. An entry saying one skill no longer supports the agent
+   doesn't count. If a successor format exists, keep the old one in
+   `MIGRATIONS` so that `migrate` can still move installs.
 
 After the removal, skilldeck rejects `--agent <name>`, so `status` and
 `uninstall` can no longer see that adapter's files. Remove them before you
@@ -314,10 +340,10 @@ fails, is breaking for skill authors.
 
 The one lifecycle field is `deprecated`, with `since`, `reason` and an
 optional `replacement`. It deliberately has no removal date or version. The
-notice period starts when a release publishes the deprecation, and that date
-is known only from the CHANGELOG and the release tag, which the release check
-reads. A date written into `meta.yaml` in advance would be a guess that could
-disagree with them.
+notice period starts when a release publishes the deprecation, and only the
+release tag knows that: its date, its files and its CHANGELOG, which the
+release check reads. A date written into `meta.yaml` in advance would be a
+guess that could disagree with them.
 
 ### The catalog
 
@@ -388,21 +414,17 @@ as described here.
 ### Lockfiles and install state
 
 Today the install state is the stamped files themselves. There is no lockfile
-or install database. [#71](https://github.com/IcebergAI/skilldeck/issues/71)
-will add lockfiles and bundles, and they will follow this page:
+or install database. When [#71](https://github.com/IcebergAI/skilldeck/issues/71)
+adds lockfiles, they follow these rules (what a lockfile records is #71's
+decision):
 
 - A lockfile carries its own integer `schema_version`, under the catalog's
-  additive and breaking rules. Like stamps, every lockfile version skilldeck
-  has written stays readable.
-- It records identities the catalog already publishes: the skill's name,
-  version and `canonical_sha256`, plus the adapter, the scope and the
-  `rendered_sha256` for each agent (the stamp's `hash=`). `rendered_sha256`
-  can change with the rendering while the skill version stays the same, so a
-  lockfile that pins it is also pinned to a skilldeck version.
-- A locked skill that becomes deprecated keeps installing, with the usual
-  warning, through the notice period. A locked skill, agent or format that
-  has been removed fails before anything is written, with an error that names
-  it and points to the CHANGELOG.
+  additive and breaking rules.
+- Like stamps, every lockfile version skilldeck has written stays readable.
+- A locked skill, agent or format that has been removed fails clearly,
+  before anything is written, with an error that names it and points to the
+  CHANGELOG. A deprecated one keeps working through the notice period, with
+  the usual warning.
 
 Lockfiles aren't a stable contract until they ship under these rules.
 
@@ -417,10 +439,12 @@ These are stable and covered by the package version:
   [adapter contracts](compatibility.md#contract-tests);
 - `skilldeck catalog --json` and `--schema` (see [the catalog](catalog.md));
 - `skilldeck provenance --json` (`schema_version` 1), under the same additive
-  and breaking rules as the catalog;
-- eval run records (`evals/run-record.schema.json`, `schema_version` 1),
-  under the same rules. They belong to the repository's eval tooling rather
-  than the package.
+  and breaking rules as the catalog.
+
+Eval run records are not part of the package: they come from the
+repository's eval tooling (`evals/run_evals.py`). Their stability follows
+their own `schema_version` (`evals/run-record.schema.json`, currently 1)
+under the catalog's additive and breaking rules, not the package version.
 
 Human-readable output isn't stable, and can change in any release without
 notice. That covers `list`, `status`, `update`, `install`, `uninstall`,
@@ -454,14 +478,21 @@ It must still:
 - add a `### Security` entry that names what is affected in backticks, gives
   the affected versions, and says what users should do (for example
   `skilldeck update`, or `skilldeck uninstall <name> --agent <agent>`), along
-  with the usual Removed or Changed entry. For a skill removal, the Security
-  entry naming the skill is what lets the release check skip the deprecation
-  and notice requirements;
+  with the usual Removed or Changed entry;
+- for a skill removed this way, start its `### Removed` entry with
+  `**Security:**`, for example
+  ``- **Security:** `old-review`, which told agents to skip TLS checks.``
+  The release check skips the deprecation and notice requirements only for a
+  Removed entry with that mark and a Security entry naming the same skill, both
+  added by the pull request. A Security entry that merely mentions a skill
+  doesn't exempt its removal;
 - for a vulnerability in skilldeck itself, publish a GitHub security advisory,
   handling the report as [SECURITY.md](../SECURITY.md) describes.
 
 Fixes ship on the latest release only, with no backports. For a confirmed
-high- or critical-severity issue, the aim is a release within 7 days.
+high- or critical-severity issue, the maintainers aim for a release within 7
+days. That target is their policy choice, like the notice periods, and
+[SECURITY.md](../SECURITY.md) states it too.
 
 ## Release checks
 
@@ -469,27 +500,40 @@ high- or critical-severity issue, the aim is a release within 7 days.
 `--base origin/<target branch>`, comparing the pull request with its target.
 It fails unless `CHANGELOG.md` has:
 
-- for a **removed skill**, a `### Removed` entry naming it. Unless a
-  `### Security` entry names it too, the skill must have been deprecated at
-  the base. If a release tag contains the skill, a `### Deprecated` entry
-  naming it must also be in a tagged, dated section at least 90 days old (180
-  from 1.0);
+- for a **removed skill**, a `### Removed` entry naming it. The skill must
+  also have been deprecated at the base, and if a release tag contains it, a
+  release must have published the deprecation at least 90 days earlier (180
+  from 1.0): a `vX.Y.Z` tag reachable from the base whose own `meta.yaml`
+  marks the skill deprecated and whose own CHANGELOG has a `### Deprecated`
+  entry naming it, counted from the later of that section's date and the
+  tag's date. The [urgent security path](#security-fixes) skips both
+  requirements;
 - for a **newly deprecated skill**, a `### Deprecated` entry naming it;
 - for an **agent dropped from a skill's `supported-agents`**, a single
   `### Removed` entry naming both the skill and the agent. If the agent's
   adapter is gone altogether, the next rule covers it instead;
 - for a **removed adapter** (listed in the base's
   `tests/fixtures/adapter-contracts/contracts.json` but no longer in
-  `ALL_ADAPTERS`), a `### Removed` entry naming it;
-- for a **major skill version**, a `### Changed`, `### Removed` or
-  `### Security` entry naming the skill and giving its new version;
+  `ALL_ADAPTERS`), a `### Removed` entry of its own that names it and no
+  skill;
+- for a **new major skill version** (0.x → 1.0.0, 1.x → 2.0.0), a
+  `### Changed`, `### Removed` or `### Security` entry naming the skill and
+  giving its new version;
 - for a **catalog `schema_version` change**, an entry marked **Breaking:**
   that mentions `schema_version`.
 
-Entries count only under `## [Unreleased]` or in the newest dated section,
-which is where cutting a release moves them. They must name each skill,
-agent or adapter in backticks, like `` `old-review` ``. Every error says what
-is missing, where to add it, and which section of this page applies.
+Entries count only in sections the pull request adds: `## [Unreleased]`, or
+a dated section the base's CHANGELOG doesn't have yet, which is where cutting
+a release in the same pull request moves them. A section an earlier release
+published doesn't count. Entries must name each skill, agent or adapter in
+backticks of its own, like `` `old-review` ``: a name inside a longer code
+span, such as a command, doesn't count. Every error says what is missing,
+where to add it, and which section of this page applies.
+
+The notice rules need the release tags. CI's `lint` job fetches them; in a
+checkout without any `vX.Y.Z` tag reachable from the base, the script prints
+`note: no release tags found; notice-period rules skipped` with a reminder to
+run `git fetch --tags`, and checks everything else.
 
 With or without `--base`, the script also applies the version-bump rule from
 [The package](#the-package) to the newest dated section. On a push to `main`
@@ -505,6 +549,10 @@ These stay with reviewers:
 
 - whether a skill change is major, minor or patch (the check only sees the
   number);
+- that a breaking skill change comes with at least a minor package release,
+  and, for a 0.x skill's breaking minor bump, a Changed entry;
+- that a new feature isn't released in a patch release, and that
+  `### Removed` holds only public-surface removals;
 - the deprecation and notice period for removing an adapter, a format, a
   command or an option, or dropping an agent from a skill, where a vendor's
   move can make the notice moot;

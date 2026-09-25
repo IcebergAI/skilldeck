@@ -103,7 +103,11 @@ def plan(version: str, today: str, root: Path = ROOT) -> tuple[str, dict[Path, s
     new_pyproject, old = bump_pyproject(pyproject.read_text(encoding="utf-8"), version)
     new_changelog = cut_changelog(changelog.read_text(encoding="utf-8"), version, today)
     # removals, deprecations and breaking changes need a minor (or major) bump
-    bump = lifecycle.release_bump_errors(lifecycle.parse_changelog(new_changelog))
+    try:
+        sections = lifecycle.parse_changelog(new_changelog)
+    except lifecycle.ChangelogError as exc:
+        raise SystemExit(f"error: {exc}") from None
+    bump = lifecycle.release_bump_errors(sections)
     if bump:
         raise SystemExit(f"error: {bump[0]}")
     return old, {pyproject: new_pyproject, changelog: new_changelog}

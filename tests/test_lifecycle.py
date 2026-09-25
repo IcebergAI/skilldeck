@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from _schema import schema_errors
 from skilldeck import __version__, registry
 from skilldeck.adapters import ADAPTERS, ALL_ADAPTERS
 from skilldeck.adapters import base as adapter_base
@@ -27,7 +28,6 @@ from skilldeck.catalog import build_catalog
 from skilldeck.cli import cli
 from skilldeck.provenance import content_manifest
 from skilldeck.registry import discover_skills
-from test_catalog import schema_errors
 
 _ROOT = Path(__file__).resolve().parent.parent
 _SCRIPT = _ROOT / "scripts" / "check_lifecycle.py"
@@ -149,8 +149,26 @@ def test_parse_changelog_splits_sections_groups_and_entries():
         "`other` goes too.",
     ]
     assert unreleased.entries("Deprecated") == ["`legacy-review`"]  # title-cased
-    # [Unreleased] and the newest dated section by number, not file order
-    assert [s.version for s in check.recent_sections(sections)] == [None, "0.10.0"]
+    # [Unreleased], plus the dated sections the base does not have yet
+    recent = check.recent_sections(sections, {"0.3.0", "0.1.0"})
+    assert [s.version for s in recent] == [None, "0.10.0"]
+    recent = check.recent_sections(sections, {"0.3.0", "0.10.0", "0.1.0"})
+    assert [s.version for s in recent] == [None]
+
+
+@pytest.mark.parametrize("day", ["2026-06-31", "2026-02-29", "2026-13-01"])
+def test_an_impossible_date_is_a_clean_error(day):
+    with pytest.raises(check.ChangelogError, match=f"`## \\[0.2.0\\] - {day}`"):
+        check.parse_changelog(f"## [0.2.0] - {day}\n", "CHANGELOG.md")
+
+
+def test_main_reports_an_impossible_date(tmp_path, monkeypatch, capsys):
+    _write(tmp_path / "CHANGELOG.md", "## [Unreleased]\n\n## [0.2.0] - 2026-06-31\n")
+    monkeypatch.setattr(check, "ROOT", tmp_path)
+    assert check.main([]) == 1
+    assert "error: CHANGELOG.md: `## [0.2.0] - 2026-06-31` has an invalid date" in (
+        capsys.readouterr().err
+    )
 
 
 def test_names_needs_every_term_in_backticks():
@@ -214,7 +232,7 @@ def test_release_bump_rule_needs_two_dated_releases():
 # --- a synthetic repository -----------------------------------------------------
 
 
-def _git(repo, *args):
+def _git(repo, *args, env=None):
     subprocess.run(
         ["git", "-C", str(repo), *args],
         check=True,
@@ -225,6 +243,7 @@ def _git(repo, *args):
             "GIT_AUTHOR_EMAIL": "t@example.com",
             "GIT_COMMITTER_NAME": "t",
             "GIT_COMMITTER_EMAIL": "t@example.com",
+            **(env or {}),
         },
     )
 
@@ -268,9 +287,13 @@ def write_version(repo, version):
     _write(repo / "pyproject.toml", f'[project]\nname = "x"\nversion = "{version}"\n')
 
 
-def commit(repo, message="change"):
+def commit(repo, message="change", date=None):
+    """Commit everything; ``date`` (YYYY-MM-DD) also dates a lightweight tag
+    made on it, as ``git for-each-ref``'s ``creatordate`` reads it."""
     _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "-m", message)
+    when = f"{date}T12:00:00Z" if date else None
+    env = {"GIT_AUTHOR_DATE": when, "GIT_COMMITTER_DATE": when} if when else {}
+    _git(repo, "commit", "-q", "-m", message, env=env)
 
 
 @pytest.fixture
@@ -326,21 +349,47 @@ def test_removing_a_skill_needs_a_removed_entry_and_a_deprecation(repo):
     )
     assert "docs/lifecycle.md#removing-a-skill" in found[0]
     assert "without being deprecated first" in found[1]
-    assert "`### Security` entry naming `old-review`" in found[1]
+    assert "marks its `### Removed` entry `**Security:**`" in found[1]
 
     write_changelog(repo, "### Removed\n\n- `old-review`: use `other-review`.\n")
     assert [e for e in errors() if "deprecated first" not in e] == []
 
 
-def test_an_entry_in_the_wrong_group_or_section_does_not_count(repo):
+def test_an_entry_in_the_wrong_group_does_not_count(repo):
     shutil.rmtree(repo / SKILLS / "old-review")
     write_changelog(
         repo,
         "### Changed\n\n- `old-review` is gone.\n",
-        "## [0.2.0] - 2026-02-01\n\n### Added\n\n- `old-review`\n\n"
-        "## [0.1.1] - 2026-01-15\n\n### Removed\n\n- `old-review`\n\n",
+        "## [0.2.0] - 2026-02-01\n\n### Added\n\n- `old-review`\n\n",
     )
     assert any("add a `### Removed` entry" in e for e in errors())
+
+
+def test_a_published_section_does_not_count(repo):
+    # reviewer probe A: a Removed entry an earlier release already shipped
+    # (here, for dropping an agent) says nothing to the next release's users
+    _git(repo, "tag", "v0.1.0")
+    write_skill(repo, "old-review", "1.3.0", ("claude",), since="1.3.0", reason="R")
+    published = (
+        "## [0.2.0] - 2026-06-01\n\n### Deprecated\n\n- `old-review`: obsolete.\n\n"
+        "### Removed\n\n- `old-review` no longer supports `codex`.\n\n"
+    )
+    write_changelog(repo, released=published)
+    commit(repo, "release 0.2.0", "2026-06-01")
+    _git(repo, "tag", "v0.2.0")
+    shutil.rmtree(repo / SKILLS / "old-review")
+    assert [e.split(":")[0] for e in errors(datetime.date(2026, 12, 31))] == [
+        "skill `old-review` was removed"
+    ]
+
+
+def test_a_name_is_matched_whole(repo):
+    # reviewer probe G: a note for `old-review` is not one for `old-review-extra`
+    write_skill(repo, "old-review-extra")
+    commit(repo)
+    shutil.rmtree(repo / SKILLS / "old-review-extra")
+    write_changelog(repo, "### Removed\n\n- `old-review`\n")
+    assert any(e.startswith("skill `old-review-extra` was removed:") for e in errors())
 
 
 def test_an_urgent_security_removal_skips_the_deprecation(repo):
@@ -348,9 +397,57 @@ def test_an_urgent_security_removal_skips_the_deprecation(repo):
     write_changelog(
         repo,
         "### Security\n\n- `old-review` told agents to disable TLS checks.\n\n"
-        "### Removed\n\n- `old-review`, for the reason under Security.\n",
+        "### Removed\n\n- **Security:** `old-review`, for the reason under "
+        "Security.\n",
     )
     assert errors() == []
+
+
+@pytest.mark.parametrize(
+    "notes",
+    [
+        # reviewer probe D: a Security entry that merely mentions the skill
+        "### Security\n\n- `other-review` now flags SSRF, like `old-review`.\n\n"
+        "### Removed\n\n- `old-review`.\n",
+        # the mark alone, with no Security entry saying why
+        "### Removed\n\n- **Security:** `old-review`.\n",
+        # the mark on another entry
+        "### Security\n\n- `old-review` is harmful.\n\n"
+        "### Removed\n\n- `old-review`.\n- **Security:** `other-thing`.\n",
+    ],
+)
+def test_the_security_path_needs_the_marked_removal_and_a_security_entry(repo, notes):
+    shutil.rmtree(repo / SKILLS / "old-review")
+    write_changelog(repo, notes)
+    (found,) = errors()
+    assert "without being deprecated first" in found
+
+
+def test_removing_a_skill_against_the_real_changelog(repo):
+    # the real [Unreleased] once filed Added entries naming skills under
+    # Security; removing one of them still takes the full path
+    text = (_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    write_skill(repo, "security-review")
+    _write(repo / "CHANGELOG.md", text)
+    commit(repo)
+    shutil.rmtree(repo / SKILLS / "security-review")
+    head = "## [Unreleased]\n\n### Removed\n\n- `security-review`.\n"
+    _write(repo / "CHANGELOG.md", text.replace("## [Unreleased]\n", head, 1))
+    (found,) = errors()
+    assert found.startswith("skill `security-review` was removed without being")
+
+
+def test_the_real_security_section_names_no_skill_or_adapter():
+    unreleased = check.parse_changelog(
+        (_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    )[0]
+    named = {skill.name for skill in discover_skills()} | set(ALL_ADAPTERS)
+    assert [
+        name
+        for name in sorted(named)
+        for entry in unreleased.entries("Security")
+        if check.names(entry, name)
+    ] == []
 
 
 def test_removing_a_deprecated_skill_no_release_contains(repo):
@@ -363,27 +460,29 @@ def test_removing_a_deprecated_skill_no_release_contains(repo):
     assert errors() == []
 
 
+DEPRECATED_IN_0_2_0 = (
+    "## [0.2.0] - 2026-06-01\n\n### Deprecated\n\n"
+    "- `old-review`: obsolete; removal no earlier than 90 days from now.\n\n"
+)
+
+
 @pytest.fixture
 def released_deprecation(repo):
-    """``old-review`` shipped deprecated in the tagged release 0.2.0."""
+    """``old-review`` shipped deprecated in release 0.2.0, tagged 2026-06-01."""
     write_skill(repo, "old-review", reason="Obsolete.", since="1.2.0")
-    deprecated = (
-        "## [0.2.0] - 2026-06-01\n\n### Deprecated\n\n"
-        "- `old-review`: obsolete; removal no earlier than 90 days from now.\n\n"
-    )
-    write_changelog(repo, released=deprecated)
-    commit(repo, "release 0.2.0")
+    write_changelog(repo, released=DEPRECATED_IN_0_2_0)
+    commit(repo, "release 0.2.0", "2026-06-01")
     _git(repo, "tag", "v0.2.0")
     shutil.rmtree(repo / SKILLS / "old-review")
-    write_changelog(repo, "### Removed\n\n- `old-review`\n", deprecated)
+    write_changelog(repo, "### Removed\n\n- `old-review`\n", DEPRECATED_IN_0_2_0)
     return repo
 
 
 def test_removal_waits_for_the_notice_period(released_deprecation):
     assert errors(datetime.date(2026, 8, 29)) == [
-        "skill `old-review` was removed too early: its deprecation was published "
-        "in 0.2.0 on 2026-06-01, so it can be removed from 2026-08-30 (90 days' "
-        "notice; docs/lifecycle.md#removing-a-skill)"
+        "skill `old-review` was removed too early: v0.2.0 published its "
+        "deprecation on 2026-06-01, so it can be removed from 2026-08-30 (90 "
+        "days' notice; docs/lifecycle.md#removing-a-skill)"
     ]
     assert errors(datetime.date(2026, 8, 30)) == []
 
@@ -395,12 +494,67 @@ def test_from_1_0_the_notice_period_is_180_days(released_deprecation):
     assert errors(datetime.date(2026, 11, 28)) == []
 
 
-def test_the_notice_counts_only_from_a_published_release(released_deprecation):
-    # a dated section without its tag is prepared, not published
+def test_the_notice_starts_when_the_release_is_tagged(repo):
+    # reviewer probe C: prepared (dated) 2026-01-01, but published 2026-03-25
+    write_skill(repo, "old-review", reason="Obsolete.", since="1.2.0")
+    dated = DEPRECATED_IN_0_2_0.replace("2026-06-01", "2026-01-01")
+    write_changelog(repo, released=dated)
+    commit(repo, "release 0.2.0", "2026-03-25")
+    _git(repo, "tag", "v0.2.0")
+    shutil.rmtree(repo / SKILLS / "old-review")
+    write_changelog(repo, "### Removed\n\n- `old-review`\n", dated)
+    (found,) = errors(datetime.date(2026, 4, 2))
+    assert "v0.2.0 published its deprecation on 2026-03-25" in found
+    assert errors(datetime.date(2026, 6, 23)) == []
+
+
+@pytest.mark.parametrize("retrofit", [False, True])
+def test_only_a_release_that_shipped_the_deprecation_counts(repo, retrofit):
+    # reviewer probe B: 0.2.0 shipped old-review undeprecated; the deprecation
+    # merged afterwards but no release carried it. Writing a Deprecated entry
+    # into the published 0.2.0 section later changes nothing.
+    released = "## [0.2.0] - 2026-01-01\n\n### Added\n\n- stuff\n\n"
+    write_changelog(repo, released=released)
+    commit(repo, "release 0.2.0", "2026-01-01")
+    _git(repo, "tag", "v0.2.0")
+    write_skill(repo, "old-review", "1.3.0", since="1.3.0", reason="Obsolete.")
+    write_changelog(repo, "### Deprecated\n\n- `old-review`\n", released)
+    commit(repo, "deprecate, unreleased")
+    shutil.rmtree(repo / SKILLS / "old-review")
+    if retrofit:
+        released += "### Deprecated\n\n- `old-review`\n\n"
+    write_changelog(repo, "### Removed\n\n- `old-review`\n", released)
+    (found,) = errors(datetime.date(2026, 12, 31))
+    assert "no release published its deprecation" in found
+
+
+def test_a_tag_off_main_is_not_a_release(repo):
+    _git(repo, "tag", "v0.1.0")  # old-review is in a release
+    for branch in ("side", "main"):  # the same deprecation on both branches
+        _git(repo, "checkout", "-q", "-B", branch)
+        write_skill(repo, "old-review", reason="Obsolete.", since="1.2.0")
+        write_changelog(repo, released=DEPRECATED_IN_0_2_0)
+        commit(repo, f"release 0.2.0 on {branch}", "2026-06-01")
+        if branch == "side":
+            _git(repo, "tag", "v0.2.0")  # never reachable from main
+            _git(repo, "checkout", "-q", "v0.1.0")
+    shutil.rmtree(repo / SKILLS / "old-review")
+    write_changelog(repo, "### Removed\n\n- `old-review`\n", DEPRECATED_IN_0_2_0)
+    (found,) = errors(datetime.date(2026, 12, 31))
+    assert "no release published its deprecation" in found
+
+
+def test_without_release_tags_the_notice_rules_are_skipped_with_a_note(
+    released_deprecation, capsys
+):
     _git(released_deprecation, "tag", "-d", "v0.2.0")
-    _git(released_deprecation, "tag", "v0.1.0", "HEAD")  # the skill was released
-    (found,) = errors(datetime.date(2027, 1, 1))
-    assert "no published release announces its deprecation" in found
+    assert check.main(["--base", "main"]) == 0
+    captured = capsys.readouterr()
+    assert captured.err == f"note: {check.NO_TAGS_NOTE}\n"
+    assert "`git fetch --tags`" in check.NO_TAGS_NOTE
+    _git(released_deprecation, "tag", "v0.2.0")
+    check.main(["--base", "main"])
+    assert "note:" not in capsys.readouterr().err
 
 
 # --- deprecating, dropping an agent, a major version, the catalog schema ------
@@ -496,7 +650,7 @@ def test_walkthrough_renaming_a_skill(repo):
     # 2. the release that publishes the deprecation
     released = notes.replace("### Added", "## [0.2.0] - 2026-06-01\n\n### Added")
     write_changelog(repo, released=released + "\n")
-    commit(repo, "release 0.2.0")
+    commit(repo, "release 0.2.0", "2026-06-01")
     _git(repo, "tag", "v0.2.0")
 
     # 3. at least 90 days later, the removal PR
@@ -561,11 +715,17 @@ def test_walkthrough_removing_an_adapter(repo, monkeypatch, adapter):
         # the adapter's note, not one per skill
         write_skill(repo, "other-review", agents=("claude", "codex"))
     assert errors() == [
-        f"adapter `{adapter}` was removed: add a `### Removed` entry naming "
-        f"`{adapter}` (in backticks) under `## [Unreleased]` in CHANGELOG.md, "
-        "listing the paths it installed to so users can delete what is left "
-        "(docs/lifecycle.md#removing-an-agent-or-format)"
+        f"adapter `{adapter}` was removed: add a `### Removed` entry of its own "
+        f"naming `{adapter}` (in backticks) and no skill under `## [Unreleased]` "
+        "in CHANGELOG.md, listing the paths it installed to so users can delete "
+        "what is left (docs/lifecycle.md#removing-an-agent-or-format)"
     ]
+    # reviewer probe E: an entry about one skill and the agent is not the
+    # note that the adapter itself is gone
+    write_changelog(
+        repo, f"### Removed\n\n- `other-review` no longer supports `{adapter}`.\n"
+    )
+    assert len(errors()) == 1
     write_changelog(repo, f"### Removed\n\n- The `{adapter}` adapter.\n")
     assert errors() == []
 
@@ -573,9 +733,10 @@ def test_walkthrough_removing_an_adapter(repo, monkeypatch, adapter):
 def test_main_reports_what_is_missing_and_links_the_policy(repo, capsys):
     shutil.rmtree(repo / SKILLS / "old-review")
     assert check.main(["--base", "main"]) == 1
-    err = capsys.readouterr().err
-    assert err.startswith("error: skill `old-review` was removed")
-    assert "See docs/lifecycle.md" in err
+    err = capsys.readouterr().err.splitlines()
+    assert err[0] == f"note: {check.NO_TAGS_NOTE}"
+    assert err[1].startswith("error: skill `old-review` was removed")
+    assert "See docs/lifecycle.md" in err[-2]
 
 
 # --- what happens to installed copies (docs/lifecycle.md says so) -------------

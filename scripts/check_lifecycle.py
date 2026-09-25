@@ -5,26 +5,31 @@
 machine can. With ``--base <ref>`` (a PR's target branch; CI's ``lint`` job
 passes ``origin/<target>``), it compares the working tree with that ref:
 
-- a skill directory removed: a ``### Removed`` entry naming the skill. Unless a
-  ``### Security`` entry names it too (the urgent path), the skill must be
-  ``deprecated`` in its ``meta.yaml`` at the base and, if any release tag
-  contains the skill, a ``### Deprecated`` entry naming it must sit in a
-  published release (a dated section whose ``v<version>`` tag exists) dated at
-  least ``NOTICE_DAYS`` ago (``NOTICE_DAYS_STABLE`` from 1.0);
+- a skill directory removed: a ``### Removed`` entry naming the skill. The
+  skill must also be ``deprecated`` in its ``meta.yaml`` at the base and, if a
+  release tag contains the skill, a release must have published the
+  deprecation at least ``NOTICE_DAYS`` ago (``NOTICE_DAYS_STABLE`` from 1.0):
+  a tag whose own ``meta.yaml`` marks the skill deprecated and whose own
+  CHANGELOG has a ``### Deprecated`` entry naming it, counted from the later of
+  that section's date and the tag's date. The urgent security path skips the
+  deprecation and the notice: the ``### Removed`` entry is marked
+  ``**Security:**`` and a ``### Security`` entry names the skill too;
 - a skill newly ``deprecated``: a ``### Deprecated`` entry naming it;
-- a skill no longer listing an agent in ``supported-agents``: a ``### Removed``
-  entry naming the skill and the agent (an agent whose adapter is gone
-  altogether is covered by the next rule instead);
+- a skill no longer listing an agent in ``supported-agents``: one
+  ``### Removed`` entry naming the skill and the agent (an agent whose adapter
+  is gone altogether is covered by the next rule instead);
 - an adapter removed (named in the base's adapter contracts, missing from
-  ``ALL_ADAPTERS`` now): a ``### Removed`` entry naming it;
+  ``ALL_ADAPTERS`` now): a ``### Removed`` entry naming it and no skill;
 - a skill's major version raised: a ``### Changed``, ``### Removed`` or
   ``### Security`` entry naming the skill and its new version;
 - the catalog's ``schema_version`` changed: a ``**Breaking:**`` entry that
   mentions ``schema_version``.
 
-Each entry must be a bullet in ``## [Unreleased]`` or in the newest dated
-section (cutting a release moves ``[Unreleased]`` there), and must name the
-skill, agent or adapter in backticks, e.g. `` `old-review` ``.
+Each entry must be a bullet in a section this change adds: ``## [Unreleased]``,
+or a dated section the base's CHANGELOG does not have yet (a release cut in
+the same change). It must name the skill, agent or adapter in backticks of its
+own, e.g. `` `old-review` ``. Without release tags the notice rules can't be
+checked; the script says so and carries on.
 
 With or without ``--base`` it also checks the newest dated CHANGELOG section's
 version against the one before it: a section with ``### Removed`` or
@@ -43,7 +48,7 @@ import json
 import re
 import subprocess
 import sys
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -66,6 +71,12 @@ SKILLS_PATH = "src/skilldeck/skills"
 CONTRACTS_PATH = "tests/fixtures/adapter-contracts/contracts.json"
 CATALOG_SCHEMA_PATH = "src/skilldeck/catalog.schema.json"
 POLICY = "docs/lifecycle.md"
+#: marks the ``### Removed`` entry of an urgent security removal
+SECURITY_MARK = "**Security:**"
+NO_TAGS_NOTE = (
+    "no release tags found; notice-period rules skipped — run "
+    "`git fetch --tags` if there should be some"
+)
 
 _SECTION_RE = re.compile(
     r"## \[(?P<version>Unreleased|\d+\.\d+\.\d+)\]"
@@ -73,6 +84,10 @@ _SECTION_RE = re.compile(
 )
 _GROUP_RE = re.compile(r"^### +(.+?)\s*$", re.MULTILINE)
 _ENTRY_RE = re.compile(r"^[-*] ", re.MULTILINE)
+
+
+class ChangelogError(ValueError):
+    """A CHANGELOG this script cannot read."""
 
 
 # --- the CHANGELOG ------------------------------------------------------------
@@ -92,12 +107,13 @@ class Section:
         return [entry for name in names for entry in self.groups.get(name, [])]
 
 
-def parse_changelog(text: str) -> list[Section]:
+def parse_changelog(text: str, source: str = "CHANGELOG.md") -> list[Section]:
     """Every ``## [Unreleased]`` or ``## [x.y.z]`` section, in file order.
 
     Entries are the top-level ``-`` bullets, each with its indented
     continuation lines and sub-bullets. Group names are title-cased, so
-    ``### removed`` counts as ``Removed``.
+    ``### removed`` counts as ``Removed``. A section dated with a day that
+    does not exist raises :class:`ChangelogError` naming ``source``.
     """
     sections: list[Section] = []
     text = text.replace("\r\n", "\n")
@@ -107,9 +123,15 @@ def parse_changelog(text: str) -> list[Section]:
             continue  # the preamble, or a heading this parser does not know
         version = header.group("version")
         date = header.group("date")
+        try:
+            day = datetime.date.fromisoformat(date) if date else None
+        except ValueError:
+            raise ChangelogError(
+                f"{source}: `{header.group(0)}` has an invalid date; use a real "
+                "YYYY-MM-DD day"
+            ) from None
         section = Section(
-            version=None if version == "Unreleased" else version,
-            date=datetime.date.fromisoformat(date) if date else None,
+            version=None if version == "Unreleased" else version, date=day
         )
         parts = _GROUP_RE.split(chunk)
         # parts: [before the first group, name, body, name, body, ...]
@@ -120,16 +142,19 @@ def parse_changelog(text: str) -> list[Section]:
     return sections
 
 
-def recent_sections(sections: list[Section]) -> list[Section]:
-    """``[Unreleased]`` and the newest dated section.
+def recent_sections(
+    sections: list[Section], base_versions: Collection[str]
+) -> list[Section]:
+    """The sections a change adds: ``[Unreleased]``, and any dated section
+    whose version the base's CHANGELOG (``base_versions``) does not have.
 
-    A note belongs in ``[Unreleased]``; cutting a release
-    (``scripts/prepare_release.py``) moves it into a new dated section and
-    leaves ``[Unreleased]`` empty, so the newest dated section counts too.
+    A note belongs in ``[Unreleased]``. A change that also cuts a release
+    (``scripts/prepare_release.py``) moves it into a new dated section, so
+    that section counts too; one the base already has was published before
+    and does not.
     """
     recent = [s for s in sections if s.version is None][:1]
-    dated = _dated(sections)
-    return [*recent, *dated[-1:]]
+    return recent + [s for s in _dated(sections) if s.version not in base_versions]
 
 
 def _dated(sections: list[Section]) -> list[Section]:
@@ -152,12 +177,23 @@ def mentions_version(entry: str, version: str) -> bool:
     return re.search(pattern, entry) is not None
 
 
-def _recorded(sections: list[Section], groups: tuple[str, ...], *terms: str) -> bool:
-    return any(
-        names(entry, *terms)
-        for section in recent_sections(sections)
-        for entry in section.entries(*groups)
+def _entries(recent: list[Section], *groups: str) -> list[str]:
+    return [entry for section in recent for entry in section.entries(*groups)]
+
+
+def _recorded(recent: list[Section], groups: tuple[str, ...], *terms: str) -> bool:
+    return any(names(entry, *terms) for entry in _entries(recent, *groups))
+
+
+def urgent_removal(recent: list[Section], name: str) -> bool:
+    """Whether skill ``name`` is removed on the urgent security path: its
+    ``### Removed`` entry is marked ``**Security:**`` and a ``### Security``
+    entry names it too."""
+    marked = any(
+        names(entry, name) and SECURITY_MARK in entry
+        for entry in _entries(recent, "Removed")
     )
+    return marked and _recorded(recent, ("Security",), name)
 
 
 # --- skills, adapters and the catalog at a ref or in the working tree ---------
@@ -256,31 +292,79 @@ def _schema_version(text: str | None) -> object:
         return None
 
 
-def _release_tags() -> list[str]:
-    """Every exact ``vX.Y.Z`` tag (as a full ref)."""
-    refs = _git("for-each-ref", "--format=%(refname)", "refs/tags/v*").stdout
+# --- release tags ---------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Tag:
+    """A ``vX.Y.Z`` release tag reachable from the base."""
+
+    ref: str
+    date: datetime.date | None  # the tag's own date (a lightweight tag's commit's)
+
+    @property
+    def name(self) -> str:
+        return self.ref.removeprefix("refs/tags/")
+
+
+def release_tags(base: str) -> list[Tag]:
+    """Every exact ``vX.Y.Z`` tag reachable from ``base``: a release tag must
+    be on ``main``, so one elsewhere was never a release."""
+    listing = _git(
+        "for-each-ref",
+        f"--merged={base}",
+        "--format=%(refname) %(creatordate:short)",
+        "refs/tags/v*",
+    ).stdout.decode("utf-8")
     tags = []
-    for ref in refs.decode("utf-8").split():
+    for line in listing.splitlines():
+        ref, _, day = line.partition(" ")
         try:
             consistency.normalize_tag(ref)
         except ValueError:
             continue
-        tags.append(ref)
+        try:
+            date = datetime.date.fromisoformat(day)
+        except ValueError:
+            date = None
+        tags.append(Tag(ref, date))
     return tags
 
 
-def _tag_exists(version: str) -> bool:
-    ref = f"refs/tags/v{version}^{{commit}}"
-    return _git("rev-parse", "-q", "--verify", ref).returncode == 0
-
-
-def released(name: str) -> bool:
-    """Whether any ``vX.Y.Z`` release tag contains skill ``name``."""
+def released(name: str, tags: Iterable[Tag]) -> bool:
+    """Whether any of ``tags`` contains skill ``name``."""
     path = f"{SKILLS_PATH}/{name}/meta.yaml"
-    return any(
-        _git("cat-file", "-e", f"{tag}:{path}").returncode == 0
-        for tag in _release_tags()
-    )
+    return any(_git("cat-file", "-e", f"{t.ref}:{path}").returncode == 0 for t in tags)
+
+
+def deprecation_published(
+    name: str, tags: Iterable[Tag]
+) -> tuple[datetime.date, Tag] | None:
+    """When a release first published skill ``name``'s deprecation, and which.
+
+    A tag counts only if its own ``meta.yaml`` marks the skill deprecated and
+    its own CHANGELOG has a dated ``### Deprecated`` entry naming it; the
+    notice starts at the later of that section's date and the tag's date, so
+    neither a Deprecated entry added to an old section afterwards nor an old
+    section date on a late tag shortens it.
+    """
+    starts = []
+    for tag in tags:
+        meta = _git_text(tag.ref, f"{SKILLS_PATH}/{name}/meta.yaml")
+        log = _git_text(tag.ref, "CHANGELOG.md")
+        if meta is None or log is None or tag.date is None:
+            continue
+        if not skill_facts(meta).deprecated:
+            continue
+        dates = [
+            section.date
+            for section in _dated(parse_changelog(log, f"{tag.name}:CHANGELOG.md"))
+            if section.date is not None
+            and any(names(entry, name) for entry in section.entries("Deprecated"))
+        ]
+        if dates:
+            starts.append((max(min(dates), tag.date), tag))
+    return min(starts, key=lambda start: start[0]) if starts else None
 
 
 # --- the rules -----------------------------------------------------------------
@@ -305,33 +389,23 @@ def notice_days() -> int:
     return NOTICE_DAYS if major == 0 else NOTICE_DAYS_STABLE
 
 
-def _notice_error(
-    name: str, sections: list[Section], today: datetime.date, days: int
-) -> str:
+def _notice_error(name: str, tags: list[Tag], today: datetime.date, days: int) -> str:
     """Why removing skill ``name`` today breaks the notice rule, or ``""``."""
-    announced = [
-        section
-        for section in sections
-        if section.version is not None
-        and section.date is not None
-        and any(names(entry, name) for entry in section.entries("Deprecated"))
-        and _tag_exists(section.version)
-    ]
-    if not announced:
+    published = deprecation_published(name, tags)
+    if published is None:
         return (
-            f"skill `{name}` was removed, but no published release announces "
-            f"its deprecation: a `### Deprecated` entry naming `{name}` must "
-            f"ship in a tagged release at least {days} days before the "
-            f"removal ({POLICY}#removing-a-skill)"
+            f"skill `{name}` was removed, but no release published its "
+            "deprecation: a tagged release must mark it `deprecated` and have "
+            f"a `### Deprecated` entry naming `{name}` at least {days} days "
+            f"before the removal ({POLICY}#removing-a-skill)"
         )
-    first = min(announced, key=lambda s: s.date or today)
-    assert first.date is not None and first.version is not None
-    allowed = first.date + datetime.timedelta(days=days)
+    start, tag = published
+    allowed = start + datetime.timedelta(days=days)
     if today < allowed:
         return (
-            f"skill `{name}` was removed too early: its deprecation was "
-            f"published in {first.version} on {first.date.isoformat()}, so it "
-            f"can be removed from {allowed.isoformat()} ({days} days' notice; "
+            f"skill `{name}` was removed too early: {tag.name} published its "
+            f"deprecation on {start.isoformat()}, so it can be removed from "
+            f"{allowed.isoformat()} ({days} days' notice; "
             f"{POLICY}#removing-a-skill)"
         )
     return ""
@@ -349,34 +423,39 @@ def _major(version: str) -> int:
 def skill_errors(
     base: dict[str, SkillFacts],
     head: dict[str, SkillFacts],
-    sections: list[Section],
+    recent: list[Section],
     adapters: Iterable[str],
     today: datetime.date,
+    tags: list[Tag],
     days: int = NOTICE_DAYS,
 ) -> list[str]:
-    """Lifecycle notes missing for the skill changes from ``base`` to ``head``,
-    with ``days`` of notice for a removal."""
+    """Lifecycle notes missing for the skill changes from ``base`` to ``head``.
+
+    ``recent`` are the CHANGELOG sections the change adds, ``tags`` the
+    release tags reachable from the base, and ``days`` the notice period.
+    """
     adapters = set(adapters)
     errors = []
     for name in sorted(base.keys() - head.keys()):
-        if not _recorded(sections, ("Removed",), name):
+        if not _recorded(recent, ("Removed",), name):
             errors.append(
                 f"skill `{name}` was removed: {_where('Removed', name)}, saying "
                 "what replaces it and how to delete installed copies "
                 f"({POLICY}#removing-a-skill)"
             )
-        if _recorded(sections, ("Security",), name):
+        if urgent_removal(recent, name):
             continue  # the urgent path: no deprecation or notice period
         if not base[name].deprecated:
             errors.append(
                 f"skill `{name}` was removed without being deprecated first: "
                 "mark it `deprecated` in its meta.yaml, release that, and "
                 f"remove it after the notice period ({POLICY}#removing-a-skill). "
-                f"An urgent security removal instead needs a `### Security` "
-                f"entry naming `{name}` ({POLICY}#security-fixes)"
+                f"An urgent security removal instead marks its `### Removed` "
+                f"entry `{SECURITY_MARK}` and adds a `### Security` entry "
+                f"naming `{name}` ({POLICY}#security-fixes)"
             )
-        elif released(name):
-            notice = _notice_error(name, sections, today, days)
+        elif released(name, tags):
+            notice = _notice_error(name, tags, today, days)
             if notice:
                 errors.append(notice)
     for name in sorted(base.keys() & head.keys()):
@@ -384,7 +463,7 @@ def skill_errors(
         if old.version is None or new.version is None:
             continue  # unreadable meta.yaml: the registry's tests report it
         newly_deprecated = new.deprecated and not old.deprecated
-        if newly_deprecated and not _recorded(sections, ("Deprecated",), name):
+        if newly_deprecated and not _recorded(recent, ("Deprecated",), name):
             errors.append(
                 f"skill `{name}` is newly deprecated: "
                 f"{_where('Deprecated', name)}, naming its replacement or the "
@@ -393,7 +472,7 @@ def skill_errors(
         for agent in sorted(old.agents - new.agents):
             if agent not in adapters:
                 continue  # the adapter itself is gone: adapter_errors covers it
-            if not _recorded(sections, ("Removed",), name, agent):
+            if not _recorded(recent, ("Removed",), name, agent):
                 errors.append(
                     f"skill `{name}` no longer supports `{agent}`: "
                     f"{_where('Removed', name, agent)}, "
@@ -402,8 +481,7 @@ def skill_errors(
                 )
         if _major(new.version) > _major(old.version) and not any(
             names(entry, name) and mentions_version(entry, new.version)
-            for section in recent_sections(sections)
-            for entry in section.entries("Changed", "Removed", "Security")
+            for entry in _entries(recent, "Changed", "Removed", "Security")
         ):
             errors.append(
                 f"skill `{name}` went from {old.version} to {new.version}, a "
@@ -416,28 +494,39 @@ def skill_errors(
 
 
 def adapter_errors(
-    base: set[str] | None, head: Iterable[str], sections: list[Section]
+    base: set[str] | None,
+    head: Iterable[str],
+    recent: list[Section],
+    skills: Collection[str],
 ) -> list[str]:
-    """Lifecycle notes missing for adapters removed since ``base``."""
+    """Lifecycle notes missing for adapters removed since ``base``.
+
+    The entry must name the adapter and none of ``skills``, so a per-skill
+    "``x`` no longer supports ``agent``" entry doesn't count as the note that
+    the adapter itself is gone.
+    """
     if base is None:
         return []
     return [
-        f"adapter `{name}` was removed: {_where('Removed', name)}, listing the "
-        "paths it installed to so users can delete what is left "
-        f"({POLICY}#removing-an-agent-or-format)"
+        f"adapter `{name}` was removed: add a `### Removed` entry of its own "
+        f"naming `{name}` (in backticks) and no skill under `## [Unreleased]` "
+        "in CHANGELOG.md, listing the paths it installed to so users can "
+        f"delete what is left ({POLICY}#removing-an-agent-or-format)"
         for name in sorted(base - set(head))
-        if not _recorded(sections, ("Removed",), name)
+        if not any(
+            names(entry, name) and not any(names(entry, s) for s in skills)
+            for entry in _entries(recent, "Removed")
+        )
     ]
 
 
-def catalog_errors(base: object, head: object, sections: list[Section]) -> list[str]:
+def catalog_errors(base: object, head: object, recent: list[Section]) -> list[str]:
     """A catalog ``schema_version`` change needs a **Breaking:** entry."""
     if base is None or head is None or base == head:
         return []
     if any(
         "**Breaking" in entry and "`schema_version`" in entry
-        for section in recent_sections(sections)
-        for entry in section.entries()
+        for entry in _entries(recent)
     ):
         return []
     return [
@@ -484,8 +573,14 @@ def release_bump_errors(sections: list[Section]) -> list[str]:
     ]
 
 
-def lifecycle_errors(base: str, today: datetime.date | None = None) -> list[str]:
-    """Every lifecycle note the change from ``base`` to the working tree lacks."""
+def lifecycle_check(
+    base: str, today: datetime.date | None = None
+) -> tuple[list[str], list[str]]:
+    """The lifecycle notes the change from ``base`` to the working tree lacks,
+    and any notes about what could not be checked.
+
+    Raises :class:`ChangelogError` if a CHANGELOG it needs cannot be read.
+    """
     if today is None:
         today = datetime.datetime.now(datetime.timezone.utc).date()
     try:
@@ -493,21 +588,33 @@ def lifecycle_errors(base: str, today: datetime.date | None = None) -> list[str]
     except OSError:
         in_git = False
     if not in_git:
-        return [f"--base {base} needs a git checkout"]
+        return [f"--base {base} needs a git checkout"], []
     if _git("rev-parse", "-q", "--verify", f"{base}^{{commit}}").returncode != 0:
-        return [f"base ref {base!r} not found (fetch it first)"]
+        return [f"base ref {base!r} not found (fetch it first)"], []
     sections = parse_changelog((ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))
+    base_log = _git_text(base, "CHANGELOG.md")
+    base_versions = {
+        s.version
+        for s in parse_changelog(base_log or "", f"{base}:CHANGELOG.md")
+        if s.version is not None
+    }
+    recent = recent_sections(sections, base_versions)
+    tags = release_tags(base)
+    base_skills, head_skills = skills_at(base), skills_now()
     head_schema = ROOT / CATALOG_SCHEMA_PATH
-    return [
+    errors = [
         *skill_errors(
-            skills_at(base),
-            skills_now(),
-            sections,
+            base_skills,
+            head_skills,
+            recent,
             ALL_ADAPTERS,
             today,
+            tags,
             notice_days(),
         ),
-        *adapter_errors(adapters_at(base), ALL_ADAPTERS, sections),
+        *adapter_errors(
+            adapters_at(base), ALL_ADAPTERS, recent, base_skills.keys() | head_skills
+        ),
         *catalog_errors(
             _schema_version(_git_text(base, CATALOG_SCHEMA_PATH)),
             _schema_version(
@@ -515,9 +622,15 @@ def lifecycle_errors(base: str, today: datetime.date | None = None) -> list[str]
                 if head_schema.is_file()
                 else None
             ),
-            sections,
+            recent,
         ),
     ]
+    return errors, ([] if tags else [NO_TAGS_NOTE])
+
+
+def lifecycle_errors(base: str, today: datetime.date | None = None) -> list[str]:
+    """Every lifecycle note the change from ``base`` to the working tree lacks."""
+    return lifecycle_check(base, today)[0]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -529,17 +642,23 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    errors = release_bump_errors(parse_changelog(changelog))
-    if args.base:
-        errors += lifecycle_errors(args.base)
+    notes: list[str] = []
+    try:
+        changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        errors = release_bump_errors(parse_changelog(changelog))
+        if args.base:
+            found, notes = lifecycle_check(args.base)
+            errors += found
+    except ChangelogError as exc:
+        errors = [str(exc)]
+    for note in notes:
+        print(f"note: {note}", file=sys.stderr)
     if errors:
         for error in errors:
             print(f"error: {error}", file=sys.stderr)
         print(
             f"\nSee {POLICY}: a compatibility change needs a CHANGELOG entry "
-            "naming what\nchanged (in backticks), under [Unreleased] or the "
-            "newest dated section.",
+            "naming what\nchanged (in backticks), under [Unreleased].",
             file=sys.stderr,
         )
         return 1

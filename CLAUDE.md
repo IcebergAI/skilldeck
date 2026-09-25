@@ -142,21 +142,29 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
   `pytest`. A dated CHANGELOG section without a matching `v*` tag is prepared, not
   published.
 - Lifecycle: follow `docs/lifecycle.md` for what bumps package/skill versions
-  (skills: removing a checklist area or changing output shape is major, adding
-  checks minor, wording/citations patch) and for deprecation → notice → removal
-  (a deprecation must ship in a tagged release ≥90 days before removal, 180
-  from 1.0; urgent security fixes may skip it). `scripts/check_lifecycle.py`
-  (CI `lint` job, `--base origin/<target>`; needs `uv run --locked --extra dev`)
-  fails a PR unless CHANGELOG `[Unreleased]` (or the newest dated section) has a
-  bullet naming the thing **in backticks**: `### Removed` for a removed skill
-  (which must also be deprecated at base with a published, old-enough
-  `### Deprecated` entry, unless a `### Security` entry names it), a removed
-  adapter, or an agent dropped from a skill (skill and agent in one bullet);
-  `### Deprecated` for a newly deprecated skill; `### Changed` naming skill +
-  new version for a major skill bump; `**Breaking:**` + `schema_version` for a
-  catalog schema bump. It also fails (as does `prepare_release.py`) when the
-  newest dated section is a patch release with Removed/Deprecated/**Breaking**
-  entries. Run it locally with `--base origin/main` before pushing.
+  (skills from 1.0.0: removing a checklist area or changing output shape is
+  major, adding checks minor, wording/citations patch; while a skill is 0.x a
+  breaking change bumps its minor) and for deprecation → notice → removal (a
+  release tag must ship the deprecation ≥90 days before removal, 180 from 1.0).
+  `### Removed` is only for public-surface removals (skills, agents/adapters,
+  commands/options, stable output or `meta.yaml` fields); internal code
+  removals go under Changed. `scripts/check_lifecycle.py` (CI `lint` job,
+  `--base origin/<target>`; needs `uv run --locked --extra dev`) fails a PR
+  unless a section the PR adds (`[Unreleased]`, or a release it cuts) has a
+  bullet naming the thing **in its own backticks**: `### Removed` for a removed
+  skill (also deprecated at base, and if any tag contains it, a reachable
+  `v*` tag whose own meta.yaml + CHANGELOG deprecate it, ≥ the notice period
+  before, counted from max(section date, tag date)); `### Removed` of its own,
+  naming no skill, for a removed adapter; one `### Removed` bullet naming skill
+  and agent for an agent dropped from a skill; `### Deprecated` for a newly
+  deprecated skill; `### Changed` naming skill + new version when a skill's
+  major goes up; `**Breaking:**` + `schema_version` for a catalog schema bump.
+  Urgent security removals skip deprecation/notice only with a `### Removed`
+  bullet marked `**Security:**` plus a `### Security` entry naming the skill.
+  Without release tags it prints a note and skips notice rules. It also fails
+  (as does `prepare_release.py`) when the newest dated section is a patch
+  release with Removed/Deprecated/**Breaking** entries. Run it locally with
+  `--base origin/main` (after `git fetch --tags`) before pushing.
 - Release CI must build once, verify wheel/sdist/plugin identity (against the
   tagged commit's files), produce a runtime-only SPDX SBOM and exact
   checksums, attest those bytes, then publish the same bundle. The build job

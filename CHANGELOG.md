@@ -20,88 +20,6 @@ All notable changes to this project are documented here. The format is based on
   updates to that SHA-pinned action carry it. A test rejects inline tool pins
   in workflows and keeps the documented pypi-attestations command in step
   with the pin.
-
-- `authentication-review` skill (0.1.0) — reviews authentication changes in
-  depth: password storage and policy, recovery/reset flows, MFA bypass and OTP
-  handling, session fixation and cookie hardening, JWT/API-token verification
-  (alg confusion, key selection), OAuth 2.0 (PKCE, `state`, `redirect_uri`
-  exact match, deprecated grants), OIDC (`nonce`, `iss`+`sub` identity, JWKS
-  trust), SAML (assertion vs response signatures, XSW, replay/conditions), and
-  LDAP sign-in (empty-password bind, unchecked bind result). Classified
-  against OWASP ASVS 5.0 (V6/V7/V9/V10, with V11/V3 for KDF and cookie
-  findings) with patterns from RFC 9700, NIST SP 800-63B, and the OWASP
-  Authentication, Password Storage, Session Management, MFA, Forgot Password,
-  and SAML Security cheat sheets. Pairs with `security-review` (bumped to
-  0.3.2 for the reciprocal cross-reference), which keeps breadth coverage.
-  Ships with OAuth (hand-rolled code flow missing `state`/PKCE) and SAML
-  (response-envelope-only signature check + raw-document `NameID` read) eval
-  fixtures.
-- `ci-workflow-review` skill (0.2.0) — reviews CI/CD pipeline changes for
-  injection and poisoned pipeline execution (untrusted `github.event` /
-  GitLab predefined-variable interpolation, `pull_request_target` + head
-  checkout, fork MR pipelines), credential and token scope
-  (`GITHUB_TOKEN` permissions, `CI_JOB_TOKEN` allowlist, masked/protected
-  variables), unpinned third-party steps and `include:`s, artifact/cache
-  integrity, and runner exposure (self-hosted runners, GitLab privileged
-  Docker/DinD and shell executors). Classified against the OWASP Top 10 CI/CD
-  Security Risks (CICD-SEC-1–10) with patterns from GitHub's Actions hardening
-  guide and GitLab's pipeline/job-token/runner security guidance. Ships with
-  GitHub and GitLab eval fixtures (`workflow_run` artifact poisoning through
-  `$GITHUB_ENV` plus a tag-pinned third-party action; a privileged DinD runner
-  plus MR-title injection in a fork-reachable job).
-- `iac-review` skill (0.1.0) — reviews infrastructure-as-code changes
-  (Terraform, CloudFormation, Kubernetes/Helm, Dockerfiles) for network
-  exposure, wildcard IAM, secrets in code/state, missing encryption, container
-  hardening per the Kubernetes Pod Security Standards and the OWASP Docker
-  cheat sheet, and stateful-resource change safety; anchored to CIS benchmark
-  baselines. Ships with an eval fixture (wildcard S3 policy on an app role).
-- Golden-diff eval harness (`evals/`) (#32): seven fixtures — one per skill —
-  each a tiny repo whose diff contains a planted defect (path traversal,
-  one-step column rename, assertion-free test, retry without backoff on a
-  non-idempotent POST, log injection, dependency confusion, duplicate code).
-  `python evals/run_evals.py` builds each repo,
-  installs the skill, invokes an agent (default: Claude CLI), and scores the
-  report: plants must be found and total findings must stay under a cap. Runs
-  manually (paid API); CI validates fixture structure only.
-- `scripts/prepare_release.py <version>` automates release prep: bumps
-  `pyproject.toml`, dates the `[Unreleased]` CHANGELOG section, re-locks,
-  regenerates the plugin tree, and re-runs the consistency guard
-  (`docs/releasing.md` updated to make it the documented path) (#35).
-- The repo is now a Claude Code plugin marketplace (#31):
-  `/plugin marketplace add IcebergAI/skilldeck` then
-  `/plugin install skilldeck@skilldeck` installs all skills with no Python
-  tooling. The committed plugin tree (`.claude-plugin/marketplace.json` +
-  `claude-plugin/`) is generated from the canonical skills by
-  `scripts/build_plugin.py`; a pytest freshness guard fails if it drifts.
-- Cursor and GitHub Copilot adapters (#30). Cursor installs agent-requested
-  rules to `.cursor/rules/<name>.mdc` (`description` + `alwaysApply: false`);
-  Copilot installs prompt files to `.github/prompts/<name>.prompt.md`, run
-  with `/<name>` in chat. Both are project-scope only — neither tool has a
-  stable filesystem location for user-level config — enforced by a new
-  per-adapter `scopes` attribute. All skills add the two agents to
-  `supported-agents` (patch version bumps). These formats are now the
-  `cursor-rule` and `copilot-prompt` legacy adapters; `cursor` and `copilot`
-  install `SKILL.md` folders at both scopes (see Changed, #100).
-- `install`/`uninstall` accept `--agent` multiple times, or `--agent all`, to
-  target several agents in one command; `skilldeck show <name>` prints a
-  skill's body (or, with `--agent`, the rendered per-agent output) before
-  installing (#29).
-- Installed skills are now stamped with a `skilldeck` comment recording the
-  skill name, version, and a content hash. New commands build on it:
-  `skilldeck status --agent <a>` shows installed vs bundled versions
-  (up to date / stale / modified locally / unmanaged, plus orphans of skills no
-  longer bundled) and `skilldeck update --agent <a>` refreshes stale installs
-  (#27).
-- `install` no longer silently overwrites: a destination file with local
-  modifications — or one skilldeck didn't write — is refused unless `--force`
-  is given; `update` likewise skips modified installs without `--force` (#28).
-  Note: installs made by skilldeck ≤ 0.3.0 carry no stamp, so the first
-  reinstall over them needs `--force` once, and so does uninstalling them
-  (#95).
-- Structural lint tests (`tests/test_skill_structure.py`) asserting every
-  bundled skill body carries the standardized elements: a Scope section with
-  the uncommitted-changes fallback, severity anchors, a worked example, the
-  verify-before-reporting instruction, and the one-line report header (#33).
 - The release workflow now gates publication (#108): a `verify` job fails
   unless the tagged commit is reachable from `main` and runs lint, type-check,
   and the test suite on it before anything is built. That catches a tag pushed
@@ -353,6 +271,8 @@ All notable changes to this project are documented here. The format is based on
   the `pull_request_target` head checkout) plus a third-party action pinned by
   tag. Their `expected.yaml` keywords, severity floors and sample reports are
   updated to match.
+- Dropped the dead internal `skilldeck.registry.get_skill` helper (unused,
+  and it skipped `supported-agents` validation).
 
 ### Fixed
 
@@ -509,11 +429,6 @@ All notable changes to this project are documented here. The format is based on
   version bump and a release PR whose plugin drifted to a development version
   after `prepare_release.py`.
 
-### Removed
-
-- Dead `skilldeck.registry.get_skill` helper (unused, and it skipped
-  `supported-agents` validation).
-
 ### Added
 
 - Lifecycle and compatibility policy, `docs/lifecycle.md` (#78), linked from
@@ -522,35 +437,44 @@ All notable changes to this project are documented here. The format is based on
   It defines:
 
   - what bumps the package version before and after 1.0 (a patch release
-    never removes, deprecates or breaks anything);
-  - what makes a skill change major, minor or patch (skills don't get SemVer's
-    0.x exception), and how skill versions meet `status` and `update`;
+    never removes, deprecates, adds or breaks anything), and that
+    `### Removed` entries are only for removals from the public surface;
+  - what makes a skill change major, minor or patch (while a skill is 0.x, a
+    breaking change bumps its minor version), and how skill versions meet
+    `status` and `update`;
   - the deprecate, notice and remove path for skills, agents and formats:
     a deprecation must ship in a tagged release at least 90 days before the
-    removal (180 days from 1.0). A rename is a new skill plus a deprecation;
+    removal (180 days from 1.0; both are maintainer policy choices). A
+    rename is a new skill plus a deprecation;
   - what `status`, `update` and `uninstall` do with installed copies of a
     removed skill, or of a skill that dropped an agent;
   - how `meta.yaml`, the catalog, install stamps and future lockfiles (#71)
     may change. Every stamp format stays readable, and `update` migrates old
     stamps;
-  - which output is a stable contract (`catalog --json`, `provenance --json`,
-    run records) and which is human output that may change;
-  - the urgent security-fix path.
+  - which output is a stable contract (`catalog --json`, `provenance --json`)
+    and which is human output that may change; eval run records follow their
+    own schema version;
+  - the urgent security-fix path, with a 7-day release target for confirmed
+    high- and critical-severity issues (also added to `SECURITY.md`).
 
   Tests walk through a skill rename, an agent removal and a stamp-format
   migration, and pin the current stamp format byte for byte.
 - `scripts/check_lifecycle.py`, run by CI's `lint` job with
   `--base origin/<target>`, requires CHANGELOG notes when compatibility
-  changes. Each note is a bullet under `[Unreleased]` (or the newest dated
-  section) that names the skill, agent or adapter in backticks:
+  changes. Each note is a bullet in a section the pull request adds
+  (`[Unreleased]`, or a release it cuts) that names the skill, agent or
+  adapter in backticks:
 
-  - a removed skill needs a Removed entry, a deprecation at the base, and, once
-    a release has contained the skill, a published Deprecated entry at least
-    the notice period old. A Security entry naming the skill skips the last
-    two;
+  - a removed skill needs a Removed entry and a deprecation at the base. Once
+    a release has contained the skill, a release tag must also have shipped
+    the deprecation (in its own `meta.yaml` and CHANGELOG) at least the
+    notice period before, counted from the later of the section date and the
+    tag date. A Removed entry marked as a security removal, together with a
+    Security entry naming the skill, skips the last two;
   - a newly deprecated skill needs a Deprecated entry;
-  - an agent dropped from a skill, or a removed adapter, needs a Removed entry;
-  - a major skill version needs a Changed entry giving the new version;
+  - an agent dropped from a skill needs a Removed entry naming both, and a
+    removed adapter needs a Removed entry of its own that names no skill;
+  - a new major skill version needs a Changed entry giving the new version;
   - a change to the catalog's schema version needs an entry marked as
     breaking.
 
@@ -558,7 +482,9 @@ All notable changes to this project are documented here. The format is based on
   anything, when the newest dated section is a patch release with Removed,
   Deprecated or breaking entries (from 1.0, Removed and breaking entries need
   a major release). Every error says what to add and where, and links the
-  policy.
+  policy. Without release tags it prints a note and skips the notice rules.
+  An impossible CHANGELOG date is a clean error here and in
+  `prepare_release.py`.
 - Agent compatibility matrix, `docs/compatibility.md` (#79), linked from the
   README and `docs/adapters.md`. It lists every adapter, including the
   `copilot-prompt`, `cursor-rule` and `kiro-steering` legacy adapters, with:
@@ -749,6 +675,87 @@ All notable changes to this project are documented here. The format is based on
   Plain `provenance` reports only the identities embedded at build time; the
   docs now say so. CI and the release workflow run the installed wheel and
   sdist with `--verify` (#109).
+- `authentication-review` skill (0.1.0) — reviews authentication changes in
+  depth: password storage and policy, recovery/reset flows, MFA bypass and OTP
+  handling, session fixation and cookie hardening, JWT/API-token verification
+  (alg confusion, key selection), OAuth 2.0 (PKCE, `state`, `redirect_uri`
+  exact match, deprecated grants), OIDC (`nonce`, `iss`+`sub` identity, JWKS
+  trust), SAML (assertion vs response signatures, XSW, replay/conditions), and
+  LDAP sign-in (empty-password bind, unchecked bind result). Classified
+  against OWASP ASVS 5.0 (V6/V7/V9/V10, with V11/V3 for KDF and cookie
+  findings) with patterns from RFC 9700, NIST SP 800-63B, and the OWASP
+  Authentication, Password Storage, Session Management, MFA, Forgot Password,
+  and SAML Security cheat sheets. Pairs with `security-review` (bumped to
+  0.3.2 for the reciprocal cross-reference), which keeps breadth coverage.
+  Ships with OAuth (hand-rolled code flow missing `state`/PKCE) and SAML
+  (response-envelope-only signature check + raw-document `NameID` read) eval
+  fixtures.
+- `ci-workflow-review` skill (0.2.0) — reviews CI/CD pipeline changes for
+  injection and poisoned pipeline execution (untrusted `github.event` /
+  GitLab predefined-variable interpolation, `pull_request_target` + head
+  checkout, fork MR pipelines), credential and token scope
+  (`GITHUB_TOKEN` permissions, `CI_JOB_TOKEN` allowlist, masked/protected
+  variables), unpinned third-party steps and `include:`s, artifact/cache
+  integrity, and runner exposure (self-hosted runners, GitLab privileged
+  Docker/DinD and shell executors). Classified against the OWASP Top 10 CI/CD
+  Security Risks (CICD-SEC-1–10) with patterns from GitHub's Actions hardening
+  guide and GitLab's pipeline/job-token/runner security guidance. Ships with
+  GitHub and GitLab eval fixtures (`workflow_run` artifact poisoning through
+  `$GITHUB_ENV` plus a tag-pinned third-party action; a privileged DinD runner
+  plus MR-title injection in a fork-reachable job).
+- `iac-review` skill (0.1.0) — reviews infrastructure-as-code changes
+  (Terraform, CloudFormation, Kubernetes/Helm, Dockerfiles) for network
+  exposure, wildcard IAM, secrets in code/state, missing encryption, container
+  hardening per the Kubernetes Pod Security Standards and the OWASP Docker
+  cheat sheet, and stateful-resource change safety; anchored to CIS benchmark
+  baselines. Ships with an eval fixture (wildcard S3 policy on an app role).
+- Golden-diff eval harness (`evals/`) (#32): seven fixtures — one per skill —
+  each a tiny repo whose diff contains a planted defect (path traversal,
+  one-step column rename, assertion-free test, retry without backoff on a
+  non-idempotent POST, log injection, dependency confusion, duplicate code).
+  `python evals/run_evals.py` builds each repo,
+  installs the skill, invokes an agent (default: Claude CLI), and scores the
+  report: plants must be found and total findings must stay under a cap. Runs
+  manually (paid API); CI validates fixture structure only.
+- `scripts/prepare_release.py <version>` automates release prep: bumps
+  `pyproject.toml`, dates the `[Unreleased]` CHANGELOG section, re-locks,
+  regenerates the plugin tree, and re-runs the consistency guard
+  (`docs/releasing.md` updated to make it the documented path) (#35).
+- The repo is now a Claude Code plugin marketplace (#31):
+  `/plugin marketplace add IcebergAI/skilldeck` then
+  `/plugin install skilldeck@skilldeck` installs all skills with no Python
+  tooling. The committed plugin tree (`.claude-plugin/marketplace.json` +
+  `claude-plugin/`) is generated from the canonical skills by
+  `scripts/build_plugin.py`; a pytest freshness guard fails if it drifts.
+- Cursor and GitHub Copilot adapters (#30). Cursor installs agent-requested
+  rules to `.cursor/rules/<name>.mdc` (`description` + `alwaysApply: false`);
+  Copilot installs prompt files to `.github/prompts/<name>.prompt.md`, run
+  with `/<name>` in chat. Both are project-scope only — neither tool has a
+  stable filesystem location for user-level config — enforced by a new
+  per-adapter `scopes` attribute. All skills add the two agents to
+  `supported-agents` (patch version bumps). These formats are now the
+  `cursor-rule` and `copilot-prompt` legacy adapters; `cursor` and `copilot`
+  install `SKILL.md` folders at both scopes (see Changed, #100).
+- `install`/`uninstall` accept `--agent` multiple times, or `--agent all`, to
+  target several agents in one command; `skilldeck show <name>` prints a
+  skill's body (or, with `--agent`, the rendered per-agent output) before
+  installing (#29).
+- Installed skills are now stamped with a `skilldeck` comment recording the
+  skill name, version, and a content hash. New commands build on it:
+  `skilldeck status --agent <a>` shows installed vs bundled versions
+  (up to date / stale / modified locally / unmanaged, plus orphans of skills no
+  longer bundled) and `skilldeck update --agent <a>` refreshes stale installs
+  (#27).
+- `install` no longer silently overwrites: a destination file with local
+  modifications — or one skilldeck didn't write — is refused unless `--force`
+  is given; `update` likewise skips modified installs without `--force` (#28).
+  Note: installs made by skilldeck ≤ 0.3.0 carry no stamp, so the first
+  reinstall over them needs `--force` once, and so does uninstalling them
+  (#95).
+- Structural lint tests (`tests/test_skill_structure.py`) asserting every
+  bundled skill body carries the standardized elements: a Scope section with
+  the uncommitted-changes fallback, severity anchors, a worked example, the
+  verify-before-reporting instruction, and the one-line report header (#33).
 
 ## [0.3.0] - 2026-06-27
 

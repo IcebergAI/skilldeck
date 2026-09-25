@@ -9,10 +9,10 @@ rules can't silently drift.
 - **Project version** lives in `pyproject.toml` `[project].version` and is the
   single source of truth; `uv.lock` mirrors it (run `uv lock` after a bump).
 - **SemVer**, and the project is **pre-1.0**: a breaking change bumps the
-  **minor** (`0.2 → 0.3`); features and fixes bump the minor or patch at
-  discretion. (Dropping Python 3.9 in 0.2.0 was breaking; the two new skills in
-  0.3.0 were additive.) A release with Removed or Deprecated entries, or an
-  entry marked **Breaking:**, can't be a patch release. See
+  **minor** (`0.2 → 0.3`), and so does a new feature; fixes bump the minor or
+  patch at discretion. (Dropping Python 3.9 in 0.2.0 was breaking; the two new
+  skills in 0.3.0 were additive.) A release with Removed or Deprecated
+  entries, or an entry marked **Breaking:**, can't be a patch release. See
   [Lifecycle and compatibility](lifecycle.md#the-package) for what counts as
   breaking, the rules from 1.0, and the notice period before a removal.
 - **Skill versions are independent.** Each skill carries its own `version` in
@@ -188,9 +188,11 @@ Consumer verification is documented in
 and the package, so the `lint` job runs it with `uv run`. On a pull request
 it compares the change with `--base origin/<target branch>`, and requires a
 CHANGELOG entry for each removed or newly deprecated skill, agent dropped
-from a skill, removed adapter, major skill version and catalog
-`schema_version` change. A skill removal must also follow a published
-deprecation by the notice period. Every run also checks that the newest
+from a skill, removed adapter, new major skill version and catalog
+`schema_version` change. A skill removal must also follow a deprecation that
+a release tag published at least the notice period earlier, so the check
+needs the tags that `fetch-depth: 0` brings; without any, it prints a note
+and skips that rule. Every run also checks that the newest
 dated CHANGELOG section is a big enough version bump for its Removed,
 Deprecated and **Breaking:** entries, which `prepare_release.py` checks
 before it writes anything.
