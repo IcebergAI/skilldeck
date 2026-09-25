@@ -97,6 +97,8 @@ DEFAULT_PROMPT = (
 )
 #: the default cap on planned runs (fixtures x repeats) per invocation
 DEFAULT_MAX_RUNS = 50
+#: the most findings a clean-diff fixture (no plants) may tolerate
+MAX_CLEAN_FINDINGS = 2
 DEFAULT_TIMEOUT = 600
 #: seconds allowed for a harness's ``--version`` probe
 VERSION_PROBE_TIMEOUT = 30
@@ -1050,6 +1052,44 @@ def fixture_layout_problems(fixture: Fixture) -> list[str]:
         if not (fixture.path / "change" / plant.file).is_file()
     )
     return problems
+
+
+def echoed_keywords(fixture: Fixture) -> list[str]:
+    """One message per plant whose keywords appear verbatim in its planted file.
+
+    A keyword copied from the planted code (a variable, an event name, a
+    CIDR) is satisfied by any report that quotes the line, whether or not it
+    identified the defect. Same whole-word matching as the scorer. A plant
+    file that is missing or unreadable is :func:`fixture_layout_problems`'
+    to report.
+    """
+    problems = []
+    for plant in fixture.plants:
+        try:
+            code = (fixture.path / "change" / plant.file).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        echoed = [k for k in plant.keywords if mentions(code, k)]
+        if echoed:
+            problems.append(
+                f"{plant.file}: keyword(s) {echoed} appear verbatim in the planted "
+                "code; keywords must describe the defect, not echo the code"
+            )
+    return problems
+
+
+def clean_tolerance_problem(fixture: Fixture) -> str | None:
+    """Why a clean-diff fixture's ``max-findings`` is too lenient, if it is.
+
+    With no plants, ``max-findings`` is the fixture's false-positive
+    tolerance, so it stays small.
+    """
+    if fixture.plants or fixture.max_findings <= MAX_CLEAN_FINDINGS:
+        return None
+    return (
+        f"a clean-diff fixture tolerates at most {MAX_CLEAN_FINDINGS} findings, "
+        f"not {fixture.max_findings}"
+    )
 
 
 def rendered_digest(adapter: str, skill: Skill) -> str:

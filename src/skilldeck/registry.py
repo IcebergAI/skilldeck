@@ -52,8 +52,9 @@ class SkillError(Exception):
 
     For a malformed skill, ``rule`` names the metadata rule it breaks (e.g.
     ``meta.version``; ``skilldeck validate`` lists them), ``file`` is the file
-    that breaks it, and ``detail`` is the message without the leading skill
-    directory. Other errors leave ``rule`` and ``file`` None.
+    that breaks it, ``line`` the 1-based line when known, and ``detail`` a
+    one-line message without the leading skill directory. Other errors leave
+    ``rule``, ``file`` and ``line`` None.
     """
 
     def __init__(
@@ -63,11 +64,13 @@ class SkillError(Exception):
         rule: str | None = None,
         file: Path | None = None,
         detail: str | None = None,
+        line: int | None = None,
     ) -> None:
         super().__init__(message)
         self.rule = rule
         self.file = file
         self.detail = message if detail is None else detail
+        self.line = line
 
 
 def _invalid(
@@ -115,6 +118,54 @@ def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> 
     if not body_path.is_file():
         raise _invalid(skill_dir, "body.missing", "missing skill.md", "skill.md")
 
+    meta = _load_meta(skill_dir, known_agents)
+
+    try:
+        body = body_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise _invalid(
+            skill_dir,
+            "body.encoding",
+            f"skill.md is not valid UTF-8: {exc}",
+            "skill.md",
+        ) from exc
+
+    return Skill(
+        name=meta.name,
+        description=meta.description,
+        category=meta.category,
+        version=meta.version,
+        supported_agents=meta.supported_agents,
+        body=body,
+        path=skill_dir,
+        deprecated=meta.deprecated,
+    )
+
+
+def check_meta(skill_dir: Path, known_agents: Collection[str] | None = None) -> None:
+    """Validate ``skill_dir/meta.yaml`` alone, as :func:`load_skill` does.
+
+    For ``skilldeck validate``, when ``skill.md`` cannot be read. Raises
+    :class:`SkillError` as :func:`load_skill` would.
+    """
+    if not (skill_dir / "meta.yaml").is_file():
+        raise _invalid(skill_dir, "meta.missing", "missing meta.yaml")
+    _load_meta(skill_dir, known_agents)
+
+
+@dataclass(frozen=True)
+class _Meta:
+    name: str
+    description: str
+    category: str
+    version: str
+    supported_agents: tuple[str, ...]
+    deprecated: Deprecation | None
+
+
+def _load_meta(skill_dir: Path, known_agents: Collection[str] | None) -> _Meta:
+    """Read and validate ``skill_dir/meta.yaml``, which exists."""
+    meta_path = skill_dir / "meta.yaml"
     try:
         meta = yaml.safe_load(meta_path.read_text(encoding="utf-8")) or {}
     except UnicodeDecodeError as exc:
@@ -122,8 +173,12 @@ def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> 
             skill_dir, "meta.encoding", f"meta.yaml is not valid UTF-8: {exc}"
         ) from exc
     except yaml.YAMLError as exc:
-        raise _invalid(
-            skill_dir, "meta.syntax", f"meta.yaml is not valid YAML: {exc}"
+        raise SkillError(
+            f"{skill_dir}: meta.yaml is not valid YAML: {exc}",
+            rule="meta.syntax",
+            file=meta_path,
+            detail=f"meta.yaml is not valid YAML: {_yaml_problem(exc)}",
+            line=_yaml_line(exc),
         ) from exc
     if not isinstance(meta, dict):
         raise _invalid(skill_dir, "meta.syntax", "meta.yaml must be a YAML mapping")
@@ -161,7 +216,7 @@ def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> 
 
     description = _require_str(skill_dir, meta, "description")
     # Any line boundary ``str.splitlines`` knows, not just \n and \r: YAML
-    # double-quoted escapes such as " " or "\x85" also break the one-line
+    # double-quoted escapes such as "\u2028" or "\x85" also break the one-line
     # ``skilldeck list`` output.
     if description.splitlines() != [description]:
         raise _invalid(
@@ -218,26 +273,30 @@ def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> 
         else None
     )
 
-    try:
-        body = body_path.read_text(encoding="utf-8")
-    except UnicodeDecodeError as exc:
-        raise _invalid(
-            skill_dir,
-            "body.encoding",
-            f"skill.md is not valid UTF-8: {exc}",
-            "skill.md",
-        ) from exc
-
-    return Skill(
+    return _Meta(
         name=name,
         description=description,
         category=category,
         version=raw_version,
         supported_agents=tuple(agents),
-        body=body,
-        path=skill_dir,
         deprecated=deprecated,
     )
+
+
+def _yaml_problem(exc: yaml.YAMLError) -> str:
+    """What is wrong with the YAML, on one line and without the source
+    excerpt PyYAML quotes (which can echo a file's contents)."""
+    if isinstance(exc, yaml.MarkedYAMLError) and exc.problem:
+        if exc.context:
+            return f"{exc.problem} ({exc.context})"
+        return exc.problem
+    return " ".join(str(exc).split())
+
+
+def _yaml_line(exc: yaml.YAMLError) -> int | None:
+    """The 1-based line PyYAML found the problem on, if it knows."""
+    mark = getattr(exc, "problem_mark", None)
+    return mark.line + 1 if mark is not None else None
 
 
 def _require_str(skill_dir: Path, meta: dict[Any, Any], field: str) -> str:

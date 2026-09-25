@@ -526,13 +526,18 @@ All notable changes to this project are documented here. The format is based on
   checkout it also scaffolds `evals/fixtures/NAME/` (skip with
   `--no-eval-fixture`). `skilldeck validate [NAME|PATH]... [--skills-dir]
   [--json]` checks skills offline: metadata, structure, cited sources,
-  leftover placeholders, stray files, rendering by every adapter (legacy
-  formats included) and the catalog entry; in a checkout also the eval
-  fixtures (loaded through `evals/run_evals.py`), the skill's row in
+  leftover placeholders, stray files and symlinks (reported, never
+  followed), rendering by every adapter (legacy formats included) and the
+  catalog entry; in a checkout also the eval fixtures (loaded through
+  `evals/run_evals.py`: layout, keywords that echo the planted code, a
+  clean-diff fixture's tolerance), the skill's row in
   `docs/finding-output.md`, and generated-output freshness
-  (`scripts/build_plugin.py --check`, in process). Each problem names the
-  file and line, a rule id, and a fix; `--json` is deterministic, and the
-  exit status is 0 only when clean. A fresh skeleton passes every metadata
+  (`scripts/build_plugin.py --check`, in process). It never runs code from
+  the tree it checks: the checks that import a checkout's scripts run only
+  when that checkout's `src/skilldeck` is the running skilldeck, and are
+  reported as skipped otherwise. Each problem names the file and line, a
+  rule id, and a fix; `--json` is deterministic, and the exit status is 0
+  only when clean. A fresh skeleton passes every metadata
   and structure check and is rated `incomplete` (not `invalid`) until its
   placeholders, sources and eval fixture are written. Outside a checkout
   both commands need an explicit directory (`--dir`, `--skills-dir`), for
@@ -541,7 +546,9 @@ All notable changes to this project are documented here. The format is based on
   and documents the review path for official and organization skills. The
   structure and citation rules moved from the tests into `skilldeck.lint`,
   which the tests and `validate` share, and the registry's errors carry the
-  rule they break.
+  rule they break (and, for a YAML syntax error, its line). The fixture
+  keyword-echo and clean-tolerance checks moved into `evals/run_evals.py`
+  helpers that the fixture tests and `validate` share.
 - Agent compatibility matrix, `docs/compatibility.md` (#79), linked from the
   README and `docs/adapters.md`. It lists every adapter, including the
   `copilot-prompt`, `cursor-rule` and `kiro-steering` legacy adapters, with:

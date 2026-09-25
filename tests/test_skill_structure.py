@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from skilldeck import lint
+from skilldeck import authoring, lint
 from skilldeck.adapters import ADAPTERS
 from skilldeck.registry import discover_skills
 
@@ -98,6 +98,66 @@ def test_all_bundled_skills_are_covered():
 
 
 # --- the rules catch what they are for ------------------------------------------
+
+# Every required piece, the rule that must fire when it is gone, and how to
+# remove it from a body that has it. Listed here rather than read from lint's
+# tables, so dropping a table entry fails a test instead of passing silently.
+REQUIRED_PIECES = [
+    ("Scope heading", "structure.section", "\n## Scope\n", "\n## Where\n"),
+    ("Output heading", "structure.section", "\n## Output\n", "\n## Report\n"),
+    ("uncommitted changes", "structure.phrase", "uncommitted", "pending"),
+    ("worked example", "structure.phrase", "For example:", "Such as:"),
+    ("verify", "structure.phrase", "Verify before reporting", "Check first"),
+    ("header", "structure.phrase", "Open the report with one line", "Report"),
+    ("fetch", "structure.scope", "`git fetch`", "`git pull`"),
+    (
+        "three-dot diff",
+        "structure.scope",
+        "`git diff origin/<base>...HEAD`",
+        "`git diff origin/<base> HEAD`",
+    ),
+    (
+        "untracked files",
+        "structure.scope",
+        "`git ls-files --others --exclude-standard`",
+        "`git ls-files`",
+    ),
+    ("rubric reference", "structure.output", "shared severity rubric", "rubric"),
+    ("findings cap", "structure.output", "more than ~10 survive", "many survive"),
+    (
+        "header range",
+        "structure.output",
+        "`Reviewed origin/main...HEAD (",
+        "`Reviewed main (",
+    ),
+    ("nothing in scope", "structure.nothing-in-scope", "say so and stop", "end"),
+]
+
+
+def _skeleton():
+    """A body that has every piece: what skilldeck new writes."""
+    return authoring.SKILL_TEMPLATE.format(
+        title="Widget Review", rubric=lint.SEVERITY_RUBRIC
+    )
+
+
+def test_the_skeleton_has_every_piece():
+    assert lint.structure_problems("widget-review", _skeleton()) == []
+
+
+@pytest.mark.parametrize(
+    ("rule", "old", "new"),
+    [piece[1:] for piece in REQUIRED_PIECES],
+    ids=[piece[0] for piece in REQUIRED_PIECES],
+)
+def test_removing_a_required_piece_fires_its_rule(rule, old, new):
+    body = _skeleton()
+    pattern = r"\s+".join(map(re.escape, old.split(" ")))
+    changed, count = re.subn(pattern, new, body)
+    assert count, f"the skeleton lacks {old!r}"
+    rules = {p.rule for p in lint.structure_problems("widget-review", changed)}
+    assert rule in rules
+
 
 _GOOD = SKILLS[0]
 

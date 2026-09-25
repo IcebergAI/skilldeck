@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import stat
 from collections.abc import Collection, Iterable
 from itertools import groupby
@@ -880,7 +881,7 @@ def new(
     else:
         check = (
             "skilldeck validate --skills-dir "
-            f"{authoring.display_path(skills_dir)} {name}"
+            f"{shlex.quote(authoring.display_path(skills_dir))} {name}"
         )
     steps = [
         f"Replace every {PLACEHOLDER} placeholder. Ground the checklist in "
@@ -890,11 +891,19 @@ def new(
     if in_checkout:
         steps += [
             f"Build the eval fixture in evals/fixtures/{name}/ (see "
-            "evals/README.md) and add the skill to docs/finding-output.md.",
+            "evals/README.md), add its SAMPLE_REPORTS entry in "
+            "tests/test_eval_fixtures.py, and add the skill to "
+            "docs/finding-output.md.",
             "Regenerate the plugin tree: uv run --extra dev python "
             "scripts/build_plugin.py",
         ]
     steps.append(f"Check it: {check}")
+    if in_checkout:
+        steps.append(
+            "Before you push, run the full check suite in CONTRIBUTING.md "
+            "(uv run --extra dev pytest checks what validate cannot, such as "
+            "SAMPLE_REPORTS)."
+        )
     click.echo("\nNext:")
     for number, step in enumerate(steps, start=1):
         click.echo(f"  {number}. {step}")
@@ -946,6 +955,8 @@ def validate(targets: tuple[str, ...], skills_dir: Path | None, as_json: bool) -
     )
     paths: list[Path] = []
     for target in targets:
+        if not target.strip():
+            raise click.UsageError("an empty skill name or path")
         if _is_path_argument(target):
             path = Path(target)
             if not path.is_dir():

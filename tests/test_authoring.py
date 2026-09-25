@@ -112,6 +112,11 @@ def test_new_scaffolds_meta_and_skeleton(skills_dir):
         assert b"\r" not in path.read_bytes()
 
 
+def test_new_quotes_the_directory_in_its_hint(skills_dir):
+    out = _new(skills_dir.parent / "my skills").stdout
+    assert f"skilldeck validate --skills-dir 'my skills' {NAME}" in out
+
+
 def test_new_takes_description_and_agents(skills_dir):
     _new(
         skills_dir,
@@ -264,9 +269,23 @@ def test_malformed_metadata(completed):
 
 
 def test_unparseable_metadata(completed):
-    (completed / "meta.yaml").write_text("name: [unclosed\n", encoding="utf-8")
+    (completed / "meta.yaml").write_text(
+        "name: x\ndescription: [unclosed\ncategory: review\n", encoding="utf-8"
+    )
     problem = _problem(_report("--skills-dir", completed.parent), "meta.syntax")
     assert problem["path"] == f"skills/{NAME}/meta.yaml"
+    assert problem["line"] == 3
+    # one line, without PyYAML's excerpt of the file
+    assert problem["message"] == (
+        "meta.yaml is not valid YAML: expected ',' or ']', but got ':' "
+        "(while parsing a flow sequence)"
+    )
+    out = _invoke("validate", "--skills-dir", completed.parent, code=1).stdout
+    assert f"skills/{NAME}/meta.yaml:3: error [meta.syntax]" in out
+    assert "category: review" not in out
+    # the registry's own message is unchanged
+    with pytest.raises(registry.SkillError, match="(?s)in .*line 2, column"):
+        registry.load_skill(completed)
 
 
 def test_unsupported_agent(completed):
@@ -440,6 +459,12 @@ def test_validate_needs_a_skills_directory_outside_a_checkout(skills_dir):
     assert "not inside a skilldeck checkout" in result.stderr
 
 
+@pytest.mark.parametrize("target", ["", " "])
+def test_validate_rejects_an_empty_target(completed, target):
+    result = _invoke("validate", "--skills-dir", completed.parent, target, code=2)
+    assert "empty skill name or path" in result.stderr
+
+
 def test_validate_rejects_an_unknown_skill(completed):
     result = _invoke("validate", "--skills-dir", completed.parent, "nope", code=2)
     assert "no skill 'nope' in skills" in result.stderr
@@ -508,6 +533,9 @@ def checkout(tmp_path, monkeypatch):
     # the copied build_plugin.py imports its own _pyproject; keep that copy
     # out of the other tests' way
     monkeypatch.delitem(sys.modules, "_pyproject", raising=False)
+    # its scripts are this repository's own, so running them is safe; a
+    # real validate runs only the scripts of the checkout it runs from
+    monkeypatch.setattr(authoring, "_trusted_checkout", lambda checkout: True)
     return root
 
 
@@ -550,6 +578,7 @@ def test_checkout_lifecycle(checkout, capsys):
     fixture_dir = checkout / "evals" / "fixtures" / NAME
     assert f"created evals/fixtures/{NAME}/expected.yaml" in out
     assert "scripts/build_plugin.py" in out
+    assert "SAMPLE_REPORTS" in out and "uv run --extra dev pytest" in out
 
     # the fixture skeleton is a valid (clean-diff) fixture, so committing it
     # breaks nothing, but validate still reports what is left to write
@@ -615,6 +644,24 @@ def test_checkout_missing_eval_fixture(checkout):
     assert f"add evals/fixtures/{NAME}/" in problem["remediation"]
 
 
+def test_checkout_keywords_must_not_echo_the_code(checkout):
+    _invoke("new", NAME, "--category", "review")
+    fixture_dir = checkout / "evals" / "fixtures" / NAME
+    _plant(fixture_dir)
+    _edit(fixture_dir / "expected.yaml", "[overspeed]", "[overspeed, spin]")
+    problem = _problem(_report(NAME), "eval.keyword-echo")
+    assert problem["path"] == f"evals/fixtures/{NAME}/expected.yaml"
+    assert "['spin']" in problem["message"]
+
+
+def test_checkout_clean_fixture_tolerance(checkout):
+    _invoke("new", NAME, "--category", "review")
+    fixture_dir = checkout / "evals" / "fixtures" / NAME
+    _edit(fixture_dir / "expected.yaml", "max-findings: 0", "max-findings: 5")
+    problem = _problem(_report(NAME), "eval.clean-tolerance")
+    assert "at most 2" in problem["message"]
+
+
 def test_checkout_invalid_eval_fixture(checkout):
     _invoke("new", NAME, "--category", "review")
     fixture_dir = checkout / "evals" / "fixtures" / NAME
@@ -646,3 +693,112 @@ def test_bundled_skills_validate_clean():
     assert report.skipped == []
     assert {skill.status for skill in report.skills} == {"ok"}
     assert all(skill.checkout for skill in report.skills)
+
+
+# --- symlinks: reported, never followed -------------------------------------------
+
+
+@pytest.mark.parametrize("linked", ["meta.yaml", "skill.md"])
+def test_symlinked_skill_file_is_reported_and_not_read(
+    completed, tmp_path, symlink, linked
+):
+    secret = tmp_path / "outside" / "secret.env"
+    secret.parent.mkdir()
+    secret.write_text("API_TOKEN: [hunter2\n", encoding="utf-8")
+    (completed / linked).unlink()
+    symlink(completed / linked, secret)
+    out = _invoke("validate", "--json", "--skills-dir", completed.parent, code=1)
+    assert "hunter2" not in out.stdout
+    assert "outside" not in out.stdout
+    report = json.loads(out.stdout)
+    problem = _problem(report, "skill.symlink")
+    assert problem["path"] == f"skills/{NAME}/{linked}"
+    assert report["skills"][0]["status"] == "invalid"
+    # the other file is still checked
+    other = "skill.md" if linked == "meta.yaml" else "meta.yaml"
+    _edit(completed / other, "0.1.0" if other == "meta.yaml" else SOURCE, "x")
+    report = _report("--skills-dir", completed.parent)
+    assert {p["path"] for p in report["problems"]} >= {f"skills/{NAME}/{other}"}
+
+
+def test_symlinked_skills_directory_shows_the_path_given(completed, tmp_path, symlink):
+    link = tmp_path / "linked-skills"
+    symlink(link, completed.parent)
+    _edit(completed / "skill.md", "\n## Scope\n", "\n## Where to look\n")
+    report = _report("--skills-dir", "linked-skills")
+    assert report["skills"][0]["path"] == f"linked-skills/{NAME}"
+    problem = _problem(report, "structure.section")
+    assert problem["path"] == f"linked-skills/{NAME}/skill.md"
+
+
+# --- validate never runs a tree's own code ----------------------------------------
+
+SENTINEL_SCRIPT = textwrap.dedent(
+    """\
+    from pathlib import Path
+
+    Path(__file__).resolve().parent.parent.joinpath("RAN").write_text(
+        __file__, encoding="utf-8"
+    )
+
+
+    def generate(*args, **kwargs):
+        return {}
+
+
+    def stale(*args, **kwargs):
+        return []
+    """
+)
+
+
+@pytest.fixture
+def mimic(tmp_path, monkeypatch):
+    """A tree that looks like a skilldeck checkout, whose scripts leave a
+    sentinel file when imported."""
+    root = tmp_path / "fork"
+    for relative in ("scripts/build_plugin.py", "evals/run_evals.py"):
+        (root / relative).parent.mkdir(parents=True, exist_ok=True)
+        (root / relative).write_text(SENTINEL_SCRIPT, encoding="utf-8")
+    (root / "evals" / "fixtures").mkdir()
+    (root / "src" / "skilldeck" / "skills").mkdir(parents=True)
+    (root / "docs").mkdir()
+    (root / "docs" / "finding-output.md").write_text(FINDING_OUTPUT, encoding="utf-8")
+    (root / "pyproject.toml").write_text(
+        '[project]\nname = "skilldeck"\nversion = "0.3.0"\n', encoding="utf-8"
+    )
+    monkeypatch.chdir(root)
+    _invoke("new", NAME, "--category", "review", "--description", DESCRIPTION)
+    _complete(root / "src" / "skilldeck" / "skills" / NAME)
+    return root
+
+
+@pytest.mark.parametrize(
+    "how", ["cwd", "skills-dir", "path", "cwd inside the skills directory"]
+)
+def test_validate_never_runs_a_trees_scripts(mimic, monkeypatch, how):
+    skills = mimic / "src" / "skilldeck" / "skills"
+    assert authoring.checkout_of(skills) is not None
+    assert not authoring._trusted_checkout(authoring.Checkout(mimic))
+    if how == "cwd":
+        args = [NAME]
+    elif how == "skills-dir":
+        monkeypatch.chdir(mimic.parent)
+        args = ["--skills-dir", skills]
+    elif how == "path":
+        monkeypatch.chdir(mimic.parent)
+        args = [skills / NAME]
+    else:
+        monkeypatch.chdir(skills)
+        args = [f"./{NAME}"]
+    report = json.loads(
+        _runner().invoke(cli, ["validate", "--json", *map(str, args)]).stdout
+    )
+    assert not (mimic / "RAN").exists()
+    assert not (mimic / "evals" / "RAN").exists()
+    (skipped,) = [s for s in report["skipped"] if "generated-output" in s["check"]]
+    assert "uv run --extra dev skilldeck validate" in skipped["reason"]
+    assert report["skills"][0]["checkout"] is True
+    # the text-only finding-output check still applies, and passes here
+    assert "docs.finding-output" not in _rules(report)
+    assert not _rules(report) & {"generated.stale", "eval.fixture-missing"}

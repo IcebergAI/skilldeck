@@ -25,15 +25,21 @@ uv run --extra dev skilldeck new my-review --category security \
   --description "Review pending changes for ..."
 # write the content: replace every TODO(author) placeholder in
 #   src/skilldeck/skills/my-review/skill.md, plant a defect in
-#   evals/fixtures/my-review/, list the skill in docs/finding-output.md
+#   evals/fixtures/my-review/ and add its SAMPLE_REPORTS entry in
+#   tests/test_eval_fixtures.py, list the skill in docs/finding-output.md
 uv run --extra dev skilldeck validate my-review
 uv run --extra dev python scripts/build_plugin.py   # regenerate the plugin tree
-uv run --extra dev skilldeck validate               # every skill, before you push
+uv run --extra dev skilldeck validate               # every skill
+uv run --extra dev pytest                           # what validate can't check
 ```
 
+`validate` covers the rules on this page; the test suite also checks what it
+cannot, such as each planted fixture's `SAMPLE_REPORTS`. Before you push, run
+the full check suite in [CONTRIBUTING.md](../CONTRIBUTING.md).
+
 Run the commands from the checkout with `uv run --extra dev`, so they use the
-checkout's own code rather than an installed skilldeck (`validate` notes it
-when they differ).
+checkout's own code. `validate` runs the eval-fixture and generated-output
+checks only then (see [Trust](#trust)).
 
 ## Organization skills
 
@@ -106,17 +112,33 @@ skills directory is checked. For each skill it checks:
 - the `skill.md` structure and cited sources, the rules in `skilldeck.lint`
   that the test suite also applies to every bundled skill;
 - that no `TODO(author)` placeholder is left, and that the directory holds
-  nothing but the two skill files;
+  nothing but the two skill files, neither of them a symlink;
 - that every adapter for the skill's agents, legacy formats included, can
   render it, and that its [catalog](catalog.md) entry builds.
 
 A skill in a checkout's `src/skilldeck/skills` also gets the repository
 checks: its eval fixtures load, have `base/` and `change/` with every planted
-file in `change/`, and include a planted one (through `evals/run_evals.py`,
-without running any agent); it is listed in
+file in `change/`, use keywords that describe each defect rather than echo
+its code, keep a clean-diff fixture's tolerance small, and include a planted
+one (through `evals/run_evals.py`, without running any agent); it is listed in
 `docs/finding-output.md`; and the generated plugin tree and content manifests
-are current (`scripts/build_plugin.py --check`, run in process). Every check
-reads local files only; nothing touches the network or calls an agent.
+are current (`scripts/build_plugin.py --check`, run in process). Nothing
+touches the network or calls an agent.
+
+### Trust
+
+`validate` never runs code from the tree it checks. The eval-fixture and
+generated-output checks import that checkout's own `evals/run_evals.py` and
+`scripts/build_plugin.py`, so they run only when the skilldeck doing the
+validating *is* that checkout's code: its `src/skilldeck` is the running
+package, as with `uv run --extra dev skilldeck validate` inside it. For any
+other tree that looks like a checkout (a fork, a downloaded archive, a
+checkout validated by an installed skilldeck), they are skipped and the
+report says to run that command inside it; the text-only
+`docs/finding-output.md` check still applies. Nothing in a skill directory is
+followed through a symlink: a symlinked `meta.yaml` or `skill.md` is reported
+(`skill.symlink`) and not read, so its target's path and contents never reach
+the report.
 
 Each problem names the file (and line, where there is one), the rule and how
 to fix it:
@@ -135,7 +157,6 @@ keys, problems sorted by skill, file, line and rule, one final newline):
 
 ```json
 {
-  "notes": [],
   "ok": false,
   "problems": [
     {
@@ -162,10 +183,8 @@ keys, problems sorted by skill, file, line and rule, one final newline):
 ```
 
 A problem that belongs to the whole checkout (a stale generated file) has
-`skill: null`. `skipped` lists checks that could not apply, and why;
-`notes` gives advice that is not a problem, such as a `validate` that runs
-other code than the checkout's. `schema_version` changes only if the shape
-changes incompatibly.
+`skill: null`. `skipped` lists checks that could not apply, and why.
+`schema_version` changes only if the shape changes incompatibly.
 
 ### Rules
 
@@ -189,6 +208,7 @@ changes incompatibly.
 | `body.missing` | error | The skill directory has a `skill.md`. |
 | `body.encoding` | error | `skill.md` is UTF-8. |
 | `skill.unexpected-file` | error | The skill directory holds only `meta.yaml` and `skill.md`. |
+| `skill.symlink` | error | Nothing in the skill directory is a symlink. |
 | `structure.heading` | error | `skill.md` opens with a `# Title` whose words spell the skill name. |
 | `structure.section` | error | `skill.md` has the `## Scope` and `## Output` sections. |
 | `structure.phrase` | error | `skill.md` carries the instructions every review skill shares. |
@@ -204,6 +224,8 @@ changes incompatibly.
 | `render.failed` | error | Every adapter for the skill's agents can render it. |
 | `catalog.entry` | error | The skill's catalog entry builds. |
 | `eval.fixture-missing` | incomplete | Checkout only: an eval fixture with a planted defect exercises the skill. |
+| `eval.keyword-echo` | error | Checkout only: a plant's keywords describe the defect instead of echoing the planted code. |
+| `eval.clean-tolerance` | error | Checkout only: a clean-diff fixture tolerates at most 2 findings. |
 | `eval.fixture-invalid` | error | Checkout only: the skill's eval fixtures load, and their planted files are in `change/`. |
 | `docs.finding-output` | incomplete | Checkout only: `docs/finding-output.md` lists the skill and its classifier. |
 | `generated.stale` | error | Checkout only: the generated plugin tree and content manifests match the skills. |

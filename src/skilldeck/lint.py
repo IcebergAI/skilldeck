@@ -22,7 +22,9 @@ is what a freshly scaffolded skill reports until its content is written.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 #: marks content a skill author still has to write; ``skilldeck new`` puts it
 #: wherever the template cannot know the domain, and validate reports it
@@ -30,6 +32,9 @@ PLACEHOLDER = "TODO(author)"
 
 ERROR = "error"
 INCOMPLETE = "incomplete"
+
+#: the only files a skill directory holds
+SKILL_FILES = ("meta.yaml", "skill.md")
 
 
 @dataclass(frozen=True)
@@ -138,6 +143,12 @@ RULES: dict[str, Rule] = {
         "move the file out of the skill directory: installs carry only "
         "meta.yaml and skill.md, and provenance --verify rejects other files",
     ),
+    "skill.symlink": Rule(
+        ERROR,
+        "nothing in the skill directory is a symlink",
+        "replace the symlink with a regular file; validate never follows one, "
+        "so a symlinked meta.yaml or skill.md is not checked at all",
+    ),
     "structure.heading": Rule(
         ERROR,
         "skill.md opens with a '# Title' whose words spell the skill name",
@@ -223,6 +234,18 @@ RULES: dict[str, Rule] = {
         "add an eval fixture that plants a defect the skill must find; see "
         "evals/README.md#adding-a-fixture",
     ),
+    "eval.keyword-echo": Rule(
+        ERROR,
+        "a plant's keywords describe the defect instead of echoing the code",
+        "use words a correct finding would use to describe the defect, not "
+        "identifiers or values copied from the planted file; see "
+        "evals/README.md#adding-a-fixture",
+    ),
+    "eval.clean-tolerance": Rule(
+        ERROR,
+        "a clean-diff fixture tolerates at most 2 findings",
+        "lower max-findings to 0, or 1 or 2 for hygiene nits",
+    ),
     "eval.fixture-invalid": Rule(
         ERROR,
         "the skill's eval fixtures load, and their planted files are in change/",
@@ -282,6 +305,42 @@ class Problem:
             self.rule,
             self.message,
         )
+
+
+# -- the skill directory ----------------------------------------------------------
+
+
+def bundle_problems(
+    skill_dir: Path, show: Callable[[Path], str] = Path.as_posix
+) -> list[Problem]:
+    """What in ``skill_dir`` is not one of :data:`SKILL_FILES`, or is a symlink.
+
+    Nothing is read, and a symlink is never followed: it could point at any
+    file, whose path or contents must not end up in a report. ``show`` turns
+    a path into the one reported.
+    """
+    problems = []
+    for child in sorted(skill_dir.iterdir()):
+        if child.is_symlink():
+            problems.append(
+                Problem(
+                    show(child),
+                    "skill.symlink",
+                    f"{child.name} is a symlink, which validate does not follow",
+                    skill=skill_dir.name,
+                )
+            )
+        elif child.name not in SKILL_FILES:
+            problems.append(
+                Problem(
+                    show(child),
+                    "skill.unexpected-file",
+                    f"{child.name} is not part of a skill (only "
+                    f"{' and '.join(SKILL_FILES)} are)",
+                    skill=skill_dir.name,
+                )
+            )
+    return problems
 
 
 # -- the structural template --------------------------------------------------
@@ -381,7 +440,12 @@ def structure_problems(name: str, body: str, path: str = "skill.md") -> list[Pro
             f"heading {first!r} does not spell the skill name {name!r}",
             1,
         )
-    headings = {heading: _heading(body, heading) for heading in REQUIRED_HEADINGS}
+    # Scope and Output are looked up whatever REQUIRED_HEADINGS says: their
+    # patterns below depend on them
+    headings = {
+        heading: _heading(body, heading)
+        for heading in (*REQUIRED_HEADINGS, "Scope", "Output")
+    }
     for heading, why in REQUIRED_HEADINGS.items():
         if headings[heading] is None:
             add("structure.section", f"missing '## {heading}' ({why})")

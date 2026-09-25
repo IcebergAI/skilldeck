@@ -53,19 +53,22 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
   - `registry.py` — discovers and validates skills, including the optional
     `deprecated` metadata; each `SkillError` for a malformed skill carries
     its `validate` rule id
-  - `lint.py` — the one home of the skill rules (structural template, severity
-    rubric copy, citation hygiene, placeholders) and the `RULES` table of every
-    `validate` rule id, level and remediation; `tests/test_skill_structure.py`
-    and `test_skill_citations.py` apply the same functions to the bundled skills.
-    Add a rule here, and to the rules table in `docs/authoring-skills.md` (a
-    test compares them)
-  - `authoring.py` — `skilldeck new` (scaffold, `TODO(author)` placeholders, no
-    domain guidance) and `skilldeck validate` (per-skill checks plus, in a
+  - `lint.py` — the one home of the skill rules (skill-directory bundle,
+    structural template, severity rubric copy, citation hygiene, placeholders)
+    and the `RULES` table of every `validate` rule id, level and remediation;
+    `tests/test_skill_structure.py` and `test_skill_citations.py` apply the
+    same functions to the bundled skills. Add a rule here and to the rules
+    table in `docs/authoring-skills.md` (a test compares them)
+  - `authoring.py` — `skilldeck new` (scaffold, `TODO(author)` placeholders,
+    no domain guidance) and `skilldeck validate` (per-skill checks plus, in a
     checkout's `src/skilldeck/skills`, eval fixtures, `docs/finding-output.md`
-    and generated-output freshness via the checkout's own `evals/run_evals.py`
-    and `scripts/build_plugin.py`, imported in process). Outside a checkout it
-    needs an explicit `--dir`/`--skills-dir` and never writes into the
-    installed package
+    and generated-output freshness via the checkout's own
+    `evals/run_evals.py` and `scripts/build_plugin.py`, imported in process).
+    Outside a checkout it needs an explicit `--dir`/`--skills-dir` and never
+    writes into the installed package. `validate` never runs code from the
+    tree it checks: the script-importing checks run only when the checkout's
+    `src/skilldeck` is the running package (`_trusted_checkout`), else they
+    are reported as skipped; symlinks in a skill are reported, never read
   - `catalog.py` + `catalog.schema.json` — the public, schema-versioned
     `skilldeck catalog --json` contract (the schema ships in the wheel);
     change it only per the compatibility rules in `docs/catalog.md` (bump
@@ -130,15 +133,16 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
   *unverified*.
 - New skills start from `skilldeck new`, follow the structural template
   (the `skilldeck.lint` rules, which `skilldeck validate` reports and
-  `tests/test_skill_structure.py` enforces), ground their checklists in **fetched**
-  authoritative sources (OWASP/CIS/vendor docs) cited in the skill body, and
-  land with a golden-diff eval fixture under `evals/fixtures/` (ideally also a
-  `-clean` one).
+  `tests/test_skill_structure.py` enforces), ground their checklists in
+  **fetched** authoritative sources (OWASP/CIS/vendor docs) cited in the
+  skill body, and land with a golden-diff eval fixture under `evals/fixtures/`
+  (ideally also a `-clean` one).
 - Review skills report in the shared shape of `docs/finding-output.md` and
   inline its one-paragraph severity rubric word for word in `## Output`
-  (`tests/test_skill_structure.py` compares them); change the rubric in the doc,
-  `skilldeck.lint.SEVERITY_RUBRIC` and every skill together. Respect its "Which skill owns what" table: a
-  defect is reported once, by its owning skill.
+  (`tests/test_skill_structure.py` compares them); change the rubric in the
+  doc, `skilldeck.lint.SEVERITY_RUBRIC` and every skill together. Respect its
+  "Which skill owns what" table: a defect is reported once, by its owning
+  skill.
 
 ## Shipping
 - PRs squash-merge to main: `gh pr merge <n> --squash --delete-branch` after CI

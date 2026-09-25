@@ -10,16 +10,19 @@ content manifests. Anywhere else the directory must be given explicitly, so
 an organization can author its own skills with the same checks; nothing here
 writes into the installed package.
 
-Every check is local: files are read, adapters render in memory, and the
-checkout's own ``evals/run_evals.py`` and ``scripts/build_plugin.py`` are
-imported to validate fixtures and generated output. No network, no agent.
+Every check is local: files are read, adapters render in memory, and no
+network or agent is involved. The eval-fixture and generated-output checks
+import the checkout's own ``evals/run_evals.py`` and
+``scripts/build_plugin.py``, so they run only for the checkout this skilldeck
+itself runs from (:func:`_trusted_checkout`); validate never executes code
+from any other tree. Symlinks inside a skill are reported, never followed.
 """
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import importlib.util
+import os
 import re
 import sys
 from collections.abc import Iterable, Sequence
@@ -37,7 +40,9 @@ from .lint import (
     INCOMPLETE,
     PLACEHOLDER,
     SEVERITY_RUBRIC,
+    SKILL_FILES,
     Problem,
+    bundle_problems,
     description_problems,
     finding_output_problems,
     placeholder_problems,
@@ -50,6 +55,7 @@ from .registry import (
     NAME_RE,
     Skill,
     SkillError,
+    check_meta,
     discover_skills,
     load_skill,
     replacement_errors,
@@ -60,8 +66,6 @@ SKILLS_SUBDIR = Path("src", "skilldeck", "skills")
 FIXTURES_SUBDIR = Path("evals", "fixtures")
 FINDING_OUTPUT_DOC = Path("docs", "finding-output.md")
 _PROJECT_NAME_RE = re.compile(r'^name\s*=\s*"skilldeck"\s*$', re.M)
-#: the only files a skill directory holds
-SKILL_FILES = ("meta.yaml", "skill.md")
 #: a new skill's first version
 INITIAL_VERSION = "0.1.0"
 #: bumped on a breaking change to ``skilldeck validate --json``
@@ -135,9 +139,13 @@ def installed_package_dir() -> Path | None:
 
 def display_path(path: Path, base: Path | None = None) -> str:
     """``path`` as a POSIX path, relative to ``base`` (the working directory)
-    when it is under it."""
-    base = (base or Path.cwd()).resolve()
-    absolute = (base / path).resolve()
+    when it is under it.
+
+    Symlinks are not resolved, so a path shows the way it was given rather
+    than where a link points.
+    """
+    base = Path(os.path.abspath(base or Path.cwd()))
+    absolute = Path(os.path.abspath(base / path))
     try:
         return absolute.relative_to(base).as_posix()
     except ValueError:
@@ -366,7 +374,7 @@ class SkillStatus:
     name: str
     #: the skill directory, as :func:`display_path` shows it
     path: str
-    #: whether the repository checks applied (a checkout's skills directory)
+    #: whether it is in a checkout's skills directory (repository checks)
     checkout: bool
     #: ok, incomplete (authoring work remains, nothing wrong) or invalid
     status: str
@@ -385,7 +393,6 @@ class Report:
     skills: list[SkillStatus] = field(default_factory=list)
     problems: list[Problem] = field(default_factory=list)
     skipped: list[Skipped] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -420,20 +427,33 @@ class Report:
                 {"check": skipped.check, "reason": skipped.reason}
                 for skipped in self.skipped
             ],
-            "notes": list(self.notes),
         }
+
+
+def _trusted_checkout(checkout: Checkout) -> bool:
+    """Whether ``checkout`` is the source of the skilldeck running now.
+
+    The eval-fixture and generated-output checks import the checkout's own
+    ``evals/run_evals.py`` and ``scripts/build_plugin.py``. That is only
+    safe for the code already running: any tree can look like a skilldeck
+    checkout (a fork, a downloaded archive), and validating it must never run
+    what it contains.
+    """
+    running = Path(__file__).resolve().parent
+    return (checkout.root / "src" / "skilldeck").resolve() == running
 
 
 _SCRIPTS: dict[Path, ModuleType] = {}
 
 
 def _load_script(path: Path) -> ModuleType:
-    """Import a checkout script (``evals/run_evals.py``,
+    """Import a trusted checkout's script (``evals/run_evals.py``,
     ``scripts/build_plugin.py``) by path, once per process.
 
-    The scripts put the checkout's directories on ``sys.path`` to import
-    their helpers; that is undone afterwards, since skilldeck itself is
-    already imported.
+    Call it only for a checkout :func:`_trusted_checkout` accepts. The
+    scripts put the checkout's directories on ``sys.path`` to import their
+    helpers; that is undone afterwards, since skilldeck itself is already
+    imported.
     """
     path = path.resolve()
     if path in _SCRIPTS:
@@ -473,6 +493,14 @@ def _status(problems: Iterable[Problem]) -> str:
     return "ok"
 
 
+def _read_text(path: Path) -> str | None:
+    """``path``'s text, or None if it is unreadable or not UTF-8."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
 class _Checker:
     """Validates the skills of one run, loading each directory's siblings and
     each checkout's scripts only once."""
@@ -489,6 +517,8 @@ class _Checker:
         if skills_dir not in self._siblings:
             loaded = []
             for child in skill_dirs(skills_dir):
+                if any((child / name).is_symlink() for name in SKILL_FILES):
+                    continue
                 try:
                     loaded.append(load_skill(child, set(ADAPTERS)))
                 except SkillError:
@@ -497,7 +527,7 @@ class _Checker:
         return self._siblings[skills_dir]
 
     def skill(
-        self, skill_dir: Path, checkout: Checkout | None
+        self, skill_dir: Path, checkout: Checkout | None, trusted: bool
     ) -> tuple[list[Problem], list[Skipped]]:
         name = skill_dir.name
         meta_path = skill_dir / "meta.yaml"
@@ -505,65 +535,65 @@ class _Checker:
         problems: list[Problem] = []
         skipped: list[Skipped] = []
 
+        # a symlinked skill file is reported and never read (see
+        # lint.bundle_problems); the other file is still checked
+        linked = {n for n in SKILL_FILES if (skill_dir / n).is_symlink()}
+        if skill_dir.is_dir():
+            problems += bundle_problems(skill_dir, self.show)
+
         skill: Skill | None = None
         try:
-            skill = load_skill(skill_dir, set(ADAPTERS))
+            if not linked:
+                skill = load_skill(skill_dir, set(ADAPTERS))
+            elif "meta.yaml" not in linked:
+                check_meta(skill_dir, set(ADAPTERS))
         except SkillError as exc:
             problems.append(
                 Problem(
                     self.show(exc.file or skill_dir),
                     exc.rule or "meta.syntax",
                     exc.detail,
-                    skill=name,
+                    exc.line,
+                    name,
                 )
             )
         reported = {problem.rule for problem in problems}
 
         body = skill.body if skill is not None else None
-        if body is None and body_path.is_file():
-            try:
-                body = body_path.read_text(encoding="utf-8")
-            except UnicodeDecodeError as exc:
-                if "body.encoding" not in reported:
+        if body is None and "skill.md" not in linked:
+            if not body_path.is_file():
+                if "body.missing" not in reported:
+                    problems.append(
+                        Problem(
+                            self.show(body_path),
+                            "body.missing",
+                            "missing skill.md",
+                            None,
+                            name,
+                        )
+                    )
+            else:
+                body = _read_text(body_path)
+                if body is None and not reported & {"body.encoding", "body.missing"}:
                     problems.append(
                         Problem(
                             self.show(body_path),
                             "body.encoding",
-                            f"skill.md is not valid UTF-8: {exc}",
-                            skill=name,
+                            "skill.md is not valid UTF-8",
+                            None,
+                            name,
                         )
                     )
-            except OSError:
-                pass
-        elif body is None and "body.missing" not in reported:
-            problems.append(
-                Problem(
-                    self.show(body_path), "body.missing", "missing skill.md", skill=name
-                )
-            )
         if body is not None:
             where = self.show(body_path)
             problems += structure_problems(name, body, where)
             problems += reference_problems(name, body, where)
             problems += placeholder_problems(body, where, name)
-        # an unreadable meta.yaml is the registry's to report
-        with contextlib.suppress(OSError, UnicodeDecodeError):
-            problems += placeholder_problems(
-                meta_path.read_text(encoding="utf-8"), self.show(meta_path), name
-            )
-
-        if skill_dir.is_dir():
-            problems += [
-                Problem(
-                    self.show(child),
-                    "skill.unexpected-file",
-                    f"{child.name} is not part of a skill (only "
-                    f"{' and '.join(SKILL_FILES)} are)",
-                    skill=name,
-                )
-                for child in sorted(skill_dir.iterdir())
-                if child.name not in SKILL_FILES
-            ]
+        if "meta.yaml" not in linked:
+            # an unreadable meta.yaml is the registry's to report
+            meta_text = _read_text(meta_path)
+            if meta_text is not None:
+                problems += placeholder_problems(meta_text, self.show(meta_path), name)
 
         if skill is None:
             skipped.append(
@@ -590,18 +620,18 @@ class _Checker:
                         skill,
                     ]
                 )
-                if exc.file == skill_dir / "meta.yaml"
+                if exc.file == meta_path
             ]
 
         if checkout is not None:
             doc = checkout.root / FINDING_OUTPUT_DOC
-            if doc.is_file():
-                problems += finding_output_problems(
-                    doc.read_text(encoding="utf-8"), name, self.show(doc)
-                )
-            fixture_problems, fixture_skipped = self._fixtures(name, checkout)
-            problems += fixture_problems
-            skipped += fixture_skipped
+            text = _read_text(doc) if doc.is_file() and not doc.is_symlink() else None
+            if text is not None:
+                problems += finding_output_problems(text, name, self.show(doc))
+            if trusted:
+                fixture_problems, fixture_skipped = self._fixtures(name, checkout)
+                problems += fixture_problems
+                skipped += fixture_skipped
         return problems, skipped
 
     def _rendering(self, skill: Skill, meta_path: Path) -> list[Problem]:
@@ -641,7 +671,11 @@ class _Checker:
         self, name: str, checkout: Checkout
     ) -> tuple[list[Problem], list[Skipped]]:
         """The eval fixtures that exercise skill ``name``: present, loadable,
-        buildable, free of placeholders, and at least one planted."""
+        well formed, free of placeholders, and at least one planted.
+
+        Uses the checkout's own fixture loader, so the checkout must be
+        trusted (see :func:`_trusted_checkout`).
+        """
         fixtures_dir = checkout.fixtures_dir
         names = {child.name for child in skill_dirs(checkout.skills_dir)} | {name}
         candidates = (
@@ -711,14 +745,31 @@ class _Checker:
                         skill=name,
                     )
                 )
+            problems += [
+                Problem(
+                    self.show(expected), "eval.keyword-echo", str(message), None, name
+                )
+                for message in runner.echoed_keywords(fixture)
+            ]
+            tolerance = runner.clean_tolerance_problem(fixture)
+            if tolerance:
+                problems.append(
+                    Problem(
+                        self.show(expected),
+                        "eval.clean-tolerance",
+                        tolerance,
+                        None,
+                        name,
+                    )
+                )
             for file in sorted(path.rglob("*")):
-                if not file.is_file() or "__pycache__" in file.parts:
+                if file.is_symlink() or not file.is_file():
                     continue
-                try:
-                    text = file.read_text(encoding="utf-8")
-                except (OSError, UnicodeDecodeError):
+                if "__pycache__" in file.parts:
                     continue
-                problems += placeholder_problems(text, self.show(file), name)
+                text = _read_text(file)
+                if text is not None:
+                    problems += placeholder_problems(text, self.show(file), name)
         if broken:
             return problems, skipped
         where = self.show(fixtures_dir / name)
@@ -753,7 +804,8 @@ class _Checker:
         return problems, skipped
 
     def generated(self, checkout: Checkout) -> tuple[list[Problem], list[Skipped]]:
-        """``scripts/build_plugin.py --check``, in process."""
+        """``scripts/build_plugin.py --check``, in process; the checkout must
+        be trusted (see :func:`_trusted_checkout`)."""
         try:
             discover_skills(checkout.skills_dir, known_agents=set(ADAPTERS))
         except SkillError:
@@ -810,26 +862,35 @@ def validate(skill_paths: Sequence[Path], base: Path | None = None) -> Report:
 
     A skill in a checkout's canonical skills directory also gets the
     repository checks, and each such checkout's generated output is checked
-    once. Problems are sorted: by skill, then file, line and rule, with
-    checkout-wide ones last. ``base`` (default: the working directory) is
-    what paths are shown relative to.
+    once. The checks that run a checkout's own scripts (eval fixtures,
+    generated output) apply only to the checkout this skilldeck runs from;
+    for any other they are skipped, never run. Problems are sorted: by
+    skill, then file, line and rule, with checkout-wide ones last. ``base``
+    (default: the working directory) is what paths are shown relative to.
     """
-    checker = _Checker((base or Path.cwd()).resolve())
+    checker = _Checker(Path(os.path.abspath(base or Path.cwd())))
     report = Report()
     checkouts: dict[Path, Checkout] = {}
-    outside: set[Path] = set()
+    outside: set[str] = set()
     seen: set[Path] = set()
+    trusted: dict[Path, bool] = {}
     for path in skill_paths:
-        skill_dir = path.resolve()
-        if skill_dir in seen:
+        # shown as given (a symlinked skills directory keeps its name);
+        # compared resolved
+        skill_dir = Path(os.path.abspath(path))
+        if skill_dir.resolve() in seen:
             continue
-        seen.add(skill_dir)
+        seen.add(skill_dir.resolve())
         checkout = checkout_of(skill_dir.parent)
         if checkout is None:
-            outside.add(skill_dir.parent)
+            outside.add(checker.show(skill_dir.parent))
         else:
             checkouts[checkout.root] = checkout
-        problems, skipped = checker.skill(skill_dir, checkout)
+            if checkout.root not in trusted:
+                trusted[checkout.root] = _trusted_checkout(checkout)
+        problems, skipped = checker.skill(
+            skill_dir, checkout, checkout is not None and trusted[checkout.root]
+        )
         report.problems += problems
         report.skipped += skipped
         report.skills.append(
@@ -844,22 +905,27 @@ def validate(skill_paths: Sequence[Path], base: Path | None = None) -> Report:
         report.skipped.append(
             Skipped(
                 "repository checks (eval fixtures, finding-output doc, generated "
-                f"output) for {checker.show(skills_dir)}",
+                f"output) for {skills_dir}",
                 "not the src/skilldeck/skills directory of a skilldeck checkout",
             )
         )
     running = Path(__file__).resolve().parent
     for root, checkout in sorted(checkouts.items()):
+        if not trusted[root]:
+            report.skipped.append(
+                Skipped(
+                    "eval fixture and generated-output checks for "
+                    f"{checker.show(root)}",
+                    "they run that checkout's own scripts, and this skilldeck "
+                    f"runs from {checker.show(running)}, not from its "
+                    "src/skilldeck; run `uv run --extra dev skilldeck validate` "
+                    "inside that checkout",
+                )
+            )
+            continue
         problems, skipped = checker.generated(checkout)
         report.problems += problems
         report.skipped += skipped
-        if running != (root / "src" / "skilldeck").resolve():
-            report.notes.append(
-                f"this skilldeck runs from {checker.show(running)}, not from "
-                f"{checker.show(root / 'src' / 'skilldeck')}; run `uv run "
-                "--extra dev skilldeck validate` in the checkout so the checks "
-                "use its code"
-            )
     report.skills.sort(key=lambda skill: (skill.name, skill.path))
     report.problems.sort(key=Problem.sort_key)
     report.skipped.sort(key=lambda skipped: (skipped.check, skipped.reason))
@@ -882,14 +948,12 @@ def format_report(report: Report) -> list[str]:
         if skill.status == "ok":
             detail = ""
         elif skill.status == "incomplete":
-            detail = f" (no errors; {incomplete} authoring item(s) remain)"
+            detail = f" (no errors in the skill; {incomplete} authoring item(s) remain)"
         else:
             detail = f" ({errors} error(s), {incomplete} incomplete)"
         lines.append(f"{skill.name}: {skill.status}{detail}")
     for skipped in report.skipped:
         lines.append(f"skipped {skipped.check}: {skipped.reason}")
-    for note in report.notes:
-        lines.append(f"note: {note}")
     counts = {
         status: sum(skill.status == status for skill in report.skills)
         for status in ("ok", "incomplete", "invalid")
