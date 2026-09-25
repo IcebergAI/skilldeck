@@ -16,12 +16,14 @@
 Every check that can reject the release (a canonical ``X.Y.Z`` version newer
 than both the current one and the newest dated CHANGELOG section, an
 ``[Unreleased]`` section with at least one entry, no existing section for the
-version) runs before any file is written. If ``uv lock`` or generating the
-plugin tree fails, ``pyproject.toml``, ``CHANGELOG.md`` and ``uv.lock`` are
-restored and the script exits non-zero, as they are if the regenerated
-plugin would not carry exactly the release version. Only a failure while
-writing the plugin tree itself, or of the final consistency guard (which the
-checks above exist to prevent), leaves the edits in place for inspection.
+version, and a bump big enough for the section's Removed, Deprecated and
+**Breaking** entries, per docs/lifecycle.md) runs before any file is written.
+If ``uv lock`` or generating the plugin tree fails, ``pyproject.toml``,
+``CHANGELOG.md`` and ``uv.lock`` are restored and the script exits non-zero,
+as they are if the regenerated plugin would not carry exactly the release
+version. Only a failure while writing the plugin tree itself, or of the final
+consistency guard (which the checks above exist to prevent), leaves the edits
+in place for inspection.
 
 It does not commit, push, or tag: review the diff, open a ``Release x.y.z``
 PR, and tag ``vX.Y.Z`` after the merge (which publishes to PyPI).
@@ -40,6 +42,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import _pyproject  # noqa: E402
 import build_plugin  # noqa: E402
+import check_lifecycle as lifecycle  # noqa: E402
 import check_release_consistency as consistency  # noqa: E402
 
 VERSION_RE = consistency.RELEASE_VERSION_RE
@@ -99,6 +102,14 @@ def plan(version: str, today: str, root: Path = ROOT) -> tuple[str, dict[Path, s
     changelog = root / "CHANGELOG.md"
     new_pyproject, old = bump_pyproject(pyproject.read_text(encoding="utf-8"), version)
     new_changelog = cut_changelog(changelog.read_text(encoding="utf-8"), version, today)
+    # removals, deprecations and breaking changes need a minor (or major) bump
+    try:
+        sections = lifecycle.parse_changelog(new_changelog)
+    except lifecycle.ChangelogError as exc:
+        raise SystemExit(f"error: {exc}") from None
+    bump = lifecycle.release_bump_errors(sections)
+    if bump:
+        raise SystemExit(f"error: {bump[0]}")
     return old, {pyproject: new_pyproject, changelog: new_changelog}
 
 

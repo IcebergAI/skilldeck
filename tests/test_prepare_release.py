@@ -165,6 +165,37 @@ def test_main_refuses_existing_changelog_section_without_bumping(tree, monkeypat
     assert _snapshot(tree) == before
 
 
+def test_main_reports_an_impossible_changelog_date_cleanly(tree, monkeypatch):
+    run, calls = _fake_run(0)
+    monkeypatch.setattr(prep.subprocess, "run", run)
+    (tree / "CHANGELOG.md").write_text(
+        CHANGELOG.replace("2026-06-27", "2026-06-31"), encoding="utf-8"
+    )
+    before = _snapshot(tree)
+    with pytest.raises(SystemExit, match=r"2026-06-31` has an invalid date"):
+        prep.main(["0.4.0"])
+    assert _snapshot(tree) == before
+    assert calls == []
+
+
+@pytest.mark.parametrize("group", ["Removed", "Deprecated"])
+def test_main_refuses_a_patch_release_that_removes_or_deprecates(
+    tree, monkeypatch, group
+):
+    # docs/lifecycle.md: a patch release is always safe to take
+    run, calls = _fake_run(0)
+    monkeypatch.setattr(prep.subprocess, "run", run)
+    (tree / "CHANGELOG.md").write_text(
+        CHANGELOG.replace("### Added\n\n- something new", f"### {group}\n\n- `x`"),
+        encoding="utf-8",
+    )
+    before = _snapshot(tree)
+    with pytest.raises(SystemExit, match=r"need a minor release \(0\.4\.0\)"):
+        prep.main(["0.3.1"])
+    assert _snapshot(tree) == before
+    assert calls == []
+
+
 def test_main_rolls_back_and_fails_when_uv_lock_fails(tree, monkeypatch, capsys):
     run, calls = _fake_run(1)
     monkeypatch.setattr(prep.subprocess, "run", run)

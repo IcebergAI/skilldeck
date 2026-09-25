@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..registry import Skill
-from .base import Adapter, yaml_frontmatter
+from .base import Adapter, rendered_body, yaml_frontmatter
 
 
 class SkillMdAdapter(Adapter):
@@ -28,4 +28,4 @@ class SkillMdAdapter(Adapter):
             "name": skill.name,
             "description": skill.description,
         }
-        return f"{yaml_frontmatter(fields)}\n{skill.body}"
+        return f"{yaml_frontmatter(fields)}\n{rendered_body(skill)}"

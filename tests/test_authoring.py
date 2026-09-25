@@ -159,6 +159,23 @@ def test_generated_skill_passes_every_structural_check(skills_dir):
     assert set(placeholders) == {f"skills/{NAME}/meta.yaml", f"skills/{NAME}/skill.md"}
 
 
+def test_new_declares_the_read_only_review_baseline(skills_dir):
+    # the same declaration, word for word, as the bundled review skills
+    _new(skills_dir)
+    skill = registry.load_skill(skills_dir / NAME, set(ADAPTERS))
+    resilience = registry.load_skill(
+        registry.DEFAULT_SKILLS_DIR / "resilience-review", set(ADAPTERS)
+    )
+    assert skill.capabilities == resilience.capabilities
+    assert not skill.capabilities.beyond_review_baseline
+    # so no adapter adds a Declared capabilities notice, and the skeleton's
+    # own commands match its declaration both ways
+    for adapter in ALL_ADAPTERS.values():
+        if adapter.supports(skill):
+            assert "## Declared capabilities" not in adapter.render(skill)
+    assert lint.command_problems(skill.name, skill.body, skill.capabilities) == []
+
+
 def test_skeleton_states_no_domain_guidance():
     # everything outside the shared template is a placeholder
     text = authoring.SKILL_TEMPLATE
@@ -346,6 +363,102 @@ def test_leftover_placeholder_is_located(completed):
     problem = _problem(_report("--skills-dir", completed.parent), "content.placeholder")
     text = (completed / "skill.md").read_text(encoding="utf-8")
     assert problem["line"] == text.split(lint.PLACEHOLDER)[0].count("\n") + 1
+
+
+def test_capability_schema_error(completed):
+    _edit(completed / "meta.yaml", "    read: repo\n", "    read: everything\n")
+    problem = _problem(_report("--skills-dir", completed.parent), "meta.capabilities")
+    assert problem["path"] == f"skills/{NAME}/meta.yaml"
+    assert (
+        "capabilities.files.read must be one of none, diff, repo"
+        in (problem["message"])
+    )
+
+
+def test_undeclared_command(completed):
+    _edit(completed / "skill.md", SOURCE, SOURCE + " Then run `npm audit --json`.")
+    report = _report("--skills-dir", completed.parent)
+    problem = _problem(report, "capabilities.undeclared-command")
+    assert problem["path"] == f"skills/{NAME}/skill.md"
+    assert "`npm audit --json`" in problem["message"]
+    text = (completed / "skill.md").read_text(encoding="utf-8")
+    assert problem["line"] == text[: text.index("npm audit")].count("\n") + 1
+
+
+def test_unused_command_and_undeclared_remote(completed):
+    _edit(
+        completed / "meta.yaml",
+        "    - git ls-files\n",
+        "    - git ls-files\n    - npm audit\n",
+    )
+    _edit(
+        completed / "meta.yaml",
+        "    - the git remote, via git fetch, to bring the base branch up to date\n",
+        "    []\n",
+    )
+    meta = (completed / "meta.yaml").read_text(encoding="utf-8")
+    (completed / "meta.yaml").write_text(
+        meta.replace("  network:\n    []\n", "  network: []\n"), encoding="utf-8"
+    )
+    report = _report("--skills-dir", completed.parent)
+    assert "`npm audit`" in _problem(report, "capabilities.unused-command")["message"]
+    assert (
+        _problem(report, "capabilities.network")["path"] == f"skills/{NAME}/meta.yaml"
+    )
+
+
+def test_local_link(completed):
+    _edit(completed / "skill.md", SOURCE, SOURCE + " See [notes](notes.md).")
+    report = _report("--skills-dir", completed.parent)
+    problem = _problem(report, "references.local-link")
+    assert "notes.md" in problem["message"] and problem["line"]
+    # reported on its own: the skill still renders, so nothing else hides
+    assert not [s for s in report["skipped"] if "rendering" in s["check"]]
+
+
+@pytest.mark.parametrize(
+    ("name", "content", "rule"),
+    [
+        ("run.sh", b"echo hi\n", "skill.executable"),
+        ("helper", b"#!/bin/sh\necho hi\n", "skill.executable"),
+        ("notes.txt", b"scratch\n", "skill.unexpected-file"),
+    ],
+)
+def test_bundle_rules(completed, name, content, rule):
+    (completed / name).write_bytes(content)
+    problem = _problem(_report("--skills-dir", completed.parent), rule)
+    assert problem["path"] == f"skills/{NAME}/{name}"
+
+
+def test_bundle_subdirectory(completed):
+    (completed / "assets").mkdir()
+    problem = _problem(
+        _report("--skills-dir", completed.parent), "skill.unexpected-file"
+    )
+    assert problem["message"] == "assets is a directory"
+
+
+def test_os_and_editor_leftovers_are_ignored(completed):
+    # as when loading: one stray file doesn't break validation
+    for junk in (".DS_Store", "skill.md~", ".skill.md.swp"):
+        (completed / junk).write_bytes(b"\x00junk")
+    (completed.parent / "Thumbs.db").write_bytes(b"\x00")
+    out = _invoke("validate", "--skills-dir", completed.parent).stdout
+    assert f"{NAME}: ok" in out
+
+
+def test_linked_skill_directory_is_reported_and_not_followed(
+    completed, tmp_path, symlink
+):
+    elsewhere = tmp_path / "elsewhere" / "linked-review"
+    elsewhere.parent.mkdir()
+    shutil.copytree(completed, elsewhere)
+    symlink(completed.parent / "linked-review", elsewhere)
+    report = _report("--skills-dir", completed.parent)
+    problem = _problem(report, "skill.link")
+    assert problem["path"] == "skills/linked-review"
+    assert [p["rule"] for p in report["problems"]] == ["skill.link"]
+    assert "elsewhere" not in json.dumps(report)
 
 
 def test_unexpected_file(completed):
@@ -711,7 +824,7 @@ def test_symlinked_skill_file_is_reported_and_not_read(
     assert "hunter2" not in out.stdout
     assert "outside" not in out.stdout
     report = json.loads(out.stdout)
-    problem = _problem(report, "skill.symlink")
+    problem = _problem(report, "skill.link")
     assert problem["path"] == f"skills/{NAME}/{linked}"
     assert report["skills"][0]["status"] == "invalid"
     # the other file is still checked

@@ -2,7 +2,11 @@
 
 ``skilldeck validate`` reports these rules, and the test suite applies the
 same functions to every bundled skill, so the structural template, the
-citation hygiene and the placeholder check are defined once, here.
+citation hygiene, the declared-commands check and the placeholder check are
+defined once, here. The bundle rules (what a skill directory may hold) and
+the capability schema stay in :mod:`skilldeck.registry` and
+:mod:`skilldeck.capabilities`, which loading enforces; this module maps
+their findings to rule ids.
 
 The structure rules pin what every review skill carries (see
 ``docs/authoring-skills.md``): a ``## Scope`` section that determines the diff
@@ -22,9 +26,12 @@ is what a freshly scaffolded skill reports until its content is written.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from pathlib import Path
+
+from . import registry
+from .capabilities import Capabilities
 
 #: marks content a skill author still has to write; ``skilldeck new`` puts it
 #: wherever the template cannot know the domain, and validate reports it
@@ -34,7 +41,7 @@ ERROR = "error"
 INCOMPLETE = "incomplete"
 
 #: the only files a skill directory holds
-SKILL_FILES = ("meta.yaml", "skill.md")
+SKILL_FILES = registry.BUNDLE_FILES
 
 
 @dataclass(frozen=True)
@@ -130,6 +137,12 @@ RULES: dict[str, Rule] = {
         "name a skill in the same directory that is not deprecated and "
         "supports every agent this one does",
     ),
+    "meta.capabilities": Rule(
+        ERROR,
+        "capabilities follows the capability schema",
+        "fix the capabilities block as the message says; see "
+        f"{_AUTHORING}#capabilities",
+    ),
     # skill.md
     "body.missing": Rule(
         ERROR,
@@ -143,11 +156,23 @@ RULES: dict[str, Rule] = {
         "move the file out of the skill directory: installs carry only "
         "meta.yaml and skill.md, and provenance --verify rejects other files",
     ),
-    "skill.symlink": Rule(
+    "skill.executable": Rule(
         ERROR,
-        "nothing in the skill directory is a symlink",
-        "replace the symlink with a regular file; validate never follows one, "
-        "so a symlinked meta.yaml or skill.md is not checked at all",
+        "the skill directory holds no script or program",
+        "remove it: a skill cannot ship a script. Declare a program on PATH "
+        "in capabilities.commands, or a <placeholder> for a command the "
+        f"project defines ({_AUTHORING}#capabilities)",
+    ),
+    "skill.link": Rule(
+        ERROR,
+        "neither the skill directory nor anything in it is a symlink or junction",
+        "replace the link with a regular file or directory; validate never "
+        "follows one, so what it points at is not checked at all",
+    ),
+    "skill.unreadable": Rule(
+        ERROR,
+        "the skill directory and its entries can be read",
+        "fix the permissions so the skill directory can be listed and read",
     ),
     "structure.heading": Rule(
         ERROR,
@@ -208,6 +233,33 @@ RULES: dict[str, Rule] = {
         ERROR,
         "skill.md links no documentation path that only survives as a redirect",
         "link the canonical URL named in the message",
+    ),
+    "references.local-link": Rule(
+        ERROR,
+        "skill.md links only to web pages and its own headings",
+        "link to a web page (http, https, mailto) or a #heading: a skill "
+        "ships only meta.yaml and skill.md, so a relative or file link has "
+        "nothing to resolve to once installed",
+    ),
+    "capabilities.undeclared-command": Rule(
+        ERROR,
+        "every command a code span in skill.md runs is declared",
+        "declare the command in capabilities.commands, or, for a span the "
+        "skill only quotes (a pattern to look for, a command to avoid), "
+        "rephrase it; a bundled skill can list it in MENTIONED_ONLY in "
+        "skilldeck/lint.py",
+    ),
+    "capabilities.unused-command": Rule(
+        ERROR,
+        "every declared command appears in skill.md",
+        "remove the command from capabilities.commands, or name it in "
+        "skill.md where the skill asks the agent to run it",
+    ),
+    "capabilities.network": Rule(
+        ERROR,
+        "a declared git fetch is declared as network use of the git remote",
+        "add a capabilities.network entry such as: the git remote, via git "
+        "fetch, to bring the base branch up to date",
     ),
     "content.placeholder": Rule(
         INCOMPLETE,
@@ -310,37 +362,38 @@ class Problem:
 # -- the skill directory ----------------------------------------------------------
 
 
+#: the rule each kind of :class:`registry.BundleEntry` breaks
+_BUNDLE_RULES = {
+    "link": "skill.link",
+    "executable": "skill.executable",
+    "unreadable": "skill.unreadable",
+    "directory": "skill.unexpected-file",
+    "special": "skill.unexpected-file",
+    "extra": "skill.unexpected-file",
+}
+
+
 def bundle_problems(
     skill_dir: Path, show: Callable[[Path], str] = Path.as_posix
 ) -> list[Problem]:
-    """What in ``skill_dir`` is not one of :data:`SKILL_FILES`, or is a symlink.
+    """The registry's bundle rules (:func:`registry.bundle_entries`), one
+    problem per offending entry: a link, a directory or other non-regular
+    file, an undeclared executable, or any other file. OS and editor
+    leftovers are ignored, as when loading.
 
-    Nothing is read, and a symlink is never followed: it could point at any
+    Nothing is read, and a link is never followed: it could point at any
     file, whose path or contents must not end up in a report. ``show`` turns
     a path into the one reported.
     """
-    problems = []
-    for child in sorted(skill_dir.iterdir()):
-        if child.is_symlink():
-            problems.append(
-                Problem(
-                    show(child),
-                    "skill.symlink",
-                    f"{child.name} is a symlink, which validate does not follow",
-                    skill=skill_dir.name,
-                )
-            )
-        elif child.name not in SKILL_FILES:
-            problems.append(
-                Problem(
-                    show(child),
-                    "skill.unexpected-file",
-                    f"{child.name} is not part of a skill (only "
-                    f"{' and '.join(SKILL_FILES)} are)",
-                    skill=skill_dir.name,
-                )
-            )
-    return problems
+    return [
+        Problem(
+            show(skill_dir / entry.name) if entry.name else show(skill_dir),
+            _BUNDLE_RULES[entry.kind],
+            entry.message,
+            skill=skill_dir.name,
+        )
+        for entry in registry.bundle_entries(skill_dir)
+    ]
 
 
 # -- the structural template --------------------------------------------------
@@ -554,6 +607,17 @@ def reference_problems(name: str, body: str, path: str = "skill.md") -> list[Pro
                     name,
                 )
             )
+    local = registry.local_links(body)
+    if local:
+        problems.append(
+            Problem(
+                path,
+                "references.local-link",
+                f"links to {', '.join(local)}, which the skill cannot ship",
+                _first_line(body, local[0]),
+                name,
+            )
+        )
     for match in LINK_RE.finditer(body):
         url = match.group(1)
         for prefix, canonical in STALE_URL_PREFIXES.items():
@@ -567,6 +631,174 @@ def reference_problems(name: str, body: str, path: str = "skill.md") -> list[Pro
                         name,
                     )
                 )
+    return problems
+
+
+def _first_line(text: str, needle: str) -> int | None:
+    index = text.find(needle)
+    return _line_at(text, index) if index >= 0 else None
+
+
+# -- declared commands --------------------------------------------------------------
+
+# Programs a code span in a skill body is taken to run: common CLIs (forges,
+# network clients, package managers, scanners, test runners, interpreters and
+# infrastructure tools). Every program a skill in the same directory declares
+# counts too (see command_programs). A span that is only the program's name is
+# a mention, not a command.
+KNOWN_PROGRAMS = frozenset(
+    {
+        # version control, forges and the network
+        "git", "gh", "glab", "curl", "wget",
+        # package managers
+        "npm", "npx", "pnpm", "yarn", "bun", "pip", "pip3", "pipx", "uv", "uvx",
+        "poetry", "cargo", "go", "gem", "bundle", "composer", "mvn", "gradle",
+        "dotnet", "brew", "apt", "apt-get",
+        # scanners and linters
+        "pip-audit", "osv-scanner", "govulncheck", "semgrep", "trivy", "grype",
+        "syft", "checkov", "tfsec", "kics", "kube-score", "conftest", "zizmor",
+        "actionlint", "bandit", "gitleaks", "trufflehog", "snyk", "safety",
+        "squawk", "hadolint",
+        # test runners and build tools
+        "pytest", "tox", "nox", "jest", "vitest", "mocha", "rspec", "phpunit",
+        "make",
+        # interpreters and shells
+        "python", "python3", "node", "deno", "ruby", "perl", "php", "sh", "bash",
+        "zsh", "pwsh",
+        # infrastructure
+        "docker", "kubectl", "helm", "terraform",
+    }
+)  # fmt: skip
+# Code spans a bundled skill quotes without asking the agent to run them, per
+# skill: patterns to look for in the code under review, or commands to avoid.
+# Each must still appear in that skill's body (a test checks).
+MENTIONED_ONLY: dict[str, frozenset[str]] = {
+    "ci-workflow-review": frozenset(
+        {
+            # interpreter flags a CI step can inject through
+            "bash -c",
+            "node -e",
+            "perl -e",
+            "python -c",
+            "ruby -e",
+            "sh -c",
+            'sh -c "… $VAR"',
+            'sh -c \'notify "$1"\' _ "$CI_COMMIT_TITLE"',
+        }
+    ),
+    # the unsafe invocations the skill warns against
+    "dependency-review": frozenset({"pip install -r", "pip-audit -r <file>"}),
+}
+_CODE_SPAN_RE = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.S)
+
+
+def command_programs(declarations: Iterable[Capabilities]) -> frozenset[str]:
+    """:data:`KNOWN_PROGRAMS` plus every program ``declarations`` declare
+    (``<placeholder>`` commands aside)."""
+    return KNOWN_PROGRAMS | {
+        command.split(" ")[0]
+        for capabilities in declarations
+        for command in capabilities.commands
+        if not command.startswith("<")
+    }
+
+
+def code_spans(body: str) -> list[tuple[str, int]]:
+    """Each code span in ``body``, whitespace-normalized, with its line."""
+    body = _lf(body)
+    return [
+        (" ".join(match.group(2).split()), _line_at(body, match.start()))
+        for match in _CODE_SPAN_RE.finditer(body)
+    ]
+
+
+def _runs(span: str, command: str) -> bool:
+    return span == command or span.startswith(command + " ")
+
+
+def undeclared_commands(
+    name: str, body: str, capabilities: Capabilities, programs: Collection[str]
+) -> list[str]:
+    """Code spans in skill ``name``'s body that run one of ``programs`` with a
+    command ``capabilities`` doesn't declare, sorted, each once."""
+    mentioned = MENTIONED_ONLY.get(name, frozenset())
+    return sorted(
+        {
+            span
+            for span, _ in code_spans(body)
+            if span.split(" ")[0] in programs
+            and span not in programs
+            and span not in mentioned
+            and not any(_runs(span, command) for command in capabilities.commands)
+        }
+    )
+
+
+def unused_commands(body: str, capabilities: Capabilities) -> list[str]:
+    """Declared commands the body never names (``<placeholder>`` aside)."""
+    spans = [span for span, _ in code_spans(body)]
+    return [
+        command
+        for command in capabilities.commands
+        if not command.startswith("<")
+        and not any(
+            _runs(span, command) or span == command.split(" ")[0] for span in spans
+        )
+    ]
+
+
+def command_problems(
+    name: str,
+    body: str,
+    capabilities: Capabilities,
+    programs: Collection[str] = KNOWN_PROGRAMS,
+    path: str = "skill.md",
+    meta_path: str = "meta.yaml",
+) -> list[Problem]:
+    """Whether ``capabilities.commands`` keeps up with the body, both ways.
+
+    A code span that runs one of ``programs`` (see :func:`command_programs`),
+    such as ``git diff origin/<base>...HEAD``, must start with a declared
+    command, unless the skill only quotes it (:data:`MENTIONED_ONLY`); every
+    declared command must appear in the body; and a declared ``git fetch``
+    must come with network use of the git remote.
+    """
+    programs = set(programs) | command_programs([capabilities])
+    lines: dict[str, int] = {}
+    for span, line in code_spans(body):
+        lines.setdefault(span, line)
+    problems = [
+        Problem(
+            path,
+            "capabilities.undeclared-command",
+            f"`{span}` runs {span.split(' ')[0]}, but capabilities.commands "
+            "declares no command it starts with",
+            lines.get(span),
+            name,
+        )
+        for span in undeclared_commands(name, body, capabilities, programs)
+    ]
+    problems += [
+        Problem(
+            meta_path,
+            "capabilities.unused-command",
+            f"capabilities.commands declares `{command}`, which skill.md never names",
+            skill=name,
+        )
+        for command in unused_commands(body, capabilities)
+    ]
+    if "git fetch" in capabilities.commands and not any(
+        "git remote" in entry for entry in capabilities.network
+    ):
+        problems.append(
+            Problem(
+                meta_path,
+                "capabilities.network",
+                "capabilities.commands declares git fetch, but capabilities."
+                "network has no entry for the git remote it contacts",
+                skill=name,
+            )
+        )
     return problems
 
 

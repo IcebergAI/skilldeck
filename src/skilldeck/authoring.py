@@ -34,6 +34,7 @@ import yaml
 
 from . import registry
 from .adapters import ADAPTERS, ALL_ADAPTERS
+from .capabilities import CAPABILITY_SCHEMA
 from .catalog import skill_entry
 from .lint import (
     ERROR,
@@ -43,6 +44,8 @@ from .lint import (
     SKILL_FILES,
     Problem,
     bundle_problems,
+    command_problems,
+    command_programs,
     description_problems,
     finding_output_problems,
     placeholder_problems,
@@ -55,8 +58,12 @@ from .registry import (
     NAME_RE,
     Skill,
     SkillError,
+    SkillMeta,
     check_meta,
     discover_skills,
+    is_junk,
+    is_link,
+    link_kind,
     load_skill,
     replacement_errors,
 )
@@ -153,11 +160,14 @@ def display_path(path: Path, base: Path | None = None) -> str:
 
 
 def skill_dirs(skills_dir: Path) -> list[Path]:
-    """The skill directories in ``skills_dir``, as discovery finds them."""
+    """The skill directories in ``skills_dir``, as discovery finds them, plus
+    any link discovery would refuse (validate reports it)."""
     return sorted(
         child
         for child in skills_dir.iterdir()
-        if child.is_dir() and not child.name.startswith(".")
+        if not child.name.startswith(".")
+        and not is_junk(child.name)
+        and (is_link(child) or child.is_dir())
     )
 
 
@@ -176,6 +186,21 @@ def title_for(name: str) -> str:
     return " ".join(part.capitalize() for part in name.split("-"))
 
 
+#: what a new skill declares: the read-only review baseline the bundled
+#: review skills use, matching the skeleton's Scope steps (read the
+#: repository; git fetch, git diff and git ls-files; the git remote), so it
+#: renders without a ``## Declared capabilities`` notice
+REVIEW_CAPABILITIES: dict[str, object] = {
+    "schema": CAPABILITY_SCHEMA,
+    "files": {"read": "repo", "write": "none"},
+    "commands": ["git fetch", "git diff", "git ls-files"],
+    "network": ["the git remote, via git fetch, to bring the base branch up to date"],
+    "credentials": [],
+    "tools": [],
+    "artifacts": [],
+}
+
+
 def meta_text(name: str, description: str, category: str, agents: Sequence[str]) -> str:
     fields: dict[str, object] = {
         "name": name,
@@ -183,6 +208,7 @@ def meta_text(name: str, description: str, category: str, agents: Sequence[str])
         "category": category,
         "version": INITIAL_VERSION,
         "supported-agents": list(agents),
+        "capabilities": REVIEW_CAPABILITIES,
     }
     return yaml.dump(
         fields,
@@ -517,7 +543,7 @@ class _Checker:
         if skills_dir not in self._siblings:
             loaded = []
             for child in skill_dirs(skills_dir):
-                if any((child / name).is_symlink() for name in SKILL_FILES):
+                if is_link(child):
                     continue
                 try:
                     loaded.append(load_skill(child, set(ADAPTERS)))
@@ -535,46 +561,64 @@ class _Checker:
         problems: list[Problem] = []
         skipped: list[Skipped] = []
 
-        # a symlinked skill file is reported and never read (see
-        # lint.bundle_problems); the other file is still checked
-        linked = {n for n in SKILL_FILES if (skill_dir / n).is_symlink()}
-        if skill_dir.is_dir():
-            problems += bundle_problems(skill_dir, self.show)
-
-        skill: Skill | None = None
-        try:
-            if not linked:
-                skill = load_skill(skill_dir, set(ADAPTERS))
-            elif "meta.yaml" not in linked:
-                check_meta(skill_dir, set(ADAPTERS))
-        except SkillError as exc:
-            problems.append(
+        # A link is reported and never followed: its target's path and
+        # contents must not reach the report. The skill directory itself
+        # being one stops everything; a link (or directory) in place of
+        # meta.yaml or skill.md stops that file being read.
+        if is_link(skill_dir):
+            return [
                 Problem(
-                    self.show(exc.file or skill_dir),
-                    exc.rule or "meta.syntax",
-                    exc.detail,
-                    exc.line,
+                    self.show(skill_dir),
+                    "skill.link",
+                    f"the skill directory is a {link_kind(skill_dir)}",
+                    None,
                     name,
                 )
-            )
-        reported = {problem.rule for problem in problems}
+            ], [
+                Skipped(
+                    f"every other check of {name}",
+                    "validate does not follow a linked skill directory",
+                )
+            ]
+        bundle = bundle_problems(skill_dir, self.show) if skill_dir.is_dir() else []
+        problems += bundle
+        # meta.yaml or skill.md that is a link, directory or special file
+        shown = {self.show(skill_dir / file): file for file in SKILL_FILES}
+        blocked = {shown[p.path] for p in bundle if p.path in shown}
 
-        body = skill.body if skill is not None else None
-        if body is None and "skill.md" not in linked:
-            if not body_path.is_file():
-                if "body.missing" not in reported:
-                    problems.append(
-                        Problem(
-                            self.show(body_path),
-                            "body.missing",
-                            "missing skill.md",
-                            None,
-                            name,
-                        )
+        meta: SkillMeta | None = None
+        if "meta.yaml" not in blocked:
+            try:
+                meta = check_meta(skill_dir, set(ADAPTERS))
+            except SkillError as exc:
+                problems.append(
+                    Problem(
+                        self.show(exc.file or meta_path),
+                        exc.rule or "meta.syntax",
+                        exc.detail,
+                        exc.line,
+                        name,
                     )
+                )
+            meta_text = _read_text(meta_path)
+            if meta_text is not None:
+                problems += placeholder_problems(meta_text, self.show(meta_path), name)
+
+        body: str | None = None
+        if "skill.md" not in blocked:
+            if not body_path.is_file():
+                problems.append(
+                    Problem(
+                        self.show(body_path),
+                        "body.missing",
+                        "missing skill.md",
+                        None,
+                        name,
+                    )
+                )
             else:
                 body = _read_text(body_path)
-                if body is None and not reported & {"body.encoding", "body.missing"}:
+                if body is None:
                     problems.append(
                         Problem(
                             self.show(body_path),
@@ -589,12 +633,25 @@ class _Checker:
             problems += structure_problems(name, body, where)
             problems += reference_problems(name, body, where)
             problems += placeholder_problems(body, where, name)
-        if "meta.yaml" not in linked:
-            # an unreadable meta.yaml is the registry's to report
-            meta_text = _read_text(meta_path)
-            if meta_text is not None:
-                problems += placeholder_problems(meta_text, self.show(meta_path), name)
+            if meta is not None:
+                programs = command_programs(
+                    [
+                        meta.capabilities,
+                        *(s.capabilities for s in self.siblings(skill_dir.parent)),
+                    ]
+                )
+                problems += command_problems(
+                    name,
+                    body,
+                    meta.capabilities,
+                    programs,
+                    where,
+                    self.show(meta_path),
+                )
 
+        # the bundle and local-link rules are reported above, so the skill is
+        # rendered whenever its two files load
+        skill = meta.skill(body, skill_dir) if meta and body is not None else None
         if skill is None:
             skipped.append(
                 Skipped(

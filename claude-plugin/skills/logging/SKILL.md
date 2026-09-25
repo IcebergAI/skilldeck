@@ -141,3 +141,13 @@ Open the report with one line stating what was reviewed and the outcome, e.g.
 neither touches logging nor adds security-relevant events that should be
 logged, say so and stop. If the logging is sound, say so explicitly rather
 than manufacturing findings.
+
+## Declared capabilities
+
+Beyond reading the repository, this skill asks you to:
+
+- run `git fetch`, `git diff`, `git ls-files`
+- edit files in the repository
+- contact the git remote, via git fetch, to bring the base branch up to date
+
+It asks for nothing else.

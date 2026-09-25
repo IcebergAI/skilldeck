@@ -1,10 +1,35 @@
 name: dependency-review
 description: Review dependency changes in the diff for known vulnerabilities and supply-chain risk.
 category: security
-version: 0.4.0
+version: 0.5.0
 supported-agents:
   - claude
   - codex
   - copilot
   - cursor
   - kiro
+capabilities:
+  schema: 1
+  files:
+    read: repo
+    write: none
+  commands:
+    - git fetch
+    - git diff
+    - git ls-files
+    - npm audit
+    - pip-audit --disable-pip
+    - osv-scanner
+    - govulncheck
+    - cargo audit
+    - gh api
+  network:
+    - the git remote, via git fetch, to bring the base branch up to date
+    - vulnerability databases and package registries, queried by the audit commands
+    - GitHub's advisory API, via gh api with its existing login
+    - advisory pages, fetched to verify an advisory ID before citing it
+    - package registry pages, fetched for a package's publish dates, maintainers and provenance
+  credentials: []
+  tools:
+    - web fetch, to read advisory and package registry pages
+  artifacts: []

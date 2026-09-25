@@ -16,7 +16,14 @@ from typing import TypedDict
 
 from . import __version__
 from .adapters import ADAPTERS
-from .registry import DEFAULT_SKILLS_DIR, Skill, discover_skills
+from .registry import (
+    BUNDLE_FILES,
+    DEFAULT_SKILLS_DIR,
+    Skill,
+    discover_skills,
+    is_link,
+    link_kind,
+)
 
 SCHEMA_VERSION = 1
 PACKAGE_NAME = "skilldeck"
@@ -279,9 +286,12 @@ def verify_bundled_skills(skills_dir: Path | None = None) -> list[str]:
 
     Returns one message per problem: a skill whose ``meta.yaml`` or
     ``skill.md`` no longer hashes to the packaged content manifest, a skill
-    that is missing or unreadable, and any file or skill directory the
-    manifest does not list. An empty list means the installed skills are
-    exactly the ones the manifest records.
+    that is missing or unreadable, any skill directory the manifest does not
+    list, any other entry in a skill directory (OS and editor leftovers
+    included: this is the release-integrity check, stricter than loading a
+    skill), and a skill directory, ``meta.yaml`` or ``skill.md`` that is a
+    symlink or junction. An empty list means the installed skills are exactly
+    the ones the manifest records.
     """
     root = skills_dir or DEFAULT_SKILLS_DIR
     records = {record["name"]: record for record in load_content_manifest()["skills"]}
@@ -304,9 +314,16 @@ def verify_bundled_skills(skills_dir: Path | None = None) -> list[str]:
         except (OSError, UnicodeDecodeError) as exc:
             problems.append(f"{name}: cannot read the bundled skill: {exc}")
             continue
-        extras = [entry for entry in entries if entry not in {"meta.yaml", "skill.md"}]
+        extras = [entry for entry in entries if entry not in BUNDLE_FILES]
         if extras:
             problems.append(f"{name}: unexpected file(s): {', '.join(extras)}")
+        if is_link(skill_dir):
+            problems.append(f"{name}: the skill directory is a {link_kind(skill_dir)}")
+        problems.extend(
+            f"{name}: {filename} is a {link_kind(skill_dir / filename)}"
+            for filename in BUNDLE_FILES
+            if is_link(skill_dir / filename)
+        )
         if canonical_skill_digest(meta_text, body_text) != record["canonical_sha256"]:
             problems.append(
                 f"{name}: installed files do not match canonical digest "

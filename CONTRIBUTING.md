@@ -48,8 +48,10 @@ create them.
 ## Authoring or changing a skill
 
 Skills live in `src/skilldeck/skills/<name>/` as a `meta.yaml` + `skill.md`, authored
-once in an agent-neutral format — never hand-edit per-agent output. Scaffold a new one
-and check your work with:
+once in an agent-neutral format — never hand-edit per-agent output. A skill's
+`meta.yaml` `name` must match its directory name, and its `capabilities` must declare
+what `skill.md` asks the agent to do (commands, network, credentials, edits). Scaffold
+a new one and check your work with:
 
 ```bash
 uv run --extra dev skilldeck new my-review --category security
@@ -59,6 +61,12 @@ uv run --extra dev skilldeck validate my-review   # file, rule and fix per probl
 See [docs/authoring-skills.md](docs/authoring-skills.md) for the full guide and the
 review path, and bump that skill's own `version` in `meta.yaml` whenever its content
 changes.
+
+Deprecating or removing a skill, dropping an agent, or making a major version change
+needs a `CHANGELOG.md` entry that names it, and CI checks for one. See
+[docs/lifecycle.md](docs/lifecycle.md) for the rules and the notice period, and run
+`uv run --locked --extra dev python scripts/check_lifecycle.py --base origin/main` to
+check.
 
 ## Opening the pull request
 

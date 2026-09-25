@@ -51,24 +51,36 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
   - `cli.py` — `skilldeck list/show/install/uninstall/status/update/migrate`,
     `provenance`, `catalog`, and the author commands `new` and `validate`
   - `registry.py` — discovers and validates skills, including the optional
-    `deprecated` metadata; each `SkillError` for a malformed skill carries
-    its `validate` rule id
+    `deprecated` metadata, and the bundle rules: a skill directory is exactly
+    regular `meta.yaml` + `skill.md` (no scripts, assets, symlinks or
+    junctions; OS/editor leftovers such as `.DS_Store` are ignored when
+    loading but still fail `provenance --verify`), and `skill.md` links only
+    to the web or its own headings. Each `SkillError` for a malformed skill
+    carries its `validate` rule id
+  - `capabilities.py` — the versioned `capabilities` declaration every
+    `meta.yaml` carries (files, commands, network, credentials, tools,
+    artifacts), its validation, the `## Declared capabilities` notice
+    adapters append for skills that ask for more than a read-only review
+    (reading files plus read-only git commands; those render unchanged), and
+    the summary `show --summary` / `install --dry-run` print
   - `lint.py` — the one home of the skill rules (skill-directory bundle,
-    structural template, severity rubric copy, citation hygiene, placeholders)
-    and the `RULES` table of every `validate` rule id, level and remediation;
-    `tests/test_skill_structure.py` and `test_skill_citations.py` apply the
-    same functions to the bundled skills. Add a rule here and to the rules
-    table in `docs/authoring-skills.md` (a test compares them)
-  - `authoring.py` — `skilldeck new` (scaffold, `TODO(author)` placeholders,
-    no domain guidance) and `skilldeck validate` (per-skill checks plus, in a
-    checkout's `src/skilldeck/skills`, eval fixtures, `docs/finding-output.md`
-    and generated-output freshness via the checkout's own
-    `evals/run_evals.py` and `scripts/build_plugin.py`, imported in process).
-    Outside a checkout it needs an explicit `--dir`/`--skills-dir` and never
-    writes into the installed package. `validate` never runs code from the
-    tree it checks: the script-importing checks run only when the checkout's
-    `src/skilldeck` is the running package (`_trusted_checkout`), else they
-    are reported as skipped; symlinks in a skill are reported, never read
+    structural template, severity rubric copy, citation hygiene, declared
+    commands vs code spans, placeholders) and the `RULES` table of every
+    `validate` rule id, level and remediation; `tests/test_skill_structure.py`
+    and `test_skill_citations.py` apply the same functions to the bundled
+    skills. Add a rule here and to the rules table in
+    `docs/authoring-skills.md` (a test compares them)
+  - `authoring.py` — `skilldeck new` (scaffold with the read-only review
+    capability baseline, `TODO(author)` placeholders, no domain guidance) and
+    `skilldeck validate` (per-skill checks plus, in a checkout's
+    `src/skilldeck/skills`, eval fixtures, `docs/finding-output.md` and
+    generated-output freshness via the checkout's own `evals/run_evals.py`
+    and `scripts/build_plugin.py`, imported in process). Outside a checkout it
+    needs an explicit `--dir`/`--skills-dir` and never writes into the
+    installed package. `validate` never runs code from the tree it checks:
+    the script-importing checks run only when the checkout's `src/skilldeck`
+    is the running package (`_trusted_checkout`), else they are reported as
+    skipped; links in a skill are reported, never read
   - `catalog.py` + `catalog.schema.json` — the public, schema-versioned
     `skilldeck catalog --json` contract (the schema ships in the wheel);
     change it only per the compatibility rules in `docs/catalog.md` (bump
@@ -94,7 +106,8 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
   (`tests/test_eval_scoring.py`). See `evals/README.md`. New/changed skills
   should be run through them.
 - `docs/` — `authoring-skills.md`, `adapters.md`, `catalog.md`, `compatibility.md`
-  (the public agent compatibility matrix), `releasing.md`
+  (the public agent compatibility matrix), `lifecycle.md` (the versioning,
+  deprecation and compatibility policy), `releasing.md`
 - `tests/fixtures/adapter-contracts/` — each adapter's exact rendered file,
   paths and env-override behaviour for one synthetic skill; checked byte for
   byte by `tests/test_adapter_contracts.py`
@@ -122,7 +135,15 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
 - Skills are authored once in `src/skilldeck/skills/`; never hand-edit per-agent
   output.
 - A skill's `meta.yaml` `name` must match its directory name; all metadata fields
-  are required and validated by the registry.
+  (except `deprecated`) are required and validated by the registry.
+- Every skill declares `capabilities` (schema 1, every key spelled out, `[]`
+  or `none` when unused) that match what `skill.md` actually asks the agent
+  to do; update it with the body (`tests/test_skill_structure.py` checks
+  declared commands against the body both ways; list a span the skill only
+  quotes in its `MENTIONED_ONLY`). Undeclared means not requested; it is a
+  declaration for review, never presented as enforcement. The rendered notice
+  speaks to the agent and adds no instructions of its own. See
+  `docs/authoring-skills.md#capabilities`.
 - Any change to an adapter's output format, paths or env handling must update
   its contract fixtures, the `adapter-contract` digest and matrix rows in
   `docs/compatibility.md`, and CHANGELOG. The contract tests enforce the
@@ -159,6 +180,30 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
   stay in sync — `scripts/check_release_consistency.py` enforces this in CI and
   `pytest`. A dated CHANGELOG section without a matching `v*` tag is prepared, not
   published.
+- Lifecycle: follow `docs/lifecycle.md` for what bumps package/skill versions
+  (skills from 1.0.0: removing a checklist area or changing output shape is
+  major, adding checks minor, wording/citations patch; while a skill is 0.x a
+  breaking change bumps its minor) and for deprecation → notice → removal (a
+  release tag must ship the deprecation ≥90 days before removal, 180 from 1.0).
+  `### Removed` is only for public-surface removals (skills, agents/adapters,
+  commands/options, stable output or `meta.yaml` fields); internal code
+  removals go under Changed. `scripts/check_lifecycle.py` (CI `lint` job,
+  `--base origin/<target>`; needs `uv run --locked --extra dev`) fails a PR
+  unless a section the PR adds (`[Unreleased]`, or a release it cuts) has a
+  bullet naming the thing **in its own backticks**: `### Removed` for a removed
+  skill (also deprecated at base, and if any tag contains it, a reachable
+  `v*` tag whose own meta.yaml + CHANGELOG deprecate it, ≥ the notice period
+  before, counted from max(section date, tag date)); `### Removed` of its own,
+  naming no skill, for a removed adapter; one `### Removed` bullet naming skill
+  and agent for an agent dropped from a skill; `### Deprecated` for a newly
+  deprecated skill; `### Changed` naming skill + new version when a skill's
+  major goes up; `**Breaking:**` + `schema_version` for a catalog schema bump.
+  Urgent security removals skip deprecation/notice only with a `### Removed`
+  bullet marked `**Security:**` plus a `### Security` entry naming the skill.
+  Without release tags it prints a note and skips notice rules. It also fails
+  (as does `prepare_release.py`) when the newest dated section is a patch
+  release with Removed/Deprecated/**Breaking** entries. Run it locally with
+  `--base origin/main` (after `git fetch --tags`) before pushing.
 - Release CI must build once, verify wheel/sdist/plugin identity (against the
   tagged commit's files), produce a runtime-only SPDX SBOM and exact
   checksums, attest those bytes, then publish the same bundle. The build job

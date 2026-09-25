@@ -7,6 +7,7 @@ the rules for changing it. Every skill's ``canonical_sha256`` is recomputed
 from the skill files and must equal the packaged content manifest's record,
 the digest ``skilldeck provenance --verify`` checks; ``rendered_sha256`` gives,
 per native agent, the ``hash=`` an install stamp records for that agent's file.
+``capabilities`` is the skill's capability declaration (see ``capabilities``).
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from importlib.resources import files
 from typing import TypedDict
 
 from .adapters import ADAPTERS
+from .capabilities import CapabilityRecord
 from .provenance import (
     REPOSITORY_URL,
     ContentManifest,
@@ -55,6 +57,7 @@ class CatalogSkill(TypedDict):
     rendered_sha256: dict[str, str]
     source: CatalogSource
     deprecated: CatalogDeprecation | None
+    capabilities: CapabilityRecord
 
 
 class Catalog(TypedDict):
@@ -96,6 +99,7 @@ def _entry(skill: Skill, digest: str) -> CatalogSkill:
             "path": f"{SKILLS_SOURCE_PATH}/{skill.name}",
         },
         "deprecated": deprecated,
+        "capabilities": skill.capabilities.record(),
     }
 
 

@@ -12,6 +12,7 @@ word for word; ``skilldeck.lint.SEVERITY_RUBRIC`` must match the doc.
 """
 
 import re
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -89,6 +90,91 @@ def test_finding_output_doc_lists_every_skill():
     doc = FINDING_OUTPUT_DOC.read_text(encoding="utf-8")
     problems = [p for s in SKILLS for p in lint.finding_output_problems(doc, s.name)]
     assert not problems, _explain(problems)
+
+
+# The declared-commands rule lives in skilldeck.lint (KNOWN_PROGRAMS,
+# MENTIONED_ONLY), where skilldeck validate reports it too. Programs any
+# bundled skill declares count as commands, as on main.
+COMMAND_PROGRAMS = lint.command_programs(skill.capabilities for skill in SKILLS)
+
+
+def _spans(skill):
+    return [span for span, _ in lint.code_spans(skill.body)]
+
+
+def _undeclared(skill):
+    """Code spans in ``skill``'s body that run a known program with a command
+    its capabilities don't declare."""
+    return lint.undeclared_commands(
+        skill.name, skill.body, skill.capabilities, COMMAND_PROGRAMS
+    )
+
+
+@pytest.mark.parametrize("skill", SKILLS, ids=lambda s: s.name)
+def test_skill_declares_the_commands_its_body_names(skill):
+    # the capability declaration must keep up with the body, both ways
+    undeclared = _undeclared(skill)
+    assert not undeclared, (
+        f"{skill.name}/skill.md runs commands its meta.yaml capabilities.commands "
+        f"does not declare: {undeclared} (declare them, or, for a span the skill "
+        "only quotes, add it to MENTIONED_ONLY in skilldeck/lint.py)"
+    )
+    unused = lint.unused_commands(skill.body, skill.capabilities)
+    assert not unused, (
+        f"{skill.name}/meta.yaml declares commands its skill.md never names: {unused}"
+    )
+    # the rule validate reports agrees
+    problems = lint.command_problems(
+        skill.name, skill.body, skill.capabilities, COMMAND_PROGRAMS
+    )
+    assert not problems, _explain(problems)
+
+
+def test_mentioned_only_spans_are_still_in_their_skills():
+    by_name = {skill.name: skill for skill in SKILLS}
+    for name, mentioned in lint.MENTIONED_ONLY.items():
+        assert mentioned <= set(_spans(by_name[name])), name
+
+
+def test_a_command_no_skill_declares_yet_is_still_caught():
+    # the fixed list flags programs that no skill declares, so adding the
+    # first scanner, network call or test run to a body can't slip through
+    security = next(skill for skill in SKILLS if skill.name == "security-review")
+    added = (
+        "\nAlso run `semgrep --config auto`, `curl https://example.com/x` and"
+        " `pytest -x`; `semgrep` alone is a mention.\n"
+    )
+    edited = replace(security, body=security.body + added)
+    assert _undeclared(edited) == [
+        "curl https://example.com/x",
+        "pytest -x",
+        "semgrep --config auto",
+    ]
+    problems = lint.command_problems(
+        edited.name, edited.body, edited.capabilities, COMMAND_PROGRAMS
+    )
+    assert [p.rule for p in problems] == ["capabilities.undeclared-command"] * 3
+    assert {p.line for p in problems} == {edited.body.count("\n")}
+
+
+def test_an_unused_command_and_an_undeclared_remote_are_caught():
+    security = next(skill for skill in SKILLS if skill.name == "security-review")
+    capabilities = replace(
+        security.capabilities,
+        commands=(*security.capabilities.commands, "semgrep"),
+        network=(),
+    )
+    rules = [
+        p.rule
+        for p in lint.command_problems(security.name, security.body, capabilities)
+    ]
+    assert rules == ["capabilities.unused-command", "capabilities.network"]
+
+
+@pytest.mark.parametrize("skill", SKILLS, ids=lambda s: s.name)
+def test_git_fetch_is_declared_as_network_use(skill):
+    if "git fetch" in skill.capabilities.commands:
+        assert any("git remote" in entry for entry in skill.capabilities.network)
 
 
 def test_all_bundled_skills_are_covered():

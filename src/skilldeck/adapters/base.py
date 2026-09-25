@@ -17,9 +17,21 @@ from pathlib import Path
 
 import yaml
 
+from ..capabilities import with_notice
 from ..registry import Skill, SkillError
 from ..stamp import Stamp, parse, stamp
 from ..targets import Scope, UserDir, project_base
+
+
+def rendered_body(skill: Skill) -> str:
+    """``skill``'s body as every adapter writes it.
+
+    A skill that asks for more than reading files (commands, network,
+    credentials, agent tools, edits or new files) gets its declared
+    capabilities appended as a short Markdown section, so the declaration
+    travels with the installed file; any other body is written unchanged.
+    """
+    return with_notice(skill.body, skill.capabilities)
 
 
 def yaml_frontmatter(fields: dict[str, object], *, wrap: bool = True) -> str:
@@ -85,6 +97,22 @@ def _entry_mode(path: Path) -> int | None:
         return None
     except OSError as exc:
         raise SkillError(f"cannot inspect {path}: {exc}") from exc
+
+
+def _check_creatable(skill: Skill, dest: Path) -> None:
+    """Raise :class:`SkillError`, as ``install`` would on writing, unless the
+    nearest existing directory on the way to ``dest`` could hold it."""
+    ancestor = dest.parent
+    while not os.path.lexists(ancestor) and ancestor != ancestor.parent:
+        ancestor = ancestor.parent
+    if not ancestor.is_dir():
+        raise SkillError(
+            f"cannot install {skill.name} to {dest}: {ancestor} is not a directory"
+        )
+    if not os.access(ancestor, os.W_OK | os.X_OK):
+        raise SkillError(
+            f"cannot install {skill.name} to {dest}: {ancestor} is not writable"
+        )
 
 
 def _special_kind(mode: int) -> str:
@@ -241,7 +269,16 @@ class Adapter(ABC):
         project_root: Path | None = None,
         *,
         force: bool = False,
+        dry_run: bool = False,
     ) -> Path:
+        """Write ``skill`` to its destination; return the destination.
+
+        ``dry_run`` makes the checks a real install makes, raising the same
+        errors, then returns without writing anything. Instead of creating
+        the destination's directory it checks that the nearest part of that
+        path that exists is a directory it may write to; a real install can
+        still fail for a reason only writing reveals, such as a full disk.
+        """
         self.check_scope(scope, installing=True)
         dest = self.destination(skill, scope, project_root)
         mode = _entry_mode(dest)
@@ -273,6 +310,9 @@ class Adapter(ABC):
                     f"{dest} has local modifications; "
                     "re-run with --force to overwrite them"
                 )
+        if dry_run:
+            _check_creatable(skill, dest)
+            return dest
         try:
             dest.parent.mkdir(parents=True, exist_ok=True)
             write_atomic(dest, self._stamped(skill))

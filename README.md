@@ -114,8 +114,11 @@ package is unpublished, prefix each command with
 # See what's available
 skilldeck list
 
-# Preview a skill before installing
+# Preview a skill before installing: its instructions, then its source,
+# digest and declared capabilities, then what an install would write
 skilldeck show security-review
+skilldeck show security-review --summary
+skilldeck install security-review --agent claude --dry-run
 
 # Install a skill for Claude into the current project
 skilldeck install security-review --agent claude
@@ -161,6 +164,17 @@ skilldeck validate --skills-dir skills my-review
 
 `skilldeck catalog --json` is a stable contract for tools; see
 [docs/catalog.md](docs/catalog.md) for its schema and compatibility rules.
+
+Every skill declares its capabilities: which files it reads or edits, the
+commands it may ask your agent to run, what it contacts over the network and
+why, and any credentials, agent tools or new files it needs. Anything not
+declared is not requested. `show --summary` and `install --dry-run` print the
+declaration before you install. A skill that asks for more than a read-only
+review (reading files and read-only git commands) also carries it in its
+installed `SKILL.md`, as a "Declared capabilities" section telling your agent
+what the skill asks of it. It is a declaration for review, not a sandbox:
+skilldeck can't enforce it inside your agent, so review what a skill asks for
+(see [Capabilities](docs/authoring-skills.md#capabilities)).
 
 Installed files carry a `skilldeck` stamp recording the skill version, so
 `status` can tell current, stale, and locally modified installs apart. Files you
@@ -212,13 +226,18 @@ release; the package remains unpublished today.
 ## Authoring skills
 
 Each skill is a directory under `src/skilldeck/skills/` containing a `meta.yaml`
-and a `skill.md`. Start one with `skilldeck new` and check it with
-`skilldeck validate`, which names the file, rule and fix for every problem; in
-your own repository, pass `--dir` / `--skills-dir` to keep organization skills
-there. See [docs/authoring-skills.md](docs/authoring-skills.md), including the
-review path for official and organization skills, and follow the
+(including its capability declaration) and a `skill.md`, and nothing else.
+Start one with `skilldeck new` and check it with `skilldeck validate`, which
+names the file, rule and fix for every problem; in your own repository, pass
+`--dir` / `--skills-dir` to keep organization skills there. See
+[docs/authoring-skills.md](docs/authoring-skills.md), including the review path
+for official and organization skills, and follow the
 [contributor guide](CONTRIBUTING.md) for setup.
 
-## Changelog
+## Changelog and support
 
 Notable changes are recorded in [CHANGELOG.md](CHANGELOG.md).
+[docs/lifecycle.md](docs/lifecycle.md) says what each kind of version bump
+means, how long deprecated skills, agents and formats stay supported (a
+deprecation ships in a release at least 90 days before the removal), and
+what happens to skills you have already installed when one is removed.

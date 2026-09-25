@@ -14,7 +14,7 @@ from pathlib import Path
 
 from ..registry import Skill, SkillError
 from ..targets import Scope, UserDir
-from .base import Adapter, yaml_frontmatter
+from .base import Adapter, rendered_body, yaml_frontmatter
 
 
 class LegacyAdapter(Adapter):
@@ -78,7 +78,7 @@ class CopilotPromptAdapter(LegacyAdapter):
             "description": skill.description,
             "agent": "agent",
         }
-        return f"{yaml_frontmatter(fields)}\n{skill.body}"
+        return f"{yaml_frontmatter(fields)}\n{rendered_body(skill)}"
 
 
 class CursorRuleAdapter(LegacyAdapter):
@@ -120,7 +120,7 @@ class CursorRuleAdapter(LegacyAdapter):
                     "backslash, or an unprintable character)"
                 )
             front = f'---\ndescription: "{text}"\nalwaysApply: false\n---\n'
-        return f"{front}\n{skill.body}"
+        return f"{front}\n{rendered_body(skill)}"
 
 
 def _mdc_value(text: str) -> str:
@@ -155,7 +155,7 @@ class KiroSteeringAdapter(LegacyAdapter):
     def render(self, skill: Skill) -> str:
         # Static frontmatter — no skill fields are interpolated, so there is
         # no injection surface here.
-        return f"---\ninclusion: manual\n---\n\n{skill.body}"
+        return f"---\ninclusion: manual\n---\n\n{rendered_body(skill)}"
 
 
 class OldKiroSteeringAdapter(KiroSteeringAdapter):
@@ -191,4 +191,5 @@ class CodexPromptAdapter(LegacyAdapter):
     unstamped_installs = True
 
     def render(self, skill: Skill) -> str:
+        # the body alone, as skilldeck 0.3.0 wrote it; never installed now
         return skill.body

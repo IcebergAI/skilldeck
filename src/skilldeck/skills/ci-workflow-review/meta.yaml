@@ -1,10 +1,24 @@
 name: ci-workflow-review
 description: Review CI/CD pipeline changes for injection, credential exposure, and supply-chain risk, aligned to the OWASP Top 10 CI/CD Security Risks.
 category: security
-version: 0.4.0
+version: 0.4.1
 supported-agents:
   - claude
   - codex
   - copilot
   - cursor
   - kiro
+capabilities:
+  schema: 1
+  files:
+    read: repo
+    write: none
+  commands:
+    - git fetch
+    - git diff
+    - git ls-files
+  network:
+    - the git remote, via git fetch, to bring the base branch up to date
+  credentials: []
+  tools: []
+  artifacts: []

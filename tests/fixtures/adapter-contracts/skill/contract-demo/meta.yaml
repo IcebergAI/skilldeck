@@ -8,3 +8,15 @@ supported-agents:
   - copilot
   - cursor
   - kiro
+capabilities:
+  schema: 1
+  files:
+    read: diff
+    write: none
+  commands:
+    - git diff
+    - <the project's test command>
+  network: []
+  credentials: []
+  tools: []
+  artifacts: []

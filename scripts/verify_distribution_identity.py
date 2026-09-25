@@ -55,6 +55,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from skilldeck.adapters import ADAPTERS  # noqa: E402
+from skilldeck.capabilities import CapabilityError, parse_capabilities  # noqa: E402
 from skilldeck.provenance import (  # noqa: E402
     REPOSITORY_URL,
     canonical_skill_digest,
@@ -652,6 +653,13 @@ def validate_plugin(
             or not all(isinstance(agent, str) for agent in agents)
         ):
             raise VerificationError(f"invalid canonical metadata: {record['name']}")
+        try:
+            # the rendered file carries the declared-capabilities notice
+            capabilities = parse_capabilities(meta.get("capabilities"))
+        except CapabilityError as exc:
+            raise VerificationError(
+                f"invalid canonical capabilities: {record['name']}: {exc}"
+            ) from exc
         skill = Skill(
             name=record["name"],
             description=str(meta.get("description")),
@@ -660,6 +668,7 @@ def validate_plugin(
             supported_agents=tuple(agents),
             body=source["skill.md"],
             path=Path(record["name"]),
+            capabilities=capabilities,
         )
         rendered_digest = sha256_text(ADAPTERS["claude"].render(skill))
         if rendered_digest != record["claude_rendered_sha256"]:

@@ -33,8 +33,14 @@ deterministic tests; coverage shows a line ran, not that it was checked),
 3. Match the project's existing test conventions (framework, layout, naming);
    judge against them rather than imposing a different style.
 4. For a bug fix, confirm the regression test would actually fail without the
-   fix — read the pre-change code (or run the test against it if cheap) rather
-   than assuming.
+   fix — read the pre-change code rather than assuming. If running the test is
+   cheap, run it against that code without touching the working tree: check
+   out the base in a temporary worktree outside the repository
+   (`git worktree add <temp dir> origin/<base>`, or `HEAD` for uncommitted
+   changes), copy the new test into it, run it there with the project's test
+   command, then delete the worktree
+   (`git worktree remove --force <temp dir>`). Never stash, reset, or check out
+   in the working tree under review.
 
 ## What to look for
 
@@ -118,3 +124,12 @@ Open the report with one line stating what was reviewed and the outcome, e.g.
 changes no behavior that needs tests (e.g. docs, comments, pure config), say
 so and stop. If the tests adequately cover the change, say so explicitly
 rather than inventing findings.
+
+## Declared capabilities
+
+Beyond reading the repository, this skill asks you to:
+
+- run `git fetch`, `git diff`, `git ls-files`, `git worktree add`, `git worktree remove`, `<the project's test command>`
+- contact the git remote, via git fetch, to bring the base branch up to date
+
+It asks for nothing else.
