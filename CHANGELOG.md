@@ -67,27 +67,40 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- Every bundled skill's patch version is bumped for its new capability
-  declaration (#73), since its `meta.yaml` changed: `authentication-review`
-  0.2.1, `ci-workflow-review` 0.4.1, `code-smells` 0.3.1,
-  `dependency-review` 0.4.1, `frontend-security-review` 0.1.1, `iac-review`
-  0.3.1, `llm-integration-review` 0.1.1, `logging` 0.3.1, `migration-review`
-  0.4.1, `privacy-review` 0.1.1, `resilience-review` 0.3.1,
-  `security-review` 0.5.2 and `test-review` 0.3.1. The ten read-only reviews
-  install exactly as before. `dependency-review`, `logging` and `test-review`
-  ask for more (audit tools and web lookups; edits; the project's tests), so
-  their installed files gain a `## Declared capabilities` section: run
+- **Breaking:** for skill authors, `meta.yaml` now requires a
+  `capabilities` declaration, and a skill directory may hold only
+  `meta.yaml` and `skill.md` (#73). A skill without the declaration, or with
+  any other file (a script, an asset, a symlink), no longer loads. Add a
+  declaration as described in `docs/authoring-skills.md#capabilities`, and
+  move other files out. Every bundled skill already complies.
+- Every bundled skill declares its capabilities (#73), so its `meta.yaml`
+  changed and its version is bumped: a patch for the declaration alone
+  (`authentication-review` 0.2.1, `ci-workflow-review` 0.4.1, `code-smells`
+  0.3.1, `frontend-security-review` 0.1.1, `iac-review` 0.3.1,
+  `llm-integration-review` 0.1.1, `logging` 0.3.1, `migration-review` 0.4.1,
+  `privacy-review` 0.1.1, `resilience-review` 0.3.1, `security-review` 0.5.2,
+  `test-review` 0.3.1), and a minor bump for `dependency-review` 0.5.0,
+  whose instructions changed (below). The ten read-only reviews install
+  exactly as before. `dependency-review`, `logging` and `test-review` ask for
+  more (audit tools and web lookups; edits; the project's tests), so their
+  installed files gain a `## Declared capabilities` section: run
   `skilldeck update` to refresh installed copies.
-- `test-review` (0.3.1) says how to run a regression test against the
+- `test-review` 0.3.1 says how to run a regression test against the
   pre-change code without touching the working tree under review: in a
   temporary `git worktree` outside the repository, removed afterwards; never
-  by stashing, resetting or checking out (#73).
-- `dependency-review` (0.4.1) runs `pip-audit` only on a fully pinned
+  by stashing, resetting or checking out (#73). A patch under
+  `docs/lifecycle.md#skill-versions`: what it reports is unchanged, and the
+  step only spells out a safe way to do what it already asked.
+- `dependency-review` 0.5.0 runs `pip-audit` only on a fully pinned
   requirements file without resolving it
   (`pip-audit --disable-pip --require-hashes -r <file>`, or `--no-deps`),
-  since `pip-audit -r` resolves like `pip install -r`, per pip-audit's
-  security model; and reads a package's registry page for its publish
-  dates, maintainers and provenance (#73).
+  and skips it otherwise, since `pip-audit -r` resolves like
+  `pip install -r`, per pip-audit's security model; and it reads a package's
+  registry page for its publish dates, maintainers and provenance (#73). A
+  minor bump under `docs/lifecycle.md#skill-versions`: it changes how the
+  skill gathers evidence (fewer pip-audit runs, a new registry lookup),
+  which can change what it reports, though its checklist and output shape
+  are unchanged.
 - Every adapter appends a `## Declared capabilities` section to a skill that
   asks for more than a read-only review (#73): an edit, a credential, an
   agent tool, a new file, or any command beyond read-only git (`git fetch`,

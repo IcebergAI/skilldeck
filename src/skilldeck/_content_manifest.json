@@ -28,11 +28,11 @@
     },
     {
       "body_sha256": "sha256:45fe7888314ff411831fff7591dcda21a2fb99bbc54fbed8ca35a347bd030ce9",
-      "canonical_sha256": "sha256:c0f2adab979b206e8aa72e1b2cdddf66984bf0a0277a6e06293e73b99e035947",
+      "canonical_sha256": "sha256:4d76accd4200eba551eb67fd3300de4e2da02f65a8901a311012ff4d7e867bf5",
       "claude_rendered_sha256": "sha256:07723f0640d98090d95a0d88424eb12b7f99a297be85396fba35eeaf4bd97807",
-      "meta_sha256": "sha256:dc0d6fe9bd291eea0ebc41937d1618dafe989e838f6116c95fd0e8bf0e52fb52",
+      "meta_sha256": "sha256:71af058a1cdb60a4013b42b09240f58b8a487ed2c6dfd018a297c4c29bdf8a9d",
       "name": "dependency-review",
-      "version": "0.4.1"
+      "version": "0.5.0"
     },
     {
       "body_sha256": "sha256:94ab468a0837179a8fa7470be404884cfc475f05f8be2314bff6e409ecffc5e5",
