@@ -315,7 +315,9 @@ def test_legacy_names_are_not_agents_a_skill_can_list(tmp_path):
     skill_dir.mkdir()
     (skill_dir / "meta.yaml").write_text(
         "name: demo\ndescription: d\ncategory: c\nversion: 0.1.0\n"
-        "supported-agents: [copilot-prompt]\n",
+        "supported-agents: [copilot-prompt]\n"
+        "capabilities: {schema: 1, files: {read: repo, write: none}, commands: [],"
+        " network: [], credentials: [], tools: [], artifacts: []}\n",
         encoding="utf-8",
     )
     (skill_dir / "skill.md").write_text("body\n", encoding="utf-8")

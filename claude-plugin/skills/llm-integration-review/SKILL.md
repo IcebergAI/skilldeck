@@ -182,3 +182,13 @@ report the ones worth a human's time and summarize the rest in a line.
 Open the report with one line stating what was reviewed and the outcome, e.g.
 `Reviewed origin/main...HEAD (3 files): 2 findings, worst critical.` If the
 integration is sound, say so explicitly rather than manufacturing findings.
+
+## Declared capabilities
+
+What this skill may ask for, as declared in its skilldeck metadata
+(capability schema 1). The declaration is for review: nothing enforces it.
+Anything not listed here is not requested by this skill.
+
+- Files: reads the repository; edits no files
+- Commands: `git fetch`, `git diff`, `git ls-files`
+- Network: the git remote, via git fetch, to bring the base branch up to date

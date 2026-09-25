@@ -118,3 +118,13 @@ Open the report with one line stating what was reviewed and the outcome, e.g.
 changes no behavior that needs tests (e.g. docs, comments, pure config), say
 so and stop. If the tests adequately cover the change, say so explicitly
 rather than inventing findings.
+
+## Declared capabilities
+
+What this skill may ask for, as declared in its skilldeck metadata
+(capability schema 1). The declaration is for review: nothing enforces it.
+Anything not listed here is not requested by this skill.
+
+- Files: reads the repository; edits no files
+- Commands: `git fetch`, `git diff`, `git ls-files`, `<the project's test command>`
+- Network: the git remote, via git fetch, to bring the base branch up to date

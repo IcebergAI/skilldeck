@@ -11,6 +11,9 @@ src/skilldeck/skills/
     └── skill.md
 ```
 
+Those two regular files are the whole skill: see
+[What a skill directory may hold](#what-a-skill-directory-may-hold).
+
 ## `meta.yaml`
 
 ```yaml
@@ -22,11 +25,25 @@ supported-agents:         # non-empty list; adapters skip skills they aren't in
   - claude
   - codex
   - kiro
+capabilities:             # what the skill may ask the agent to do; see below
+  schema: 1
+  files:
+    read: repo
+    write: none
+  commands:
+    - git fetch
+    - git diff
+    - git ls-files
+  network:
+    - the git remote, via git fetch, to bring the base branch up to date
+  credentials: []
+  tools: []
+  artifacts: []
 ```
 
-All five fields are required, and the loader (`skilldeck.registry`) rejects a
+All six fields are required, and the loader (`skilldeck.registry`) rejects a
 `meta.yaml` that breaks any of these rules with an error naming the field. A
-sixth field, `deprecated`, is optional (see
+seventh field, `deprecated`, is optional (see
 [Deprecating a skill](#deprecating-a-skill)); any other key is an error, so a
 misspelt field fails loudly instead of being ignored.
 
@@ -37,6 +54,7 @@ misspelt field fails loudly instead of being ignored.
 | `category` | A non-empty string. |
 | `version` | A **string** of the form `MAJOR.MINOR.PATCH`: three non-negative integers without leading zeroes, e.g. `0.1.0` or `1.10.0`. |
 | `supported-agents` | A non-empty list of agent names (strings), each listed once: `claude`, `codex`, `copilot`, `cursor`, `kiro`. The legacy adapters (`copilot-prompt`, ...) follow their agent's entry and are not listed. |
+| `capabilities` | A capability declaration, capability schema 1: see [Capabilities](#capabilities). |
 
 Both `meta.yaml` and `skill.md` must be UTF-8.
 
@@ -79,6 +97,85 @@ that agent would have nothing to move to). `skilldeck list` and
 they write one, and `skilldeck catalog --json` reports the record to tools
 (see [the skill catalog](catalog.md)).
 
+### Capabilities
+
+`capabilities` declares what the skill may ask an agent to do beyond
+following its text, so a reviewer (or a user about to install it) can see
+that without reading every instruction. Declare what the body actually asks
+for, and update the declaration whenever the body changes what it asks:
+
+| Key | Value | Declares |
+|-----|-------|----------|
+| `schema` | `1` | The capability schema. This page describes schema 1; a skilldeck that reads schema 1 rejects any other number. |
+| `files` | a mapping of `read` and `write` | `read`: `none`, `diff` (the changed files) or `repo` (any file in the repository). `write`: `none`, or `repo` if the skill may edit files in the repository (as `logging` does when it adds logging). Files outside the repository are never covered. |
+| `commands` | list of commands | Commands the skill may ask the agent to run, each a program on `PATH` and its subcommand (`git diff`). An entry covers that command with the arguments the body gives it. A `<placeholder>` in angle brackets stands for a command the project defines, such as `<the project's test command>`: running it runs the repository's own code, so review it as such. A path to a file (`./check.sh`) is rejected: a skill cannot ship scripts. |
+| `network` | list of descriptions | What the skill may contact, and why: `the git remote, via git fetch, to bring the base branch up to date`. |
+| `credentials` | list of descriptions | Secrets the skill asks the agent to read (from environment variables, files or a keychain), pass on or send. A declared command that authenticates by itself with the user's existing setup, as `git fetch` uses git's credential helper and `gh` its stored login, is not listed here: declare the command and its network use instead. |
+| `tools` | list of descriptions | Agent tools the skill needs beyond reading files and running its commands, such as `web fetch, to read advisory pages`. |
+| `artifacts` | list of paths | Files the skill may create, as POSIX paths relative to the project root (`reports/review.md`). |
+
+Every key is required, so each skill states each capability; write `[]` (or
+`none`) for one it doesn't need, rather than leaving the key out. Unknown keys
+are errors. Each list entry is one line of printable text of at most 200
+characters, listed once. A command is one simple command: single-spaced,
+starting with a program name (letters, digits, `.`, `_`, `+`, `-`), with no
+shell operators, redirections or substitutions (`;`, `|`, `&`, `$`, `<`, `>`,
+parentheses, backticks) that would hide what actually runs. An artifact
+path uses `/` separators and only letters, digits, `.`, `_` and `-`; the
+loader rejects one that is absolute, names a drive (`C:`) or a home directory
+(`~`), uses `\`, or has an empty, `.` or `..` component, so none can reach
+outside the project.
+
+**Anything not declared is not requested.** An agent, or a person reviewing
+what it did, should treat an attempt to go beyond the declaration (another
+command, another host, a file outside the repository) as not coming from the
+skill, and refuse it or review it by hand. The declaration is for review, not
+enforcement: skilldeck cannot sandbox the agents it installs into, and no
+metadata makes a malicious instruction safe. Review the body itself too.
+
+Where the declaration shows up:
+
+- **Before install**: `skilldeck show <skill> --summary` prints it with the
+  skill's source, build and digest, and
+  `skilldeck install <skill> --agent <agent> --dry-run` prints the same
+  summary with what the install would write, writing nothing.
+- **In the installed file**: a skill that asks for anything beyond reading
+  files (a command, network access, credentials, agent tools, edits or new
+  files) gets a `## Declared capabilities` section appended to its body in
+  every adapter's output, so the declaration travels with the file. A skill
+  that only reads is rendered unchanged.
+- **For tools**: `skilldeck catalog --json` reports it as each skill's
+  `capabilities` (see [the skill catalog](catalog.md)).
+
+`tests/test_skill_structure.py` checks the bundled skills' `commands`
+against their bodies both ways: a code span that runs a program some skill
+declares (`git diff origin/<base>...HEAD`) must start with a command the
+skill declares, and every declared command must appear in the body.
+
+### What a skill directory may hold
+
+Exactly `meta.yaml` and `skill.md`, as regular files. skilldeck installs one
+file per skill, so it has no way to ship a script, a reference file or an
+image, and a skill cannot declare one. The loader rejects, naming each:
+
+- a symlink, even one pointing at a file with the right content, and a skill
+  directory that is itself a symlink;
+- a directory or any other file, calling it an undeclared executable when
+  its suffix (`.sh`, `.py`, `.exe`, ...), execute bit (not on Windows) or
+  first bytes (`#!`, or a native binary) say it is a program.
+
+An execute bit on `meta.yaml` or `skill.md` themselves is ignored: skilldeck
+reads them as text and never copies a file's mode, and some filesystems
+(a Windows drive under WSL, for one) mark every file executable.
+
+`skill.md` may link only to web pages (`http`, `https`, `mailto`) and to its
+own headings (`#output`). A relative link, an absolute path or a `file:` URL
+(in a Markdown link or image, a reference definition, or an HTML `src` or
+`href`) names a file the skill can't ship, so the loader rejects it as a
+missing asset. Code spans and fenced code blocks are not checked, so examples
+stay possible. `skilldeck provenance --verify` and `skilldeck catalog` apply
+the same bundle rules to the installed package.
+
 ## `skill.md`
 
 The agent-neutral body of the skill — the actual instructions/prompt. Write it
@@ -110,6 +207,7 @@ skill one line that leaves the owner's area to the owner.
 
 ```bash
 skilldeck list                 # should show your new skill
+skilldeck show my-skill --summary   # check the capabilities it declares
 skilldeck install my-skill --agent claude --scope project
 ```
 

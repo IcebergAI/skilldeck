@@ -17,8 +17,23 @@ from .adapters import (
     InstallState,
     LegacyAdapter,
 )
-from .catalog import CatalogError, build_catalog, catalog_schema_text, filter_catalog
-from .provenance import canonical_json, distribution_provenance, verify_bundled_skills
+from .capabilities import summary as capability_summary
+from .catalog import (
+    SKILLS_SOURCE_PATH,
+    CatalogError,
+    build_catalog,
+    catalog_schema_text,
+    filter_catalog,
+)
+from .provenance import (
+    REPOSITORY_URL,
+    canonical_json,
+    canonical_skill_digest,
+    distribution_provenance,
+    load_build_metadata,
+    load_content_manifest,
+    verify_bundled_skills,
+)
 from .registry import Skill, SkillError, discover_skills
 from .stamp import read as read_stamp
 from .targets import Scope
@@ -279,6 +294,62 @@ def _warn_deprecated(skills: Iterable[Skill]) -> None:
         )
 
 
+def _built_from() -> str:
+    """Where this package says it was built from, for a summary."""
+    try:
+        build = load_build_metadata()
+    except ValueError as exc:
+        return f"unknown ({exc})"
+    if build["source_ref"] is None:
+        return "a development build (no release tag or commit recorded)"
+    return f"{build['source_ref']}, commit {build['source_commit']}"
+
+
+def _digest_status(skill: Skill) -> str:
+    """``skill``'s canonical digest, and whether the content manifest recorded
+    when the package was built vouches for it."""
+    try:
+        meta_text = (skill.path / "meta.yaml").read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        return f"unavailable (cannot read meta.yaml: {exc})"
+    digest = canonical_skill_digest(meta_text, skill.body)
+    try:
+        records = load_content_manifest()["skills"]
+    except ValueError as exc:
+        return f"{digest} (unverified: {exc})"
+    recorded = {record["name"]: record["canonical_sha256"] for record in records}
+    expected = recorded.get(skill.name)
+    if expected is None:
+        return f"{digest} (NOT in the content manifest)"
+    if digest != expected:
+        return f"{digest} (does NOT match the content manifest's {expected})"
+    return f"{digest} (matches the content manifest)"
+
+
+def _summary_lines(skill: Skill) -> list[str]:
+    """What ``skill`` is, where it comes from, and what it declares it may ask
+    an agent to do: the preview ``show --summary`` and ``install --dry-run``
+    print."""
+    deprecated = "no"
+    if skill.deprecated is not None:
+        note = _deprecation_note(skill.deprecated.since, skill.deprecated.replacement)
+        deprecated = f"{note} ({skill.deprecated.reason})"
+    lines = [
+        f"{skill.name} {skill.version} ({skill.category})",
+        f"  {skill.description}",
+        f"  source:      {REPOSITORY_URL}, {SKILLS_SOURCE_PATH}/{skill.name}",
+        f"  built from:  {_built_from()}",
+        f"  digest:      {_digest_status(skill)}",
+        f"  deprecated:  {deprecated}",
+        "  capabilities (declared for review, not enforced; anything not listed "
+        "is not requested):",
+    ]
+    for label, entries in capability_summary(skill.capabilities):
+        lines.append(f"    {label + ':':<13}{entries[0]}")
+        lines.extend(f"    {'':<13}{entry}" for entry in entries[1:])
+    return lines
+
+
 def _echo_json(data: object) -> None:
     """Print ``data`` as canonical JSON, as UTF-8 bytes with ``\\n`` newlines.
 
@@ -395,17 +466,28 @@ def catalog(
     is_flag=True,
     help="Overwrite locally modified or unmanaged destination files.",
 )
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Write nothing: preview each skill's source, digest and declared "
+    "capabilities, and what installing it would do.",
+)
 def install(
     names: tuple[str, ...],
     install_all: bool,
     agents: tuple[str, ...],
     scope: str,
     force: bool,
+    dry_run: bool,
 ) -> None:
     """Install one or more skills for the chosen agent(s)."""
     scope_enum = Scope(scope)
     skills = _resolve_skills(names, install_all)
     adapters, failed = _resolve_adapters(agents, scope_enum, installing=True)
+    if dry_run:
+        if not _preview_install(skills, adapters, scope_enum, force) or failed:
+            raise SystemExit(1)
+        return
     installed: set[Skill] = set()
     for adapter in adapters:
         for skill in skills:
@@ -425,6 +507,49 @@ def install(
     _warn_deprecated(installed)
     if failed:
         raise SystemExit(1)
+
+
+def _preview_install(
+    skills: list[Skill], adapters: list[Adapter], scope: Scope, force: bool
+) -> bool:
+    """Print what ``install`` would do, writing nothing; return whether every
+    install would succeed.
+
+    Each skill's summary comes first, then one line per adapter: the same
+    checks as a real install (``Adapter.install`` with ``dry_run``), and the
+    same errors on stderr.
+    """
+    ok = True
+    for index, skill in enumerate(skills):
+        if index:
+            click.echo()
+        for line in _summary_lines(skill):
+            click.echo(line)
+        for adapter in adapters:
+            if not adapter.supports(skill):
+                click.echo(
+                    f"skip {skill.name}: not supported by {adapter.name}", err=True
+                )
+                continue
+            try:
+                state, found = adapter.inspect(skill, scope)
+                dest = adapter.install(skill, scope, force=force, dry_run=True)
+            except SkillError as exc:
+                click.echo(f"error: {exc}", err=True)
+                ok = False
+                continue
+            action = "would install"
+            if state is InstallState.STALE and found is not None:
+                action = f"would update ({found.version} -> {skill.version})"
+            elif state is InstallState.CURRENT:
+                action = "would rewrite (up to date)"
+            elif state is InstallState.MODIFIED:
+                action = "would overwrite local modifications"
+            elif state is InstallState.UNMANAGED:
+                action = "would overwrite a file without a skilldeck stamp"
+            click.echo(f"  {adapter.name}: {action} -> {dest}")
+    click.echo("dry run: nothing was written")
+    return ok
 
 
 @cli.command()
@@ -473,12 +598,24 @@ def uninstall(
     default=None,
     help="Preview the rendered output for this agent instead of the raw body.",
 )
-def show(name: str, agent: str | None) -> None:
-    """Print a skill's body, or its rendered per-agent output."""
+@click.option(
+    "--summary",
+    is_flag=True,
+    help="Print the skill's source, digest and declared capabilities instead.",
+)
+def show(name: str, agent: str | None, summary: bool) -> None:
+    """Print a skill's body, its rendered per-agent output, or a summary of
+    where it comes from and what it may ask an agent to do."""
+    if summary and agent is not None:
+        raise click.UsageError("give --summary or --agent, not both")
     by_name = {skill.name: skill for skill in _all_skills()}
     if name not in by_name:
         raise SkillError(f"unknown skill: {name}")
     skill = by_name[name]
+    if summary:
+        for line in _summary_lines(skill):
+            click.echo(line)
+        return
     if agent is None:
         text = skill.body
     else:

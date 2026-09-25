@@ -17,9 +17,21 @@ from pathlib import Path
 
 import yaml
 
+from ..capabilities import with_notice
 from ..registry import Skill, SkillError
 from ..stamp import Stamp, parse, stamp
 from ..targets import Scope, UserDir, project_base
+
+
+def rendered_body(skill: Skill) -> str:
+    """``skill``'s body as every adapter writes it.
+
+    A skill that asks for more than reading files (commands, network,
+    credentials, agent tools, edits or new files) gets its declared
+    capabilities appended as a short Markdown section, so the declaration
+    travels with the installed file; any other body is written unchanged.
+    """
+    return with_notice(skill.body, skill.capabilities)
 
 
 def yaml_frontmatter(fields: dict[str, object], *, wrap: bool = True) -> str:
@@ -241,7 +253,13 @@ class Adapter(ABC):
         project_root: Path | None = None,
         *,
         force: bool = False,
+        dry_run: bool = False,
     ) -> Path:
+        """Write ``skill`` to its destination; return the destination.
+
+        ``dry_run`` makes every check a real install makes, raising the same
+        errors, then returns without writing anything.
+        """
         self.check_scope(scope, installing=True)
         dest = self.destination(skill, scope, project_root)
         mode = _entry_mode(dest)
@@ -273,6 +291,8 @@ class Adapter(ABC):
                     f"{dest} has local modifications; "
                     "re-run with --force to overwrite them"
                 )
+        if dry_run:
+            return dest
         try:
             dest.parent.mkdir(parents=True, exist_ok=True)
             write_atomic(dest, self._stamped(skill))

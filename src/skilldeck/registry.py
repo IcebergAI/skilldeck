@@ -1,18 +1,23 @@
 """Discovery and loading of canonical skills.
 
-A skill lives in ``skills/<name>/`` and is made of two files:
+A skill lives in ``skills/<name>/`` and is made of exactly two files:
 
 * ``meta.yaml`` -- metadata (name, description, category, version, supported
-  agents, and an optional ``deprecated`` record)
+  agents, capabilities, and an optional ``deprecated`` record)
 * ``skill.md``  -- the agent-neutral skill body / prompt
 
 This module turns those into :class:`Skill` objects. Adapters consume them to
 render agent-specific output; nothing here knows about a particular agent.
+Loading also enforces the bundle rules: nothing else in the directory (no
+scripts, assets or symlinks), and no link in ``skill.md`` to a file the skill
+would need to ship.
 """
 
 from __future__ import annotations
 
+import os
 import re
+import stat
 from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,12 +25,21 @@ from typing import Any
 
 import yaml
 
+from .capabilities import Capabilities, CapabilityError, parse_capabilities
+
 # Bundled ``skills/`` directory, co-located with this module inside the package.
 # Resolving relative to ``__file__`` works identically for an editable checkout
 # and an installed wheel, since hatchling ships the skill files alongside the code.
 DEFAULT_SKILLS_DIR = Path(__file__).resolve().parent / "skills"
 
-REQUIRED_FIELDS = ("name", "description", "category", "version", "supported-agents")
+REQUIRED_FIELDS = (
+    "name",
+    "description",
+    "category",
+    "version",
+    "supported-agents",
+    "capabilities",
+)
 # Every key meta.yaml may carry; anything else (say, a misspelt ``depreciated``)
 # is an error rather than silently ignored.
 ALLOWED_FIELDS = (*REQUIRED_FIELDS, "deprecated")
@@ -45,6 +59,45 @@ _VERSION_PART = r"(?:0|[1-9][0-9]*)"
 VERSION_RE = re.compile(rf"{_VERSION_PART}\.{_VERSION_PART}\.{_VERSION_PART}")
 # ``deprecated`` is optional; absent means the skill is not deprecated.
 DEPRECATION_FIELDS = ("since", "reason", "replacement")
+
+#: everything a skill directory may hold. Skilldeck installs one file per
+#: skill, so a bundle has no way to carry a script, an asset or a link, and a
+#: skill's metadata cannot declare one.
+BUNDLE_FILES = ("meta.yaml", "skill.md")
+# Suffixes of files a shell, an interpreter or the OS runs as a program; only
+# used to say why an extra file is refused (every extra file is).
+SCRIPT_SUFFIXES = frozenset(
+    {
+        ".app", ".bash", ".bat", ".bin", ".cjs", ".cmd", ".com", ".command",
+        ".csh", ".dll", ".dylib", ".exe", ".fish", ".jar", ".js", ".ksh",
+        ".lua", ".mjs", ".msi", ".php", ".pl", ".ps1", ".psm1", ".py", ".pyw",
+        ".rb", ".scr", ".sh", ".so", ".ts", ".vbs", ".wsf", ".zsh",
+    }
+)  # fmt: skip
+# Leading bytes of native binaries: ELF, PE (MZ) and Mach-O (32/64-bit, both
+# byte orders, and universal).
+_BINARY_MAGIC = (
+    b"\x7fELF",
+    b"MZ",
+    b"\xfe\xed\xfa\xce",
+    b"\xfe\xed\xfa\xcf",
+    b"\xce\xfa\xed\xfe",
+    b"\xcf\xfa\xed\xfe",
+    b"\xca\xfe\xba\xbe",
+)
+# Markdown the link check must skip: fenced code blocks and code spans.
+_FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+_CODE_SPAN_RE = re.compile(r"(?<!`)(`+)(?!`).+?(?<!`)\1(?!`)", re.S)
+# Link targets: inline links and images, reference definitions, and HTML
+# src/href attributes.
+_LINK_TARGET_RES = (
+    re.compile(r"\]\(\s*<?([^)\s>]*)"),
+    re.compile(r"^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)", re.M),
+    re.compile(r"""\b(?:src|href)\s*=\s*["']?([^"'\s>]+)""", re.I),
+)
+_SCHEME_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:")
+#: link schemes that resolve wherever the installed file ends up
+WEB_SCHEMES = ("http", "https", "mailto")
 
 
 class SkillError(Exception):
@@ -70,6 +123,8 @@ class Skill:
     body: str
     path: Path
     deprecated: Deprecation | None = None
+    #: what the skill may ask an agent to do; the default requests nothing
+    capabilities: Capabilities = Capabilities()
 
 
 def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> Skill:
@@ -82,6 +137,16 @@ def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> 
     meta_path = skill_dir / "meta.yaml"
     body_path = skill_dir / "skill.md"
 
+    if skill_dir.is_symlink():
+        raise SkillError(f"{skill_dir}: the skill directory is a symlink")
+    problems = bundle_problems(skill_dir) if skill_dir.is_dir() else []
+    if problems:
+        raise SkillError(
+            f"{skill_dir}: {'; '.join(problems)}. A skill directory holds only "
+            "meta.yaml and skill.md, as regular files: skilldeck installs one "
+            "file per skill, so a skill cannot ship (or declare) scripts, "
+            "assets or links"
+        )
     if not meta_path.is_file():
         raise SkillError(f"{skill_dir}: missing meta.yaml")
     if not body_path.is_file():
@@ -164,9 +229,22 @@ def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> 
     )
 
     try:
+        capabilities = parse_capabilities(meta["capabilities"])
+    except CapabilityError as exc:
+        raise SkillError(f"{skill_dir}: meta.yaml {exc}") from exc
+
+    try:
         body = body_path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
         raise SkillError(f"{skill_dir}: skill.md is not valid UTF-8: {exc}") from exc
+    missing_assets = local_links(body)
+    if missing_assets:
+        raise SkillError(
+            f"{skill_dir}: skill.md links to {', '.join(missing_assets)}, which "
+            "the skill cannot ship: a skill is only meta.yaml and skill.md, so "
+            "a relative or file link has nothing to resolve to once installed. "
+            f"Link to a web page ({', '.join(WEB_SCHEMES)}) or a #heading instead"
+        )
 
     return Skill(
         name=name,
@@ -177,7 +255,100 @@ def load_skill(skill_dir: Path, known_agents: Collection[str] | None = None) -> 
         body=body,
         path=skill_dir,
         deprecated=deprecated,
+        capabilities=capabilities,
     )
+
+
+def bundle_problems(skill_dir: Path) -> list[str]:
+    """What in ``skill_dir`` breaks the bundle rules; ``[]`` if nothing does.
+
+    One message per offending entry: a symlink (never followed), a directory
+    or other non-regular file, or any file besides :data:`BUNDLE_FILES`, which
+    the message calls executable when its suffix, execute bit (not on
+    Windows, which has none) or first bytes say it is a program. Every such
+    file is refused, since a skill cannot ship or declare one.
+    """
+    try:
+        entries = sorted(skill_dir.iterdir(), key=lambda entry: entry.name)
+    except OSError as exc:
+        return [f"cannot list the skill directory: {exc}"]
+    problems: list[str] = []
+    for entry in entries:
+        try:
+            mode = entry.lstat().st_mode
+        except OSError as exc:
+            problems.append(f"cannot inspect {entry.name}: {exc}")
+            continue
+        if stat.S_ISLNK(mode):
+            problems.append(f"{entry.name} is a symlink")
+        elif stat.S_ISDIR(mode):
+            problems.append(f"{entry.name} is a directory")
+        elif not stat.S_ISREG(mode):
+            problems.append(f"{entry.name} is not a regular file")
+        elif entry.name not in BUNDLE_FILES:
+            why = _executable(entry, mode)
+            if why:
+                problems.append(f"{entry.name} is an undeclared executable ({why})")
+            else:
+                problems.append(f"{entry.name} is not meta.yaml or skill.md")
+    return problems
+
+
+def _executable(path: Path, mode: int) -> str | None:
+    """Why the regular file at ``path`` is a program; None if nothing says so."""
+    suffix = path.suffix.lower()
+    if suffix in SCRIPT_SUFFIXES:
+        return f"a {suffix} file"
+    # Windows reports execute bits from the file's suffix, covered above
+    if os.name != "nt" and mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH):
+        return "its execute bit is set"
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(4)
+    except OSError:
+        return None
+    if head.startswith(b"#!"):
+        return "it starts with #!"
+    if head.startswith(_BINARY_MAGIC):
+        return "a native binary"
+    return None
+
+
+def local_links(body: str) -> list[str]:
+    """Link targets in ``body`` that name a file rather than a web page.
+
+    Markdown links, images and reference definitions, and HTML ``src`` and
+    ``href`` attributes, outside code blocks and code spans. A target counts
+    unless it is a ``#heading`` anchor or uses one of :data:`WEB_SCHEMES` (or
+    is scheme-relative, ``//host/...``); a relative path, an absolute one, a
+    ``file:`` URL and any other scheme all count. Sorted, each once.
+    """
+    prose: list[str] = []
+    fence: str | None = None
+    for line in body.splitlines():
+        match = _FENCE_RE.match(line)
+        if fence is None:
+            if match:
+                fence = match.group(1)
+                continue
+            prose.append(line)
+        elif (
+            match
+            and match.group(1)[0] == fence[0]
+            and len(match.group(1)) >= len(fence)
+        ):
+            fence = None
+    text = _CODE_SPAN_RE.sub("", "\n".join(prose))
+    found: set[str] = set()
+    for pattern in _LINK_TARGET_RES:
+        for target in pattern.findall(text):
+            if not target or target.startswith(("#", "//")):
+                continue
+            scheme = _SCHEME_RE.match(target)
+            if scheme and scheme.group(0)[:-1].lower() in WEB_SCHEMES:
+                continue
+            found.add(target)
+    return sorted(found)
 
 
 def _require_str(skill_dir: Path, meta: dict[Any, Any], field: str) -> str:
@@ -283,11 +454,15 @@ def discover_skills(
     if not root.is_dir():
         raise SkillError(f"skills directory not found: {root}")
 
-    skills = [
-        load_skill(child, known_agents)
-        for child in sorted(root.iterdir())
-        if child.is_dir() and not child.name.startswith(".")
-    ]
+    skills = []
+    for child in sorted(root.iterdir()):
+        if child.name.startswith("."):
+            continue
+        # checked before is_dir(), which follows the link
+        if child.is_symlink():
+            raise SkillError(f"{child}: the skill directory is a symlink")
+        if child.is_dir():
+            skills.append(load_skill(child, known_agents))
     _check_replacements(skills)
     return skills
 

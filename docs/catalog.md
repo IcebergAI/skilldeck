@@ -51,7 +51,18 @@ from it, rather than trusting a second file that could drift from it.
         "repository": "https://github.com/IcebergAI/skilldeck",
         "path": "src/skilldeck/skills/security-review"
       },
-      "deprecated": null
+      "deprecated": null,
+      "capabilities": {
+        "schema": 1,
+        "files": {"read": "repo", "write": "none"},
+        "commands": ["git fetch", "git diff", "git ls-files"],
+        "network": [
+          "the git remote, via git fetch, to bring the base branch up to date"
+        ],
+        "credentials": [],
+        "tools": [],
+        "artifacts": []
+      }
     }
   ]
 }
@@ -78,12 +89,22 @@ from it, rather than trusting a second file that could drift from it.
   first carried the deprecation), `replacement` (the skill to use instead, or
   `null`) and `reason`. See
   [Deprecating a skill](authoring-skills.md#deprecating-a-skill).
+- `capabilities` is what the skill declares it may ask an agent to do,
+  exactly as its `meta.yaml` states it: `schema` (the capability schema,
+  `1`), `files.read` (`none`, `diff` or `repo`), `files.write` (`none` or
+  `repo`), and the `commands`, `network`, `credentials`, `tools` and
+  `artifacts` lists in the order the skill declares them, `[]` for none.
+  Anything not listed is not requested; the declaration is for review, and
+  nothing enforces it. See
+  [Capabilities](authoring-skills.md#capabilities). A new capability schema
+  number is a catalog change like any other, under the rules below.
 
 `catalog` runs the full `skilldeck provenance --verify` check first. If any
-installed skill no longer matches its recorded digest, is missing, or has a
-file the content manifest does not list next to it (or the skills directory
-holds anything else), it prints each problem on stderr, nothing on stdout, and
-exits 1. It never produces a catalog for content the package did not ship.
+installed skill no longer matches its recorded digest, is missing, or breaks
+the [bundle rules](authoring-skills.md#what-a-skill-directory-may-hold) (a
+file besides `meta.yaml` and `skill.md`, or a symlink; or the skills
+directory holds anything else), it prints each problem on stderr, nothing on
+stdout, and exits 1. It never produces a catalog for content the package did not ship.
 
 The output is deterministic: the same installed package always prints the same
 bytes on every platform: UTF-8 (in fact ASCII, with `\u` escapes), sorted

@@ -10,4 +10,13 @@ real. Non-ASCII text (naïve café, 検査) must reach every agent as UTF-8.
 
 1. Run `git diff` and read the changed files.
 2. Report each finding with its file and line.
-<!-- skilldeck name=contract-demo version=1.2.3 hash=f63300423929d7252b34ea5d2a247a0e493cf11cabf611a6985d5f9d062f9525 -->
+
+## Declared capabilities
+
+What this skill may ask for, as declared in its skilldeck metadata
+(capability schema 1). The declaration is for review: nothing enforces it.
+Anything not listed here is not requested by this skill.
+
+- Files: reads the changed files; edits no files
+- Commands: `git diff`
+<!-- skilldeck name=contract-demo version=1.2.3 hash=2790c7e863716b74cff83790c637c5086cdeb79724900db50e81a9942f2f78fa -->

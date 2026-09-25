@@ -72,7 +72,8 @@
         "canonical_sha256",
         "rendered_sha256",
         "source",
-        "deprecated"
+        "deprecated",
+        "capabilities"
       ],
       "properties": {
         "name": {"$ref": "#/$defs/skill_name"},
@@ -127,6 +128,71 @@
               "maxLength": 64
             },
             "reason": {"type": "string", "minLength": 1}
+          }
+        },
+        "capabilities": {"$ref": "#/$defs/capabilities"}
+      }
+    },
+    "capability_entries": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 200}
+    },
+    "capabilities": {
+      "description": "What the skill declares it may ask an agent to do (docs/authoring-skills.md#capabilities). A declaration for review that nothing enforces; anything not listed is not requested.",
+      "type": "object",
+      "required": [
+        "schema",
+        "files",
+        "commands",
+        "network",
+        "credentials",
+        "tools",
+        "artifacts"
+      ],
+      "properties": {
+        "schema": {
+          "description": "The capability schema of the declaration. Changing it is a catalog change like any other (see docs/catalog.md).",
+          "const": 1
+        },
+        "files": {
+          "type": "object",
+          "required": ["read", "write"],
+          "properties": {
+            "read": {
+              "description": "none, diff (the changed files) or repo (any file in the repository).",
+              "enum": ["none", "diff", "repo"]
+            },
+            "write": {
+              "description": "none, or repo: the skill may edit files in the repository.",
+              "enum": ["none", "repo"]
+            }
+          }
+        },
+        "commands": {
+          "description": "Commands the skill may ask the agent to run, e.g. \"git diff\" (with any arguments); \"<...>\" stands for a command the project defines.",
+          "$ref": "#/$defs/capability_entries"
+        },
+        "network": {
+          "description": "What the skill may contact, and why.",
+          "$ref": "#/$defs/capability_entries"
+        },
+        "credentials": {
+          "description": "Secrets the skill asks the agent to read, pass on or send.",
+          "$ref": "#/$defs/capability_entries"
+        },
+        "tools": {
+          "description": "Agent tools the skill needs beyond reading files and running its commands.",
+          "$ref": "#/$defs/capability_entries"
+        },
+        "artifacts": {
+          "description": "Files the skill may create, as POSIX paths relative to the project root.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(?:(?!\\.\\.?/)[A-Za-z0-9._-]+/)*(?!\\.\\.?$)[A-Za-z0-9._-]+$",
+            "maxLength": 200
           }
         }
       }

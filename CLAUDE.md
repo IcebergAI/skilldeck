@@ -51,7 +51,14 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
   - `cli.py` — `skilldeck list/show/install/uninstall/status/update/migrate`,
     `provenance` and `catalog`
   - `registry.py` — discovers and validates skills, including the optional
-    `deprecated` metadata
+    `deprecated` metadata, and the bundle rules: a skill directory is exactly
+    regular `meta.yaml` + `skill.md` (no scripts, assets or symlinks), and
+    `skill.md` links only to the web or its own headings
+  - `capabilities.py` — the versioned `capabilities` declaration every
+    `meta.yaml` carries (files, commands, network, credentials, tools,
+    artifacts), its validation, the `## Declared capabilities` notice
+    adapters append for skills that ask for more than reading files, and the
+    summary `show --summary` / `install --dry-run` print
   - `catalog.py` + `catalog.schema.json` — the public, schema-versioned
     `skilldeck catalog --json` contract (the schema ships in the wheel);
     change it only per the compatibility rules in `docs/catalog.md` (bump
@@ -105,7 +112,13 @@ by `--agent all`); `skilldeck migrate` moves old-format installs to `SKILL.md`.
 - Skills are authored once in `src/skilldeck/skills/`; never hand-edit per-agent
   output.
 - A skill's `meta.yaml` `name` must match its directory name; all metadata fields
-  are required and validated by the registry.
+  (except `deprecated`) are required and validated by the registry.
+- Every skill declares `capabilities` (schema 1, every key spelled out, `[]`
+  or `none` when unused) that match what `skill.md` actually asks the agent
+  to do; update it with the body (`tests/test_skill_structure.py` checks
+  declared commands against the body both ways). Undeclared means not
+  requested; it is a declaration for review, never presented as
+  enforcement. See `docs/authoring-skills.md#capabilities`.
 - Any change to an adapter's output format, paths or env handling must update
   its contract fixtures, the `adapter-contract` digest and matrix rows in
   `docs/compatibility.md`, and CHANGELOG. The contract tests enforce the

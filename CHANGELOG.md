@@ -149,13 +149,29 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Every bundled skill's patch version is bumped for its new capability
+  declaration (#73): `authentication-review` 0.2.1, `ci-workflow-review`
+  0.4.1, `code-smells` 0.3.1, `dependency-review` 0.4.1,
+  `frontend-security-review` 0.1.1, `iac-review` 0.3.1,
+  `llm-integration-review` 0.1.1, `logging` 0.3.1, `migration-review` 0.4.1,
+  `privacy-review` 0.1.1, `resilience-review` 0.3.1, `security-review` 0.5.2
+  and `test-review` 0.3.1. Their instructions are unchanged, but each now
+  asks for more than reading files (at least `git fetch`, `git diff` and
+  `git ls-files`, and the git remote), so its installed file gains a
+  `## Declared capabilities` section: run `skilldeck update` to refresh
+  installed copies.
+- Every adapter appends a `## Declared capabilities` section to a skill that
+  declares anything beyond reading files (#73). The adapter contract
+  fixtures now pin that section, since the synthetic contract skill declares
+  the `git diff` it runs (contract `sha256:d8b7d4463e84`); skills that only
+  read render unchanged.
 - Asking an adapter for a scope it doesn't support now tells you what works
   instead (#79). For example, `--agent cursor-rule --scope global` names
   `--scope project`. On `install` it also names `--agent cursor`, which
   supports `--scope global`.
 - `meta.yaml` rejects keys other than `name`, `description`, `category`,
-  `version`, `supported-agents` and `deprecated`, so a misspelt field fails
-  loudly instead of being ignored (#77).
+  `version`, `supported-agents`, `capabilities` and `deprecated`, so a
+  misspelt field fails loudly instead of being ignored (#77, #73).
 - `skilldeck provenance --json` writes its JSON as UTF-8 bytes with `\n`
   line endings, as `catalog --json` does, so the output is byte-identical on
   Windows too (#77).
@@ -516,6 +532,40 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Skill capability declarations (#73). Every `meta.yaml` now declares, under
+  a required, versioned `capabilities` block (schema 1), what the skill may
+  ask an agent to do: which files it reads (`none`, `diff` or `repo`) and
+  edits (`none` or `repo`), the commands it may run, what it contacts over
+  the network and why, the credentials it handles, the agent tools it needs,
+  and the files it may create. Anything not declared is not requested. The
+  registry rejects a malformed block: an unknown or missing key, another
+  schema number, a command given as a path to a script, or an artifact path
+  that is absolute, names a drive or home directory, uses `\` or has a `..`
+  component. It is a declaration for review; skilldeck cannot enforce it
+  inside an agent. See `docs/authoring-skills.md#capabilities`.
+  - `skilldeck show <skill> --summary` prints a skill's source, build,
+    canonical digest (and whether the packaged content manifest vouches for
+    it), deprecation state and declared capabilities.
+  - `skilldeck install ... --dry-run` prints that summary for each skill and
+    what installing it would do for each agent (install, update, rewrite,
+    overwrite, or the error a real install would hit), and writes nothing.
+  - `skilldeck catalog --json` reports each skill's `capabilities`, an
+    additive field (`schema_version` stays 1).
+  - The bundled declarations were reviewed against each skill's
+    instructions: every review skill runs `git fetch`, `git diff` and
+    `git ls-files` and contacts the git remote; `dependency-review` may also
+    run `npm audit`, `pip-audit`, `osv-scanner`, `govulncheck`,
+    `cargo audit` and `gh api`, query advisory databases and fetch advisory
+    pages; `test-review` may run the project's own tests; `logging` may edit
+    repository files when it adds logging.
+- Skill bundle validation (#73). A skill directory must hold exactly
+  `meta.yaml` and `skill.md` as regular files. Loading a skill (and
+  `provenance --verify` and `catalog`) rejects a symlink (including a
+  symlinked skill directory), a subdirectory, any other file, naming a
+  script, a file with its execute bit set or one starting with `#!` or a
+  binary header as an undeclared executable, and a `skill.md` link to a
+  relative path, absolute path or `file:` URL, an asset the skill can't
+  ship.
 - Agent compatibility matrix, `docs/compatibility.md` (#79), linked from the
   README and `docs/adapters.md`. It lists every adapter, including the
   `copilot-prompt`, `cursor-rule` and `kiro-steering` legacy adapters, with:

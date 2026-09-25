@@ -49,7 +49,8 @@ create them.
 
 Skills live in `src/skilldeck/skills/<name>/` as a `meta.yaml` + `skill.md`, authored
 once in an agent-neutral format — never hand-edit per-agent output. A skill's
-`meta.yaml` `name` must match its directory name. See
+`meta.yaml` `name` must match its directory name, and its `capabilities` must declare
+what `skill.md` asks the agent to do (commands, network, credentials, edits). See
 [docs/authoring-skills.md](docs/authoring-skills.md) for the full guide, and bump that
 skill's own `version` in `meta.yaml` whenever its content changes.
 

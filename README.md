@@ -114,8 +114,11 @@ package is unpublished, prefix each command with
 # See what's available
 skilldeck list
 
-# Preview a skill before installing
+# Preview a skill before installing: its instructions, then its source,
+# digest and declared capabilities, then what an install would write
 skilldeck show security-review
+skilldeck show security-review --summary
+skilldeck install security-review --agent claude --dry-run
 
 # Install a skill for Claude into the current project
 skilldeck install security-review --agent claude
@@ -157,6 +160,16 @@ skilldeck catalog --json --category security --agent claude
 
 `skilldeck catalog --json` is a stable contract for tools; see
 [docs/catalog.md](docs/catalog.md) for its schema and compatibility rules.
+
+Every skill declares its capabilities: which files it reads or edits, the
+commands it may ask your agent to run, what it contacts over the network and
+why, and any credentials, agent tools or new files it needs. Anything not
+declared is not requested. `show --summary` and `install --dry-run` print the
+declaration before you install, and a skill that asks for more than reading
+files carries it in its installed `SKILL.md` as a "Declared capabilities"
+section. It is a declaration for review, not a sandbox: skilldeck can't
+enforce it inside your agent, so review what a skill asks for (see
+[Capabilities](docs/authoring-skills.md#capabilities)).
 
 Installed files carry a `skilldeck` stamp recording the skill version, so
 `status` can tell current, stale, and locally modified installs apart. Files you
@@ -208,7 +221,8 @@ release; the package remains unpublished today.
 ## Authoring skills
 
 Each skill is a directory under `src/skilldeck/skills/` containing a `meta.yaml`
-and a `skill.md`. See [docs/authoring-skills.md](docs/authoring-skills.md), and
+(including its capability declaration) and a `skill.md`, and nothing else. See
+[docs/authoring-skills.md](docs/authoring-skills.md), and
 follow the [contributor guide](CONTRIBUTING.md) for setup and validation.
 
 ## Changelog

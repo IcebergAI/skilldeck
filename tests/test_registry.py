@@ -4,6 +4,12 @@ import pytest
 
 from skilldeck.registry import Deprecation, SkillError, discover_skills, load_skill
 
+#: a capability declaration that requests only reading the repository
+CAPABILITIES = (
+    "{schema: 1, files: {read: repo, write: none}, commands: [], network: [], "
+    "credentials: [], tools: [], artifacts: []}"
+)
+
 
 def _write_skill(root, name, *, agents="[claude, codex, kiro]", body="hi"):
     skill_dir = root / name
@@ -16,6 +22,7 @@ def _write_skill(root, name, *, agents="[claude, codex, kiro]", body="hi"):
             category: testing
             version: 0.1.0
             supported-agents: {agents}
+            capabilities: {CAPABILITIES}
             """
         ).strip(),
         encoding="utf-8",
@@ -51,7 +58,8 @@ def test_name_must_match_directory(tmp_path):
         "description: x\n"
         "category: y\n"
         "version: 1\n"
-        "supported-agents: [claude]\n",
+        "supported-agents: [claude]\n"
+        f"capabilities: {CAPABILITIES}\n",
         encoding="utf-8",
     )
     with pytest.raises(SkillError, match="does not match"):
@@ -114,6 +122,7 @@ def _write_meta(root, name="demo", **overrides):
         "category": "testing",
         "version": "0.1.0",
         "supported-agents": "[claude]",
+        "capabilities": CAPABILITIES,
         **overrides,
     }
     skill_dir = root / name
@@ -435,6 +444,7 @@ def test_unknown_meta_field_rejected(tmp_path):
     with pytest.raises(
         SkillError,
         match="unknown field\\(s\\): author, depreciated; the fields are name, "
-        "description, category, version, supported-agents, deprecated",
+        "description, category, version, supported-agents, capabilities, "
+        "deprecated",
     ):
         load_skill(skill_dir)

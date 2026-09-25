@@ -163,6 +163,60 @@ def test_skill_description_is_a_single_sentence_line(skill):
     )
 
 
+# Programs a code span in a skill body is taken to run: every program some
+# official skill declares a command for. (Skills also quote commands as
+# patterns to look for, such as `sh -c` in a CI job, so a wider list would
+# flag those.) A span that is only the program's name is a mention.
+COMMAND_PROGRAMS = {
+    command.split(" ")[0]
+    for skill in SKILLS
+    for command in skill.capabilities.commands
+    if not command.startswith("<")
+}
+_CODE_SPAN_RE = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.S)
+
+
+def _runs(span, command):
+    return span == command or span.startswith(command + " ")
+
+
+@pytest.mark.parametrize("skill", SKILLS, ids=lambda s: s.name)
+def test_skill_declares_the_commands_its_body_names(skill):
+    # the capability declaration must keep up with the body, both ways
+    spans = [" ".join(m.group(2).split()) for m in _CODE_SPAN_RE.finditer(skill.body)]
+    declared = skill.capabilities.commands
+    undeclared = sorted(
+        {
+            span
+            for span in spans
+            if span.split(" ")[0] in COMMAND_PROGRAMS
+            and span not in COMMAND_PROGRAMS
+            and not any(_runs(span, command) for command in declared)
+        }
+    )
+    assert not undeclared, (
+        f"{skill.name}/skill.md runs commands its meta.yaml capabilities.commands "
+        f"does not declare: {undeclared}"
+    )
+    unused = [
+        command
+        for command in declared
+        if not command.startswith("<")
+        and not any(
+            _runs(span, command) or span == command.split(" ")[0] for span in spans
+        )
+    ]
+    assert not unused, (
+        f"{skill.name}/meta.yaml declares commands its skill.md never names: {unused}"
+    )
+
+
+@pytest.mark.parametrize("skill", SKILLS, ids=lambda s: s.name)
+def test_git_fetch_is_declared_as_network_use(skill):
+    if "git fetch" in skill.capabilities.commands:
+        assert any("git remote" in entry for entry in skill.capabilities.network)
+
+
 def test_all_bundled_skills_are_covered():
     # If discovery ever silently returns nothing, every parametrized test above
     # would pass vacuously.

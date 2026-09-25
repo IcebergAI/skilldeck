@@ -133,3 +133,18 @@ Open the report with one line stating what was reviewed and the outcome, e.g.
 `Reviewed origin/main...HEAD (2 manifests): 1 finding, high.` If the diff
 touches no dependency manifest or lockfile, say so and stop. If the dependency
 changes are clean, say so explicitly.
+
+## Declared capabilities
+
+What this skill may ask for, as declared in its skilldeck metadata
+(capability schema 1). The declaration is for review: nothing enforces it.
+Anything not listed here is not requested by this skill.
+
+- Files: reads the repository; edits no files
+- Commands: `git fetch`, `git diff`, `git ls-files`, `npm audit`, `pip-audit`, `osv-scanner`, `govulncheck`, `cargo audit`, `gh api`
+- Network:
+  - the git remote, via git fetch, to bring the base branch up to date
+  - vulnerability databases and package registries, queried by the audit commands
+  - GitHub's advisory API, via gh api with its existing login
+  - advisory pages, fetched to verify an advisory ID before citing it
+- Agent tools: web fetch, to read advisory pages

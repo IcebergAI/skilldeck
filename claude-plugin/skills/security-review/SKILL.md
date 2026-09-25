@@ -180,3 +180,13 @@ checked them for pasted credentials), say so and stop. If no
 security-relevant issues are found, say the change is clean
 explicitly rather than padding the report. Do not flag stylistic issues — that
 is the job of code review.
+
+## Declared capabilities
+
+What this skill may ask for, as declared in its skilldeck metadata
+(capability schema 1). The declaration is for review: nothing enforces it.
+Anything not listed here is not requested by this skill.
+
+- Files: reads the repository; edits no files
+- Commands: `git fetch`, `git diff`, `git ls-files`
+- Network: the git remote, via git fetch, to bring the base branch up to date

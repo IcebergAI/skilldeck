@@ -16,7 +16,7 @@ from typing import TypedDict
 
 from . import __version__
 from .adapters import ADAPTERS
-from .registry import DEFAULT_SKILLS_DIR, Skill, discover_skills
+from .registry import DEFAULT_SKILLS_DIR, Skill, bundle_problems, discover_skills
 
 SCHEMA_VERSION = 1
 PACKAGE_NAME = "skilldeck"
@@ -279,8 +279,10 @@ def verify_bundled_skills(skills_dir: Path | None = None) -> list[str]:
 
     Returns one message per problem: a skill whose ``meta.yaml`` or
     ``skill.md`` no longer hashes to the packaged content manifest, a skill
-    that is missing or unreadable, and any file or skill directory the
-    manifest does not list. An empty list means the installed skills are
+    that is missing or unreadable, any skill directory the manifest does not
+    list, and anything in a skill directory that breaks the bundle rules
+    (:func:`~skilldeck.registry.bundle_problems`: an extra file, an
+    executable, a symlink). An empty list means the installed skills are
     exactly the ones the manifest records.
     """
     root = skills_dir or DEFAULT_SKILLS_DIR
@@ -298,15 +300,14 @@ def verify_bundled_skills(skills_dir: Path | None = None) -> list[str]:
     for name, record in sorted(records.items()):
         skill_dir = root / name
         try:
-            entries = sorted(child.name for child in skill_dir.iterdir())
             meta_text = (skill_dir / "meta.yaml").read_text(encoding="utf-8")
             body_text = (skill_dir / "skill.md").read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
             problems.append(f"{name}: cannot read the bundled skill: {exc}")
             continue
-        extras = [entry for entry in entries if entry not in {"meta.yaml", "skill.md"}]
-        if extras:
-            problems.append(f"{name}: unexpected file(s): {', '.join(extras)}")
+        if skill_dir.is_symlink():
+            problems.append(f"{name}: the skill directory is a symlink")
+        problems.extend(f"{name}: {problem}" for problem in bundle_problems(skill_dir))
         if canonical_skill_digest(meta_text, body_text) != record["canonical_sha256"]:
             problems.append(
                 f"{name}: installed files do not match canonical digest "
