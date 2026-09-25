@@ -19,7 +19,8 @@ jobs:
         with:
           persist-credentials: false
           # all branches and tags: the plugin release record is checked
-          # against the PR's base branch and any release tag
+          # against the PR's base branch and any release tag, and the
+          # lifecycle check reads the release tags
           fetch-depth: 0
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
@@ -39,6 +40,18 @@ jobs:
             python scripts/check_release_consistency.py --base "origin/$BASE_REF"
           else
             python scripts/check_release_consistency.py
+          fi
+      - name: Lifecycle notes (removals, deprecations, breaking changes)
+        # docs/lifecycle.md: on a PR, compatibility changes since the target
+        # branch need CHANGELOG entries; always, the newest release's bump
+        # must be big enough for what it removes or deprecates
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            uv run --locked --extra dev python scripts/check_lifecycle.py --base "origin/$BASE_REF"
+          else
+            uv run --locked --extra dev python scripts/check_lifecycle.py
           fi
 
   test:

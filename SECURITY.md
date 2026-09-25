@@ -19,7 +19,9 @@ When you report, include as much of the following as you can:
 
 - We aim to acknowledge a report within **3 business days**.
 - We'll confirm the issue, keep you updated as we work on a fix, and let you know when
-  it ships.
+  it ships. For a confirmed high- or critical-severity issue, we aim to publish a fixed
+  release within 7 days of confirming it, as the
+  [lifecycle policy](docs/lifecycle.md#security-fixes) describes.
 - With your permission, we're happy to credit you once the fix is public.
 
 Please give us a reasonable window to release a fix before disclosing publicly. We're a
