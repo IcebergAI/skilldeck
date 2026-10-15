@@ -1,5 +1,5 @@
 # Command-line tools the workflows run with `uvx -c .github/tools/requirements.txt`.
 # Pinned here, rather than inline in the workflow files, so Dependabot's pip
 # ecosystem (see .github/dependabot.yml) can see and bump them.
-pypi-attestations==0.0.29
+pypi-attestations==0.0.30
 zizmor==1.30.1
