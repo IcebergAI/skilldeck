@@ -48,9 +48,77 @@ def test_a_finding_naming_the_file_and_a_keyword_satisfies_the_plant():
 
 def test_basename_or_relative_path_locates_the_plant():
     fixture = _fixture(_plant())
-    for location in ("session.py:14", "auth/session.py", "./auth/session.py:3"):
+    for location in (
+        "session.py:14",
+        "auth/session.py",
+        "./auth/session.py:3",
+        r"auth\session.py:3:2",
+    ):
         report = _finding(location, "a secret is logged")
         assert run_evals.score(fixture, report)[1], location
+
+
+def test_inline_issue_after_location_is_still_scored():
+    plant = _plant(file="billing/totals.py", keywords=("duplicates",))
+    report = "- **[low] Duplicate code** — `billing/totals.py:7` duplicates a helper.\n"
+    assert run_evals.score(_fixture(plant), report) == ([], True)
+
+
+@pytest.mark.parametrize(
+    ("location", "issue"),
+    [
+        ("archive/totals.py:7", "the calculation duplicates a helper"),
+        ("archive/billing/totals.py:7", "the calculation duplicates a helper"),
+        ("billing/totals.py.bak:7", "the calculation duplicates a helper"),
+        ("billing/quotes.py:7", "it duplicates a helper used by `billing/totals.py`"),
+    ],
+    ids=["other-directory", "path-suffix", "file-extension", "body-reference"],
+)
+def test_exact_association_uses_the_location_field(location, issue):
+    plant = _plant(file="billing/totals.py", keywords=("duplicates",))
+    unrelated = _finding(location, issue)
+    correct = _finding(
+        "./billing/totals.py:8-10", "the calculation duplicates a helper"
+    )
+    findings = run_evals.parse_findings(unrelated + correct)
+    assert len(findings) == 2
+    assert run_evals.match_plants((plant,), findings) == {0: 1}
+    assert not run_evals.score(_fixture(plant), unrelated)[1]
+
+
+def test_exact_association_rejects_ambiguous_plant_basenames():
+    plant = _plant(file="billing/totals.py", keywords=("duplicates",))
+    alternate = _plant(file="archive/totals.py", keywords=("duplicates",))
+    report = _finding("totals.py:7", "the calculation duplicates a helper")
+    assert (
+        run_evals.match_plants((plant, alternate), run_evals.parse_findings(report))
+        == {}
+    )
+
+
+def test_exact_association_rejects_a_basename_shared_with_an_unplanted_file(tmp_path):
+    plant = _plant(file="billing/totals.py", keywords=("duplicates",))
+    report = _finding("totals.py:7", "the calculation duplicates a helper")
+    for part, file in [("base", "archive/totals.py"), ("change", plant.file)]:
+        path = tmp_path / part / file
+        path.parent.mkdir(parents=True)
+        path.write_text("# Synthetic totals module\n", encoding="utf-8")
+    fixture = run_evals.Fixture(tmp_path, "code-smells", (plant,), 1)
+    assert not run_evals.score(fixture, report)[1]
+    assert run_evals.score(fixture, report.replace("`totals.py", "`billing/totals.py"))[
+        1
+    ]
+
+
+def test_exact_association_uses_the_package_locator_at_the_reported_location():
+    plant = _plant(
+        file="requirements.txt", keywords=("duplicate",), locators=("demo-kit",)
+    )
+    wrong = _finding("demo-kit-addon 1.0 → 1.1", "a duplicate entry naming demo-kit")
+    right = _finding("demo-kit~=1.1", "a duplicate entry")
+    assert run_evals.match_plants(
+        (plant,), run_evals.parse_findings(wrong + right)
+    ) == {0: 1}
 
 
 def test_a_negative_mention_of_the_file_does_not_satisfy_the_plant():

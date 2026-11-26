@@ -171,11 +171,12 @@ only on a run of the same character at least as long as the one that opened
 it. A report wrapped in a ```` ```markdown ```` fence still parses, and the
 wrapper's closing fence ends the last finding.
 
-- **Each plant needs its own finding.** A finding satisfies a plant only if it
-  names the plant's file (relative path or basename, or one of its `locators`)
-  **and** at least one of its `keywords`, and — when the plant sets
-  `min-severity` — its severity is at least that high. Two plants in the same
-  file need two different findings: plants are matched to findings one-to-one.
+- **Each plant needs its own finding.** The backticked `location` must be the
+  plant's exact repo-relative path, a basename unique across the fixture's
+  base and change trees, or start with a configured locator such as a package
+  name. The location may include a line or line range. The finding must also
+  contain a plant keyword and meet any `min-severity` floor. Two plants in the
+  same file need two different findings.
 - **Whole words, case-insensitive.** `git` does not match `github`, `state`
   does not match `statement`. A keyword may be a phrase (`long method`); it
   matches across a line wrap and inline markdown (`no assert` matches

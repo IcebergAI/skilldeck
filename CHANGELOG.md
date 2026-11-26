@@ -321,6 +321,9 @@ All notable changes to this project are documented here. The format is based on
 - Clean-diff evals reserve any finding allowance for low-severity hygiene
   findings. A strict `code-smells` fixture covers a behavior-preserving
   billing refactor.
+- Eval scoring matches plants against each finding's declared location.
+  Repo-relative paths and package locators must match, and ambiguous
+  basenames receive no credit.
 
 - Codex skills now install where Codex reads them (#99). The Codex adapter
   wrote custom prompts to `.codex/prompts/<name>.md`, but Codex only ever read

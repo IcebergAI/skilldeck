@@ -710,7 +710,13 @@ def test_a_correct_report_passes(name):
     fixture = run_evals.load_fixture(run_evals.FIXTURES / name)
     correct, _ = SAMPLE_REPORTS[name]
     header = f"Reviewed main..HEAD (1 file): {len(correct)} finding(s).\n\n"
-    assert run_evals.score(fixture, header + "".join(correct)) == ([], True)
+    report = header + "".join(correct)
+    findings = run_evals.parse_findings(report)
+    assert len(findings) == len(fixture.plants)
+    assert run_evals.match_plants(fixture.plants, findings) == {
+        i: i for i in range(len(fixture.plants))
+    }
+    assert run_evals.score(fixture, report) == ([], True)
 
 
 @pytest.mark.parametrize("name", sorted(SAMPLE_REPORTS))

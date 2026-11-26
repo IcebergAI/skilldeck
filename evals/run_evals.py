@@ -14,10 +14,10 @@ For every fixture the runner builds the git repo in a temp dir, installs the
 skill through a skilldeck adapter at project scope, invokes the agent inside
 the repo, and scores its stdout. The report is parsed into individual findings
 (the shared shape in ``docs/finding-output.md``); each plant must be matched by
-its own finding that names the plant's file and one of its keywords (whole
-words, case-insensitive) at or above its optional ``min-severity``, and the
-finding count must not exceed ``max-findings``. On clean diffs, any allowance
-is for low-severity findings only.
+its own finding located at the plant's file or locator and containing a
+keyword (whole words, case-insensitive) at or above its optional
+``min-severity``. The finding count must not exceed ``max-findings``. On
+clean diffs, any allowance is for low-severity findings only.
 
 Every invocation writes a provider-neutral run record (``run-record.json``,
 see ``evals/run-record.schema.json``) to its work dir: the skilldeck version
@@ -65,10 +65,11 @@ import sys
 import tempfile
 import textwrap
 import time
-from collections.abc import Sequence
+from collections import Counter
+from collections.abc import Iterable, Sequence, Set
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TypedDict
 
 import yaml
@@ -119,10 +120,12 @@ SEVERITIES = ("low", "medium", "high", "critical")
 
 # A finding opens with a list marker ("-", "*", "1." or "1)") followed by the
 # "**[severity]" marker of the shared finding format (see parse_findings for
-# where it ends).
+# where it ends). Capture the location when it follows the classifier.
 FINDING_START_RE = re.compile(
     r"^(?P<indent>[ \t]*)(?:[-*]|\d+[.)])[ \t]+\*\*\[(?P<severity>[^\]\n]*)\]"
+    r"(?:[^*\n]*\*\*[ \t]+[—–-][ \t]+`(?P<location>[^`\n]+)`)?"
 )
+LINE_SUFFIX_RE = re.compile(r":\d+(?::\d+)?(?:[-–]\d+(?::\d+)?)?$")
 HEADING_RE = re.compile(r"^[ \t]{0,3}#{1,6}(?:[ \t]|$)")
 # a thematic break (---, ***, ___) or a setext heading underline (===)
 BREAK_RE = re.compile(
@@ -241,12 +244,6 @@ class Plant:
     #: location slot is not a file path (e.g. dependency-review's package name)
     locators: tuple[str, ...] = ()
 
-    @property
-    def locations(self) -> tuple[str, ...]:
-        """Terms any one of which ties a finding to this plant's location."""
-        basename = Path(self.file).name
-        return tuple(dict.fromkeys((self.file, basename, *self.locators)))
-
 
 @dataclass(frozen=True)
 class Fixture:
@@ -265,6 +262,7 @@ class Finding:
     #: the text inside ``**[...]``, lower-cased -- normally one of SEVERITIES
     severity: str
     text: str
+    location: str | None = None
 
 
 @dataclass(frozen=True)
@@ -423,6 +421,7 @@ def parse_findings(report: str) -> list[Finding]:
     findings: list[Finding] = []
     lines: list[str] | None = None  # the open finding's lines
     severity = ""
+    location: str | None = None
     indent = 0  # the open finding's bullet column
     after_blank = False
     inner: tuple[str, int] | None = None  # a fence opened inside the finding
@@ -431,7 +430,7 @@ def parse_findings(report: str) -> list[Finding]:
     def close() -> None:
         nonlocal lines, inner
         if lines is not None:
-            findings.append(Finding(severity, "\n".join(lines).rstrip()))
+            findings.append(Finding(severity, "\n".join(lines).rstrip(), location))
         lines, inner = None, None
 
     for line in report.splitlines():
@@ -449,6 +448,7 @@ def parse_findings(report: str) -> list[Finding]:
             close()
             lines = [line]
             severity = start["severity"].strip().lower()
+            location = start["location"].strip() if start["location"] else None
             indent = _width(start["indent"])
             after_blank = False
             continue
@@ -511,8 +511,35 @@ def severity_rank(severity: str) -> int | None:
     return SEVERITIES.index(severity) if severity in SEVERITIES else None
 
 
-def _locates(plant: Plant, finding: Finding) -> bool:
-    return any(mentions(finding.text, term) for term in plant.locations)
+def _ambiguous_basenames(files: Iterable[str]) -> set[str]:
+    paths = {file.replace("\\", "/").removeprefix("./") for file in files}
+    counts = Counter(path.rsplit("/", 1)[-1] for path in paths)
+    return {name for name, count in counts.items() if count > 1}
+
+
+def _locates(plant: Plant, finding: Finding, ambiguous_basenames: Set[str]) -> bool:
+    location = finding.location
+    if not location:
+        return False
+    path = LINE_SUFFIX_RE.sub("", location.replace("\\", "/"))
+    plant_path = plant.file.replace("\\", "/").removeprefix("./")
+    if "/" in path:
+        at_file = path.removeprefix("./") == plant_path
+    else:
+        at_file = (
+            path not in ambiguous_basenames and path == plant_path.rsplit("/", 1)[-1]
+        )
+    if at_file:
+        return True
+    # Package locations start with the configured name, possibly followed
+    # immediately by a version specifier. A package-name prefix is insufficient.
+    return any(
+        re.match(
+            re.escape(locator.casefold().removeprefix("--")) + r"(?=$|[\s<>=!~@])",
+            location.casefold().removeprefix("--"),
+        )
+        for locator in plant.locators
+    )
 
 
 def _describes(plant: Plant, finding: Finding) -> bool:
@@ -526,16 +553,21 @@ def _severe_enough(plant: Plant, finding: Finding) -> bool:
     return rank is not None and rank >= SEVERITIES.index(plant.min_severity)
 
 
-def satisfies(plant: Plant, finding: Finding) -> bool:
+def satisfies(
+    plant: Plant, finding: Finding, *, ambiguous_basenames: Set[str] = frozenset()
+) -> bool:
     return (
-        _locates(plant, finding)
+        _locates(plant, finding, ambiguous_basenames)
         and _describes(plant, finding)
         and _severe_enough(plant, finding)
     )
 
 
 def match_plants(
-    plants: Sequence[Plant], findings: Sequence[Finding]
+    plants: Sequence[Plant],
+    findings: Sequence[Finding],
+    *,
+    ambiguous_basenames: Set[str] | None = None,
 ) -> dict[int, int]:
     """Pair plants with distinct satisfying findings: plant index -> finding index.
 
@@ -543,8 +575,14 @@ def match_plants(
     account for two plants, and a greedy early choice can't strand a plant
     that only one finding satisfies.
     """
+    if ambiguous_basenames is None:
+        ambiguous_basenames = _ambiguous_basenames(plant.file for plant in plants)
     candidates = [
-        [j for j, finding in enumerate(findings) if satisfies(plant, finding)]
+        [
+            j
+            for j, finding in enumerate(findings)
+            if satisfies(plant, finding, ambiguous_basenames=ambiguous_basenames)
+        ]
         for plant in plants
     ]
     owner: dict[int, int] = {}  # finding index -> plant index
@@ -564,12 +602,18 @@ def match_plants(
     return {i: j for j, i in owner.items()}
 
 
-def _miss_reason(plant: Plant, findings: Sequence[Finding]) -> str:
+def _miss_reason(
+    plant: Plant, findings: Sequence[Finding], ambiguous_basenames: Set[str]
+) -> str:
     where = "the file"
     if plant.locators:
         where += f" (or one of {list(plant.locators)})"
     need = f"a finding naming {where} and one of {list(plant.keywords)}"
-    located = [f for f in findings if _locates(plant, f) and _describes(plant, f)]
+    located = [
+        f
+        for f in findings
+        if _locates(plant, f, ambiguous_basenames) and _describes(plant, f)
+    ]
     if not located:
         return f"missed plant: {plant.file} (need {need})"
     if not any(_severe_enough(plant, f) for f in located):
@@ -605,9 +649,23 @@ def score(fixture: Fixture, report: str) -> tuple[list[str], bool]:
                 f"{len(drifted)} finding(s) not in the '- **[severity] ...' "
                 f"format — output format drift? (first: {drifted[0]!r})"
             )
-        matched = match_plants(fixture.plants, findings)
+        files = {plant.file for plant in fixture.plants}
+        plant_basenames = {
+            PurePosixPath(file.replace("\\", "/")).name for file in files
+        }
+        if any(
+            f.location and LINE_SUFFIX_RE.sub("", f.location) in plant_basenames
+            for f in findings
+        ):
+            files.update(
+                file.relative.split("/", 1)[1]
+                for file in fixture_files(fixture.path)
+                if file.relative.startswith(("base/", "change/"))
+            )
+        ambiguous = _ambiguous_basenames(files)
+        matched = match_plants(fixture.plants, findings, ambiguous_basenames=ambiguous)
         problems.extend(
-            _miss_reason(plant, findings)
+            _miss_reason(plant, findings, ambiguous)
             for i, plant in enumerate(fixture.plants)
             if i not in matched
         )
