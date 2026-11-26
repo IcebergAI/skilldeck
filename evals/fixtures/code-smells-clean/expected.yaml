@@ -1,0 +1,5 @@
+# Both totals share the subtotal and tax calculation. Each caller keeps its
+# own shipping or discount adjustment and returns the same total as before.
+skill: code-smells
+plants: []
+max-findings: 0

@@ -318,6 +318,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Clean-diff evals reserve any finding allowance for low-severity hygiene
+  findings. A strict `code-smells` fixture covers a behavior-preserving
+  billing refactor.
+
 - Codex skills now install where Codex reads them (#99). The Codex adapter
   wrote custom prompts to `.codex/prompts/<name>.md`, but Codex only ever read
   custom prompts from `$CODEX_HOME/prompts`, never from a project, and removed

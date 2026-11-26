@@ -16,7 +16,8 @@ the repo, and scores its stdout. The report is parsed into individual findings
 (the shared shape in ``docs/finding-output.md``); each plant must be matched by
 its own finding that names the plant's file and one of its keywords (whole
 words, case-insensitive) at or above its optional ``min-severity``, and the
-finding count must not exceed ``max-findings``.
+finding count must not exceed ``max-findings``. On clean diffs, any allowance
+is for low-severity findings only.
 
 Every invocation writes a provider-neutral run record (``run-record.json``,
 see ``evals/run-record.schema.json``) to its work dir: the skilldeck version
@@ -615,6 +616,13 @@ def score(fixture: Fixture, report: str) -> tuple[list[str], bool]:
             f"too many findings: {len(findings)} > max {fixture.max_findings} "
             "(false-positive pressure)"
         )
+    elif not fixture.plants:
+        non_low = [f"[{f.severity}]" for f in findings if f.severity != "low"]
+        if non_low:
+            problems.append(
+                f"{len(non_low)} finding(s) outside the low-only clean-diff allowance: "
+                + ", ".join(non_low)
+            )
     return problems, not problems
 
 

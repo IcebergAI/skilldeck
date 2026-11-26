@@ -182,7 +182,9 @@ wrapper's closing fence ends the last finding.
   ``no `assert` ``). Inflections are not folded and a stem never matches
   (`re-pars` matches nothing), so list `lock` and `locking` if either would do.
 - **False-positive pressure.** The number of parsed findings must not exceed
-  `max-findings`.
+  `max-findings`. On a clean diff, a nonzero allowance applies only to
+  low-severity findings. A single medium, high, or critical finding fails the
+  fixture.
 - **Format drift is loud.** If a fixture has plants but no findings could be
   parsed, the run fails with `no findings parsed — output format drift?`
   rather than a silent miss. On any fixture, clean ones included, a list item
@@ -259,5 +261,12 @@ example.
 looks risky but is correct (e.g. `security-review-clean` replaces string-built
 SQL with a parameterized, owner-scoped query; `resilience-review-clean` adds a
 timeout and a bounded, jittered retry to an idempotent GET). Set
-`max-findings` to `0`, or `1` to tolerate a single hygiene nit. New skills
-should land with a planted fixture, and ideally a clean one.
+`max-findings` to `0`, or `1` to tolerate a single low-severity hygiene nit.
+New skills should land with a planted fixture, and ideally a clean one.
+
+To check clean and planted reports locally, run the deterministic eval tests
+with the project dev dependencies installed.
+
+```bash
+python -m pytest -q tests/test_eval_scoring.py tests/test_eval_fixtures.py tests/test_eval_runs.py
+```
