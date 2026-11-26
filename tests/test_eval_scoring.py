@@ -715,6 +715,26 @@ def _stand_in_agent(tmp_path, body):
     return f"{shlex.quote(sys.executable)} {shlex.quote(str(script))} {{prompt}}"
 
 
+@pytest.mark.parametrize(
+    ("location", "passed"),
+    [("billing/totals.py:7", True), (r"archive\totals.py:7", False)],
+    ids=["right-path", "wrong-path"],
+)
+def test_python_stand_in_uses_utf8_for_piped_reports(
+    monkeypatch, tmp_path, location, passed
+):
+    # Match legacy Windows Python's default encoding for redirected stdout.
+    monkeypatch.setenv("PYTHONIOENCODING", "cp1252")
+    report = _finding(location, "The calculation duplicates a helper.")
+    agent = _stand_in_agent(tmp_path, f"print({report!r}, end='')\n")
+    fixture = _fixture(_plant(file="billing/totals.py", keywords=("duplicates",)))
+
+    run = run_evals.run_agent(agent, "review it", tmp_path, timeout=10)
+
+    assert run.stdout == report
+    assert run_evals.evaluate(fixture, run)[1] is passed
+
+
 def _main(monkeypatch, tmp_path, *argv):
     workdir = tmp_path / "work"
     workdir.mkdir()

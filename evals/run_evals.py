@@ -893,6 +893,9 @@ def run_agent(
             # an agent CLI that reads a non-TTY stdin (codex exec does) must
             # neither block on nor ingest the runner's own stdin
             stdin=subprocess.DEVNULL,
+            # Piped Python output can default to a legacy Windows code page.
+            # Use the same encoding in the child as in the pipe reader.
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
             capture_output=True,
             text=True,
             encoding="utf-8",

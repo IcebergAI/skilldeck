@@ -79,6 +79,9 @@ to install, git fails) or whose report can't be stored or scored is recorded as
 `error` and the rest go on; an interrupt or a runner bug records the runs so
 far, the one in flight as `error` and the rest as `not_run`.
 
+The runner reads stdout and stderr as UTF-8 and sets that encoding for
+Python subprocesses.
+
 ## Harnesses
 
 | Harness | Command | Adapter | Version probe |
