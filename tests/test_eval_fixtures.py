@@ -17,6 +17,11 @@ import pytest
 import run_evals  # loaded from evals/run_evals.py by conftest.py
 
 FIXTURE_DIRS = sorted(p for p in run_evals.FIXTURES.iterdir() if p.is_dir())
+CLEAN_FIXTURES = [
+    fixture
+    for fixture in map(run_evals.load_fixture, FIXTURE_DIRS)
+    if not fixture.plants
+]
 
 
 def _finding(severity, kind, location, issue, fix):
@@ -617,7 +622,45 @@ def test_every_fixture_dir_is_named_for_its_skill():
 
 def test_there_is_a_clean_diff_fixture():
     # false-positive pressure needs at least one change that should pass clean
-    assert any(not run_evals.load_fixture(p).plants for p in FIXTURE_DIRS)
+    assert CLEAN_FIXTURES
+
+
+@pytest.mark.parametrize("fixture", CLEAN_FIXTURES, ids=lambda f: f.name)
+@pytest.mark.parametrize("severity", ["medium", "high", "critical"])
+def test_clean_diff_rejects_a_single_false_alarm(fixture, severity):
+    clean = "Reviewed main...HEAD (1 file): no findings.\n"
+    assert run_evals.parse_findings(clean) == []
+    assert run_evals.score(fixture, clean) == ([], True)
+
+    change = fixture.path / "change"
+    changed = next(path for path in sorted(change.rglob("*")) if path.is_file())
+    location = changed.relative_to(change).as_posix()
+    alarm = _finding(
+        severity, "Synthetic false alarm", f"{location}:1", "Noise.", "None."
+    )
+    findings = run_evals.parse_findings(alarm)
+    assert len(findings) == 1
+    assert run_evals.match_plants(fixture.plants, findings) == {}
+    problems, passed = run_evals.score(fixture, alarm)
+    assert not passed
+    expected = (
+        "low-only clean-diff allowance" if fixture.max_findings else "too many findings"
+    )
+    assert expected in problems[0]
+
+
+def test_code_smells_clean_rejects_a_low_false_alarm():
+    fixture = run_evals.load_fixture(run_evals.FIXTURES / "code-smells-clean")
+    report = _finding(
+        "low",
+        "Duplicate Code (Bloaters)",
+        "billing/totals.py:14",
+        "Quote and invoice totals calculate tax separately.",
+        "Extract a shared tax calculation.",
+    )
+    problems, passed = run_evals.score(fixture, report)
+    assert not passed
+    assert problems == ["too many findings: 1 > max 0 (false-positive pressure)"]
 
 
 @pytest.mark.parametrize("path", FIXTURE_DIRS, ids=lambda p: p.name)
@@ -667,7 +710,13 @@ def test_a_correct_report_passes(name):
     fixture = run_evals.load_fixture(run_evals.FIXTURES / name)
     correct, _ = SAMPLE_REPORTS[name]
     header = f"Reviewed main..HEAD (1 file): {len(correct)} finding(s).\n\n"
-    assert run_evals.score(fixture, header + "".join(correct)) == ([], True)
+    report = header + "".join(correct)
+    findings = run_evals.parse_findings(report)
+    assert len(findings) == len(fixture.plants)
+    assert run_evals.match_plants(fixture.plants, findings) == {
+        i: i for i in range(len(fixture.plants))
+    }
+    assert run_evals.score(fixture, report) == ([], True)
 
 
 @pytest.mark.parametrize("name", sorted(SAMPLE_REPORTS))

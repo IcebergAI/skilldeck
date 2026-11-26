@@ -79,6 +79,9 @@ to install, git fails) or whose report can't be stored or scored is recorded as
 `error` and the rest go on; an interrupt or a runner bug records the runs so
 far, the one in flight as `error` and the rest as `not_run`.
 
+The runner reads stdout and stderr as UTF-8 and sets that encoding for
+Python subprocesses.
+
 ## Harnesses
 
 | Harness | Command | Adapter | Version probe |
@@ -171,18 +174,21 @@ only on a run of the same character at least as long as the one that opened
 it. A report wrapped in a ```` ```markdown ```` fence still parses, and the
 wrapper's closing fence ends the last finding.
 
-- **Each plant needs its own finding.** A finding satisfies a plant only if it
-  names the plant's file (relative path or basename, or one of its `locators`)
-  **and** at least one of its `keywords`, and — when the plant sets
-  `min-severity` — its severity is at least that high. Two plants in the same
-  file need two different findings: plants are matched to findings one-to-one.
+- **Each plant needs its own finding.** The backticked `location` must be the
+  plant's exact repo-relative path, a basename unique across the fixture's
+  base and change trees, or start with a configured locator such as a package
+  name. The location may include a line or line range. The finding must also
+  contain a plant keyword and meet any `min-severity` floor. Two plants in the
+  same file need two different findings.
 - **Whole words, case-insensitive.** `git` does not match `github`, `state`
   does not match `statement`. A keyword may be a phrase (`long method`); it
   matches across a line wrap and inline markdown (`no assert` matches
   ``no `assert` ``). Inflections are not folded and a stem never matches
   (`re-pars` matches nothing), so list `lock` and `locking` if either would do.
 - **False-positive pressure.** The number of parsed findings must not exceed
-  `max-findings`.
+  `max-findings`. On a clean diff, a nonzero allowance applies only to
+  low-severity findings. A single medium, high, or critical finding fails the
+  fixture.
 - **Format drift is loud.** If a fixture has plants but no findings could be
   parsed, the run fails with `no findings parsed — output format drift?`
   rather than a silent miss. On any fixture, clean ones included, a list item
@@ -259,5 +265,12 @@ example.
 looks risky but is correct (e.g. `security-review-clean` replaces string-built
 SQL with a parameterized, owner-scoped query; `resilience-review-clean` adds a
 timeout and a bounded, jittered retry to an idempotent GET). Set
-`max-findings` to `0`, or `1` to tolerate a single hygiene nit. New skills
-should land with a planted fixture, and ideally a clean one.
+`max-findings` to `0`, or `1` to tolerate a single low-severity hygiene nit.
+New skills should land with a planted fixture, and ideally a clean one.
+
+To check clean and planted reports locally, run the deterministic eval tests
+with the project dev dependencies installed.
+
+```bash
+python -m pytest -q tests/test_eval_scoring.py tests/test_eval_fixtures.py tests/test_eval_runs.py
+```
